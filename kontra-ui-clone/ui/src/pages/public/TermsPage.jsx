@@ -1,0 +1,139 @@
+import React from "react";
+import { Link } from "react-router-dom";
+import PublicLayout from "./PublicLayout";
+
+const SECTIONS = [
+  {
+    title: "1. Eligibility and Acceptance",
+    content: "You must be at least 18 years old and legally capable of entering a binding contract to use Kontra. By accessing or using Kontra (kontraplatform.com), you agree to be bound by these Terms of Service. If you are using Kontra on behalf of a company, you represent that you have the authority to bind that company. If you do not agree to these terms, do not use the platform.",
+  },
+  {
+    title: "2. What Kontra Provides",
+    content: "Kontra is a secure AI deal room platform for managing transactions, due diligence, financing, acquisitions, and other collaborative business workflows. Supported workflow types depend on the platform and the deal-room configuration. Kontra provides: (a) deal rooms for organizing multi-party transactions; (b) AI-powered document analysis and workflow automation tools; (c) an Operations Manager that surfaces task status, critical path analysis, and deal health assessments; (d) role-based document collection and task tracking for transaction participants. All AI-generated analysis, recommendations, and assessments are provided as informational outputs only and do not constitute professional legal, financial, investment, insurance, or engineering advice.",
+  },
+  {
+    title: "3. Not a Broker-Dealer or Investment Adviser",
+    content: "Kontra is a software platform — not a broker-dealer, investment adviser, securities issuer, transfer agent, exchange, custodian, or escrow agent. Kontra does not introduce investors to issuers, arrange or facilitate securities transactions, solicit investments, negotiate deal terms on behalf of any party, or provide any service that would require registration as a broker-dealer under the Securities Exchange Act of 1934 or as an investment adviser under the Investment Advisers Act of 1940. Kontra does not charge compensation based on capital raised, investors introduced, securities sold, or transaction success. If your use case involves regulated securities activity, you should consult qualified legal counsel before using Kontra.",
+  },
+  {
+    title: "4. Tokenization Disclaimer",
+    content: "Digital Asset Readiness functionality, where available, is intended to support workflow, documentation, and preparation for external review. Kontra is not a broker-dealer, transfer agent, exchange, custodian, investment adviser, or securities issuer. Kontra does not issue, underwrite, trade, or custody any tokenized instrument. Any tokenization or other digital-asset activity must comply with applicable securities and financial regulations, which is the sole responsibility of the parties involved. You should obtain independent legal and regulatory advice before pursuing that activity. Readiness outputs may be incomplete or ineligible for a particular external process and should be treated as informational or preparatory only.",
+  },
+  {
+    title: "5. Account Registration and Link Security",
+     content: "You must provide accurate information when creating an account. The deal room owner is the individual or organization that purchases a deal room, or an authorized administrator designated by that organization. If an employee purchases a deal room on behalf of an organization and later leaves, ownership and administrative control over the deal room data remains with the organization — not the individual. Kontra may transfer administrative access upon request from the organization, subject to identity verification. You are responsible for maintaining the security of your account credentials and any access links (owner links and participant invite links) associated with your deal room. Do not share sensitive access links with unauthorized parties. Notify us immediately at security@kontraplatform.com if you suspect unauthorized access to your account or deal room links. We may suspend accounts that violate these terms or that we reasonably believe are being used fraudulently.",
+  },
+  {
+    title: "6. Electronic Communications",
+     content: "By using Kontra, you consent to receive electronic communications from us, including transactional emails (deal room activation, document upload notifications, task updates, and participant invitations) and, where you have opted in, product updates. You agree that electronic notices satisfy any legal requirement that communications be in writing. You may opt out of non-transactional emails at any time. Transactional emails related to active deal room operations cannot be disabled while a deal room is active.",
+  },
+  {
+    title: "7. Acceptable Use",
+    content: "You agree not to: (a) upload documents you do not own or have authorization to process; (b) upload or process personal information of third parties without a lawful basis and all necessary rights, notices, and authorizations; (c) attempt to reverse-engineer, scrape, or extract data from the platform in bulk; (d) use the AI tools to generate fraudulent documents or misrepresent asset conditions; (e) use Kontra to publicly advertise securities offerings, match issuers with investors, or conduct any unregistered securities offering; (f) share deal room access links with unauthorized parties; (g) interfere with the operation of the platform or other users' access; (h) use the platform for any illegal purpose. Violation of these terms may result in immediate account termination.",
+  },
+  {
+    title: "8. Copyright and DMCA",
+    content: "Kontra respects intellectual property rights. If you believe that content accessible on or through the platform infringes your copyright, you may submit a written notice to legal@kontraplatform.com that includes: (a) identification of the copyrighted work you claim has been infringed; (b) identification of the material you claim is infringing and its location on the platform; (c) your contact information; (d) a statement that you have a good faith belief that the use is not authorized; and (e) a statement under penalty of perjury that the information is accurate and you are authorized to act on behalf of the copyright owner. Upon receiving a valid notice, Kontra may remove the allegedly infringing content. Users who repeatedly upload infringing content may have their access terminated.",
+  },
+  {
+    title: "9. Your Content",
+     content: "You retain ownership of all documents and data you upload to Kontra. By uploading content, you grant Kontra a limited, non-exclusive license to process that content solely to provide the services (document analysis, storage, display within your deal room, AI processing). We do not claim ownership of your transaction data, documents, or analysis results. You are responsible for ensuring you have the rights to upload the content you provide and that you have a lawful basis for any personal information contained in uploaded documents.",
+  },
+  {
+    title: "10. AI Analysis Disclaimer",
+    content: "Kontra's AI tools — including document analysis, the Operations Manager, Morning Briefing, Daily Standup, deal health scoring, and task automation — are powered by large language models and are designed to assist, not replace, professional judgment. AI outputs: (a) may contain errors or omissions; (b) should not be relied upon as the sole basis for financial, legal, investment, or operational decisions; (c) do not constitute a professional inspection, appraisal, legal opinion, insurance assessment, or investment recommendation; (d) do not represent the views of a licensed attorney, financial adviser, engineer, or any other regulated professional. Material AI-generated recommendations and automated actions are recorded in an application audit log. Always verify AI-generated findings with qualified professionals before acting on them. Kontra disclaims liability for decisions made based solely on AI output.",
+  },
+  {
+    title: "11. Service Availability",
+    content: "The platform is provided on an 'as is' and 'as available' basis without warranties of any kind, express or implied, including warranties of merchantability, fitness for a particular purpose, or non-infringement. Kontra does not warrant that the platform will be error-free, uninterrupted, or free from third-party service outages. We may modify, suspend, or discontinue features at any time with reasonable notice where practicable.",
+  },
+  {
+     title: "12. Deal Room Purchases and Billing",
+      content: "Paid deal rooms are purchased as one-time transactions through Stripe Checkout. The charge amount, included features, and deal room scope are displayed before purchase. Kontra does not store card numbers — payment is processed directly by Stripe. Refunds may be requested within 7 days of purchase provided the deal room has not processed documents, sent participant invitations, or used AI analysis. To request a refund, email support@kontraplatform.com. Kontra may change pricing for future deal room purchases at any time. A price change will not alter the price of a deal room already purchased.",
+  },
+  {
+     title: "13. Deal Room Duration and Retention",
+      content: "A paid deal room remains active until it is closed by the owner, terminated under these Terms, or discontinued following notice under the applicable purchase terms. Deal room data is retained during the applicable active period. Retention after closure or account termination depends on product configuration, applicable law, legal holds, and written agreements. Customers requiring a particular retention arrangement may contact support@kontraplatform.com — subject to a written agreement.",
+  },
+  {
+    title: "14. Your Responsibility to Export Records",
+      content: "Kontra is a deal room tool, not an official books-and-records repository. Before closing or terminating a deal room, you are responsible for requesting and verifying any records you need for your own compliance, tax, legal, or business purposes. Kontra is not liable for records that are unavailable after the applicable retention period. Export availability and formats depend on the deal room and current product implementation; contact support@kontraplatform.com to ask about available exports.",
+  },
+  {
+    title: "15. Intellectual Property",
+      content: "The Kontra platform, brand, design, software, proprietary prompts, workflow logic, configurations, interfaces, and analysis methods are owned by Kontra or its licensors and protected by applicable intellectual property laws. You may not copy, modify, or distribute any part of the platform without written consent. These terms do not grant you any rights to our trademarks or trade names.",
+  },
+  {
+    title: "16. Force Majeure",
+    content: "Kontra is not liable for any failure or delay in performance resulting from circumstances outside its reasonable control, including but not limited to: cloud infrastructure or third-party service outages (including AWS, Supabase, or OpenAI), internet or telecommunications failures, natural disasters, acts of government or regulatory authority, power failures, labor disputes, or other events of force majeure. In such circumstances, Kontra's obligations are suspended for the duration of the event.",
+  },
+  {
+    title: "17. Limitation of Liability",
+    content: "To the maximum extent permitted by law, Kontra's total liability to you for any claims arising from these terms or your use of the platform shall not exceed the greater of: (a) $100 USD, or (b) the amounts you paid to Kontra in the 12 months preceding the claim. Kontra is not liable for indirect, incidental, consequential, or punitive damages, including lost profits or data loss, even if advised of the possibility of such damages.",
+  },
+  {
+    title: "18. Indemnification",
+      content: "You agree to defend and indemnify Kontra and its personnel and agents from and against any claims, damages, or expenses (including legal fees) arising from: (a) your use of the platform; (b) your violation of these terms; (c) your violation of any third party's rights; (d) any content you upload that infringes third-party rights; or (e) any securities or regulatory violation arising from your use of regulated-workflow or Digital Asset Readiness features.",
+  },
+  {
+    title: "19. Assignment",
+      content: "You may not assign or transfer your rights or obligations under these terms without Kontra's prior written consent. Kontra may assign or transfer these terms, in whole or in part, without restriction, including in connection with a merger, acquisition, corporate reorganization, or sale of all or substantially all of its assets. Any attempted assignment in violation of this section is void.",
+  },
+  {
+    title: "20. Survival",
+    content: "The following sections survive termination or expiration of these terms for any reason: Section 9 (Your Content), Section 15 (Intellectual Property), Section 17 (Limitation of Liability), Section 18 (Indemnification), Section 19 (Assignment), Section 20 (Survival), and Section 22 (Governing Law and Disputes). Termination does not relieve either party of obligations that accrued before the termination date.",
+  },
+  {
+    title: "21. Termination",
+      content: "You may terminate your account at any time by contacting support@kontraplatform.com. We may suspend or terminate your account for material breach of these terms, with or without notice depending on severity. Upon termination, your access to the deal room ceases immediately. Any post-termination retention and export availability are subject to the applicable product process, law, legal holds, and written agreements.",
+  },
+  {
+    title: "22. Governing Law and Disputes",
+    content: "These terms are governed by the laws of the State of New York, without regard to conflict of law principles. Any dispute arising from these terms or your use of Kontra shall be resolved by binding arbitration administered by JAMS under its Commercial Arbitration Rules. Class action waiver: you agree to resolve disputes individually, not as part of a class action.",
+  },
+  {
+    title: "23. Changes to Terms",
+    content: "We may update these terms at any time. Material changes will be communicated by email and in-app notification at least 14 days before they take effect. Continued use of the platform after the effective date constitutes acceptance of the updated terms.",
+  },
+];
+
+export default function TermsPage() {
+  return (
+    <PublicLayout>
+      <div className="max-w-3xl mx-auto px-6 py-16">
+        <div className="mb-10">
+          <Link to="/" className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1.5 mb-6">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Kontra
+          </Link>
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">Terms of Service</h1>
+          <p className="text-sm text-gray-500">Effective date: June 9, 2026 · Last updated: July 24, 2026</p>
+          <p className="text-sm text-gray-600 mt-4 leading-relaxed">
+            These Terms of Service govern your use of Kontra's platform and services. Please read them carefully.
+          </p>
+        </div>
+
+        <div className="space-y-8">
+          {SECTIONS.map((section) => (
+            <div key={section.title} className="border-b border-gray-100 pb-8 last:border-0">
+              <h2 className="text-sm font-bold text-gray-900 mb-3">{section.title}</h2>
+              <p className="text-sm text-gray-600 leading-relaxed">{section.content}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-10 p-5 rounded-xl bg-gray-50 border border-gray-200">
+          <p className="text-sm font-semibold text-gray-900 mb-1">Questions About These Terms</p>
+          <p className="text-sm text-gray-600 mb-2">
+            Email <a href="mailto:legal@kontraplatform.com" className="underline hover:text-gray-900">legal@kontraplatform.com</a>
+          </p>
+          <p className="text-sm text-gray-500">
+            Kontra · Legal entity and business-address details are subject to owner confirmation.
+          </p>
+        </div>
+      </div>
+    </PublicLayout>
+  );
+}

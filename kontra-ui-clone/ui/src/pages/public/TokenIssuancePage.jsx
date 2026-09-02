@@ -527,7 +527,7 @@ export default function TokenIssuancePage() {
               style={{ background: "#7c3aed" }}>
               Create a readiness deal room →
             </Link>
-            <a href="mailto:hello@kontraplatform.com?subject=Token Issuance Deal Room"
+            <a href="mailto:hello@kontraplatform.com?subject=Token Issuance Workspace"
               className="px-7 py-3.5 rounded-xl text-sm font-semibold border border-white/30 text-white hover:bg-white/10 transition">
               Talk to us first
             </a>
