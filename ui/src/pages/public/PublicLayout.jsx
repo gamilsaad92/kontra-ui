@@ -184,7 +184,6 @@ export default function PublicLayout({ children, hideFooter = false }) {
                   { label: "How It Works", href: "/how-it-works" },
                   { label: "Product", href: "/product" },
                   { label: "Pricing", href: "/pricing" },
-                  { label: "Service Providers", href: "/service-providers" },
                 ]},
                 { title: "Platform", links: [
                   { label: "My Deal Rooms", href: "/my-deal-rooms" },

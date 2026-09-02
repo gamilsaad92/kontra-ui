@@ -504,25 +504,6 @@ export default function PropertyDetailPage() {
               </div>
             </div>
 
-            {/* Service providers */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-5">
-              <p className="text-sm font-bold text-gray-900 mb-3">Service Providers</p>
-              <div className="space-y-2.5">
-                {[
-                  { icon: "🔍", label: "Find Inspectors" },
-                  { icon: "⚖️", label: "Find Appraisers" },
-                  { icon: "🏦", label: "Find Lenders" },
-                ].map((s) => (
-                  <Link key={s.label} to="/service-providers"
-                    className="flex items-center gap-2.5 text-sm text-gray-700 hover:text-red-900 transition">
-                    <span>{s.icon}</span>
-                    <span>{s.label}</span>
-                    <span className="ml-auto text-gray-300">→</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
             <Link to="/properties"
               className="block text-center px-4 py-2.5 rounded-xl text-sm font-medium text-gray-500 border border-gray-200 hover:bg-gray-50 transition">
               ← View all properties
