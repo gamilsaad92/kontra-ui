@@ -91,7 +91,7 @@ export default function HomePage() {
             Every transaction gets its own Operations Manager.
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            The transaction coordination deal room — participants, stages, and deadlines in one place, from first contact to close.
+            Kontra turns your transaction documents into a coordinated, verified record — tracking what’s missing, what needs review, who needs to act, and what happens next through closing.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
