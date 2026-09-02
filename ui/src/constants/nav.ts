@@ -1,0 +1,28 @@
+export const nav = [
+  "Dashboard",
+  "Inspections",
+  "Loans",
+  "Draws",
+  "Projects",
+  "Organizations",
+  "Invites",
+  "Document Review",
+  "SSO",
+  "Reports",
+  "Menu",
+  "Orders",
+  "Payments",
+  "Payoff Instructions",
+  "Escrow",
+  "Delinquency Alerts",
+  "Trades",
+  "Exchange",
+ "AI Insights",
+  "Restaurant Ops",
+  "Risk",
+  "Servicing",
+  "Webhooks",
+  "Subscriptions",
+];
+
+export default nav;

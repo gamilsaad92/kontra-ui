@@ -1,0 +1,23 @@
+{
+  "installCommand": "npm install --package-lock=false --ignore-scripts --no-audit --no-fund",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://kontra-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/"
+    }
+  ],
+  "env": {
+    "VITE_API_BASE_URL": "https://kontra-api.onrender.com",
+    "VITE_API_URL": "https://kontra-api.onrender.com",
+    "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
+    "VITE_SENTRY_DSN": "<your-dsn>",
+    "VITE_NEW_DASH": "true"
+  }
+}
