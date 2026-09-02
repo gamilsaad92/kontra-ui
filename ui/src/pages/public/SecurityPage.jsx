@@ -95,8 +95,8 @@ export default function SecurityPage() {
           <p className="text-sm text-gray-500 mb-4">Last updated: July 2026</p>
           <p className="text-sm text-gray-600 leading-relaxed">
             Kontra is built for commercial transactions — deals where sensitive financial documents, legal
-            agreements, and multi-party communications are at stake. This page describes how we protect
-             the controls currently used to protect your data. These controls are designed to reduce risk;
+            agreements, and multi-party communications are at stake. This page describes the controls currently
+             used to protect your data. These controls are designed to reduce risk;
              they are not a guarantee that a service will be uninterrupted or immune from every threat.
           </p>
         </div>
@@ -109,10 +109,10 @@ export default function SecurityPage() {
               ["Encryption at rest", "AES-256 (provider-level)"],
               ["Infrastructure providers", "AWS · Render · Supabase"],
               ["Document link expiry", "1 hour (signed URLs)"],
-              ["AI training on your data", "Not by default"],
+              ["AI model training", "Kontra does not train on your deal data"],
             ["Data sold for advertising", "No"],
               ["Audit logging", "Material actions logged"],
-              ["Kontra SOC 2 certified", "Not yet — roadmap"],
+              ["Kontra SOC 2 certified", "Not currently"],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between text-sm py-1 border-b border-gray-100">
                 <span className="text-gray-600">{label}</span>
