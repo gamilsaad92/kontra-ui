@@ -37,7 +37,7 @@ const JURISDICTION_INFO = {
     points: [
         "Record the proposed ADGM / DFSA jurisdiction and ask qualified counsel to confirm the applicable framework.",
         "Coordinate any financial-promotion, licensing, or exemption questions with the issuer's counsel and external providers.",
-        "Capture the KYC / AML preparation status and keep the supporting source documents in the workspace.",
+        "Capture the KYC / AML preparation status and keep the supporting source documents in the deal room.",
     ],
     color: "#1d4ed8",
     bg: "#eff6ff",
@@ -61,7 +61,7 @@ const JURISDICTION_INFO = {
     points: [
         "Record the proposed US jurisdiction and have counsel confirm whether a particular offering pathway is applicable.",
         "Coordinate investor, disclosure, filing, and verification questions with qualified counsel and external providers.",
-        "Use the workspace to organize supporting documents and review status; it does not determine eligibility.",
+        "Use the deal room to organize supporting documents and review status; it does not determine eligibility.",
     ],
     color: "#6b21a8",
     bg: "#faf5ff",
@@ -85,7 +85,7 @@ const JURISDICTION_INFO = {
     points: [
         "Record the proposed UK jurisdiction and ask qualified counsel to confirm the applicable preparation inputs.",
         "Coordinate financial-promotion, prospectus, registration, and AML/CTF questions with qualified advisers.",
-        "Use the workspace for document organization and review tracking, not for a legal or regulatory determination.",
+        "Use the deal room for document organization and review tracking, not for a legal or regulatory determination.",
     ],
     color: "#9a3412",
     bg: "#fff7ed",
@@ -2304,7 +2304,7 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
             <div className="text-left">
               <p className="text-sm font-bold text-gray-900">Structured Transaction Record</p>
               <p className="text-[10px] text-gray-400">
-                 Structured, auditable record of this transaction · auto-generated from workspace data
+                 Structured, auditable record of this transaction · auto-generated from deal room data
               </p>
             </div>
           </div>
@@ -2568,8 +2568,8 @@ function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = 
         {isCoordinator && !isDemo && <button
           type="button"
           onClick={() => onChange('settings')}
-          aria-label="Open workspace settings"
-          title="Workspace settings"
+          aria-label="Open deal room settings"
+          title="Deal Room settings"
           className={`shrink-0 ml-3 mb-[-1px] w-9 h-9 rounded-lg flex items-center justify-center border-b-2 transition ${
             activeTab === 'settings'
               ? 'border-[#800020] text-[#800020] bg-[#80002008]'
@@ -4657,7 +4657,7 @@ function RoomCopilot({ propertyId }) {
       const data = response.ok ? await response.json() : null;
       setAnswer(data?.answer || 'I could not answer from the current transaction record.');
     } catch {
-      setAnswer('Kontra could not reach the transaction workspace. Try again in a moment.');
+      setAnswer('Kontra could not reach the transaction deal room. Try again in a moment.');
     } finally {
       setLoading(false);
     }
@@ -5902,7 +5902,7 @@ function getRecentCoordinatorChanges(events = [], analyses = [], recordFields = 
         stage_advanced: 'The transaction stage changed',
         stage_advance: 'The transaction stage changed',
         party_submitted: 'A participant marked their work complete',
-        participant_joined: 'A participant joined the workspace',
+         participant_joined: 'A participant joined the deal room',
         invite_accepted: 'A participant accepted an invitation',
         field_verified: 'A Transaction Record fact was confirmed',
         transaction_record_verified: 'A Transaction Record fact was confirmed',
@@ -6264,7 +6264,7 @@ function TransactionBrief({
     || ['acquisition', 'refinance', 'construction', 'flag_conversion', 'sale', 'ground_lease'].includes(property?.deal_type);
   const transactionLabel = isCreTransaction
     ? 'Commercial Real Estate Acquisition'
-    : (pack?.name || 'Transaction workspace');
+    : (pack?.name || 'Transaction deal room');
   const toneClasses = {
     red: 'border-red-100 bg-red-50/60 text-red-700',
     amber: 'border-amber-100 bg-amber-50/60 text-amber-800',
@@ -6278,7 +6278,7 @@ function TransactionBrief({
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-[#800020]">Coordinator Transaction Brief</p>
           <h2 className="mt-1 text-lg font-bold text-gray-900">What needs a decision next</h2>
-          <p className="mt-1 text-xs text-gray-500">{transactionLabel} · derived from the current workspace state</p>
+          <p className="mt-1 text-xs text-gray-500">{transactionLabel} · derived from the current deal room state</p>
         </div>
         <span className="rounded-full border border-[#e7cbd3] bg-white px-3 py-1 text-[10px] font-semibold text-[#800020]">
           {currentStage?.label || 'Stage not reported'}
@@ -6566,6 +6566,7 @@ export {
   preparationSaveConfirmation,
   preparationPdfConfirmation,
   findPreparationPdfArtifact,
+  getFrozenProofValue,
   isDamageAssessmentRequestText,
 };
 
@@ -6647,7 +6648,7 @@ function ParticipantPeoplePanel({ pack, role, roleConfig }) {
     <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
       <div className="px-5 py-5 sm:px-7 border-b border-gray-100">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Transaction team</p>
-        <h2 className="mt-1 text-lg font-bold text-gray-900">People in this workspace</h2>
+        <h2 className="mt-1 text-lg font-bold text-gray-900">People in this deal room</h2>
         <p className="mt-1 text-sm text-gray-500">Roles are shown without exposing private invitation details.</p>
       </div>
       <div className="divide-y divide-gray-100">
@@ -6740,7 +6741,7 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
             {roleConfig.icon}
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Participant workspace</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Participant deal room</p>
             <h1 className="mt-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
               {property?.name || property?.property_name}
             </h1>
@@ -7309,6 +7310,59 @@ function findPreparationPdfArtifact(artifacts, revision) {
     || null;
 }
 
+const FROZEN_PROOF_VALUE_CONTEXTS = [
+  {
+    transactionType: /(?:commercial\s+real\s+estate|real\s+estate)\s+acquisition|cre\s+acquisition/i,
+    candidates: [
+      { keys: ['transaction.purchase_price', 'transaction.value'], label: 'Purchase price' },
+    ],
+  },
+  {
+    transactionType: /business\s+acquisition|company\s+acquisition/i,
+    candidates: [
+      { keys: ['transaction.purchase_price', 'transaction.value'], label: 'Purchase price' },
+    ],
+  },
+  {
+    transactionType: /fundrais(?:e|ing)|capital\s+raise|series\s+[a-z0-9]+/i,
+    candidates: [
+      { keys: ['financial.target_raise'], label: 'Target raise' },
+    ],
+  },
+];
+
+function hasFrozenProofValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function getFrozenProofValue(canonicalFields = []) {
+  const transactionTypeField = canonicalFields.find(field =>
+    ['transaction.type', 'transaction_type'].includes(
+      String(field?.field_key || field?.definition_key || field?.key || '').trim().toLowerCase(),
+    ),
+  );
+  const transactionType = String(transactionTypeField?.value || '');
+  const context = FROZEN_PROOF_VALUE_CONTEXTS.find(candidate =>
+    candidate.transactionType.test(transactionType),
+  );
+  if (!context) return null;
+
+  for (const candidate of context.candidates) {
+    const field = canonicalFields.find(item =>
+      candidate.keys.includes(
+        String(item?.field_key || item?.definition_key || item?.key || '').trim().toLowerCase(),
+      )
+      && hasFrozenProofValue(item?.value),
+    );
+    if (field) return { label: candidate.label, value: field.value, field };
+  }
+  return null;
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -7414,9 +7468,7 @@ function DigitalAssetPackageModal({
   const frozenCanonicalFields = Array.isArray(frozenReadiness.canonical_fields)
     ? frozenReadiness.canonical_fields
     : [];
-  const borrowerFundsField = frozenCanonicalFields.find(field =>
-    /borrower funds|borrower_funds/i.test(`${field?.field_key || ''} ${field?.label || ''}`),
-  );
+  const frozenProofValue = getFrozenProofValue(frozenCanonicalFields);
   const missingPreparationNames = Array.isArray(summary.missing_preparation_field_names)
     ? summary.missing_preparation_field_names
     : (Array.isArray(summary.missing_preparation_fields) ? summary.missing_preparation_fields : []);
@@ -7832,13 +7884,15 @@ function DigitalAssetPackageModal({
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Frozen proof value</p>
-                <p className="mt-1 text-xs font-bold text-gray-900">Borrower funds advanced</p>
-                <p className="mt-1 text-base font-black text-emerald-800">
-                  {borrowerFundsField ? formatStoredSnapshotValue(borrowerFundsField.value) : 'Not recorded'}
-                </p>
-              </div>
+              {frozenProofValue && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Frozen proof value</p>
+                  <p className="mt-1 text-xs font-bold text-gray-900">{frozenProofValue.label}</p>
+                  <p className="mt-1 text-base font-black text-emerald-800">
+                    {formatStoredSnapshotValue(frozenProofValue.value)}
+                  </p>
+                </div>
+              )}
               <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Readiness</p>
                 <p className="mt-1 text-xs font-bold capitalize text-gray-900">
@@ -9797,7 +9851,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
             icon: '👥', label: 'Participants Invited', pct: participantPct,
             missing: participantMissing,
             ctaLabel: 'Participants tab', onClick: goToParticipants,
-            explanation: 'Legal Counsel, Compliance Officer, and KYC/AML Provider must be in the workspace before a token offering can proceed. Their reviews and approvals are required to complete the Verified Digital Asset Package.',
+            explanation: 'Legal Counsel, Compliance Officer, and KYC/AML Provider must be in the deal room before a token offering can proceed. Their reviews and approvals are required to complete the Verified Digital Asset Package.',
           },
           {
             key: 'kyc',
@@ -10274,7 +10328,7 @@ export default function DealRoomPage() {
     })
       .then(async r => {
         const data = await r.json().catch(() => null);
-        if (!r.ok) throw new Error(data?.error || `Workspace request failed (${r.status})`);
+         if (!r.ok) throw new Error(data?.error || `Deal Room request failed (${r.status})`);
         return data;
       })
       .then(async data => {
@@ -10304,7 +10358,7 @@ export default function DealRoomPage() {
       })
       .catch((error) => {
         console.error("[deal-room-load]", error);
-        setPackLoadError(error.message || "The workspace configuration could not be loaded.");
+         setPackLoadError(error.message || "The deal room configuration could not be loaded.");
         setPackReady(false);
         setLoadingApi(false);
       });

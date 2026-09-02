@@ -6566,6 +6566,7 @@ export {
   preparationSaveConfirmation,
   preparationPdfConfirmation,
   findPreparationPdfArtifact,
+  getFrozenProofValue,
   isDamageAssessmentRequestText,
 };
 
@@ -7309,6 +7310,59 @@ function findPreparationPdfArtifact(artifacts, revision) {
     || null;
 }
 
+const FROZEN_PROOF_VALUE_CONTEXTS = [
+  {
+    transactionType: /(?:commercial\s+real\s+estate|real\s+estate)\s+acquisition|cre\s+acquisition/i,
+    candidates: [
+      { keys: ['transaction.purchase_price', 'transaction.value'], label: 'Purchase price' },
+    ],
+  },
+  {
+    transactionType: /business\s+acquisition|company\s+acquisition/i,
+    candidates: [
+      { keys: ['transaction.purchase_price', 'transaction.value'], label: 'Purchase price' },
+    ],
+  },
+  {
+    transactionType: /fundrais(?:e|ing)|capital\s+raise|series\s+[a-z0-9]+/i,
+    candidates: [
+      { keys: ['financial.target_raise'], label: 'Target raise' },
+    ],
+  },
+];
+
+function hasFrozenProofValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
+function getFrozenProofValue(canonicalFields = []) {
+  const transactionTypeField = canonicalFields.find(field =>
+    ['transaction.type', 'transaction_type'].includes(
+      String(field?.field_key || field?.definition_key || field?.key || '').trim().toLowerCase(),
+    ),
+  );
+  const transactionType = String(transactionTypeField?.value || '');
+  const context = FROZEN_PROOF_VALUE_CONTEXTS.find(candidate =>
+    candidate.transactionType.test(transactionType),
+  );
+  if (!context) return null;
+
+  for (const candidate of context.candidates) {
+    const field = canonicalFields.find(item =>
+      candidate.keys.includes(
+        String(item?.field_key || item?.definition_key || item?.key || '').trim().toLowerCase(),
+      )
+      && hasFrozenProofValue(item?.value),
+    );
+    if (field) return { label: candidate.label, value: field.value, field };
+  }
+  return null;
+}
+
 function DigitalAssetPackageModal({
   propertyId,
   ownerToken,
@@ -7414,9 +7468,7 @@ function DigitalAssetPackageModal({
   const frozenCanonicalFields = Array.isArray(frozenReadiness.canonical_fields)
     ? frozenReadiness.canonical_fields
     : [];
-  const borrowerFundsField = frozenCanonicalFields.find(field =>
-    /borrower funds|borrower_funds/i.test(`${field?.field_key || ''} ${field?.label || ''}`),
-  );
+  const frozenProofValue = getFrozenProofValue(frozenCanonicalFields);
   const missingPreparationNames = Array.isArray(summary.missing_preparation_field_names)
     ? summary.missing_preparation_field_names
     : (Array.isArray(summary.missing_preparation_fields) ? summary.missing_preparation_fields : []);
@@ -7832,13 +7884,15 @@ function DigitalAssetPackageModal({
             </div>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Frozen proof value</p>
-                <p className="mt-1 text-xs font-bold text-gray-900">Borrower funds advanced</p>
-                <p className="mt-1 text-base font-black text-emerald-800">
-                  {borrowerFundsField ? formatStoredSnapshotValue(borrowerFundsField.value) : 'Not recorded'}
-                </p>
-              </div>
+              {frozenProofValue && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Frozen proof value</p>
+                  <p className="mt-1 text-xs font-bold text-gray-900">{frozenProofValue.label}</p>
+                  <p className="mt-1 text-base font-black text-emerald-800">
+                    {formatStoredSnapshotValue(frozenProofValue.value)}
+                  </p>
+                </div>
+              )}
               <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Readiness</p>
                 <p className="mt-1 text-xs font-bold capitalize text-gray-900">

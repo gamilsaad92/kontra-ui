@@ -30,11 +30,43 @@ const {
   preparationSaveConfirmation,
   preparationPdfConfirmation,
   findPreparationPdfArtifact,
+  getFrozenProofValue,
   isDamageAssessmentRequestText,
 } = require('./DealRoomPage');
 const { TRANSACTION_TYPE_OPTIONS } = require('./CreateDealRoomPage');
 
 describe('coordinator transaction brief logic', () => {
+  test.each([
+    ['Commercial real estate acquisition', 'transaction.purchase_price', 'Purchase price', '$14,000,000'],
+    ['Business acquisition', 'transaction.purchase_price', 'Purchase price', '$8,500,000'],
+    ['Series B fundraising', 'financial.target_raise', 'Target raise', '$42,000,000'],
+  ])('selects a transaction-context-aware frozen proof value for %s', (
+    transactionType,
+    proofFieldKey,
+    proofLabel,
+    proofValue,
+  ) => {
+    expect(getFrozenProofValue([
+      { field_key: 'transaction.type', value: transactionType },
+      { field_key: proofFieldKey, value: proofValue },
+      { field_key: 'financial.borrower_funds_advanced', label: 'Borrower funds advanced', value: 'Not recorded' },
+    ])).toEqual(expect.objectContaining({
+      label: proofLabel,
+      value: proofValue,
+    }));
+  });
+
+  test('omits frozen proof value when the transaction context has no applicable value', () => {
+    expect(getFrozenProofValue([
+      { field_key: 'transaction.type', value: 'Generic coordination' },
+      { field_key: 'financial.borrower_funds_advanced', label: 'Borrower funds advanced', value: 'Not recorded' },
+    ])).toBeNull();
+    expect(getFrozenProofValue([
+      { field_key: 'transaction.type', value: 'Series B fundraising' },
+      { field_key: 'financial.pre_money_val', value: '$210,000,000' },
+    ])).toBeNull();
+  });
+
   const stages = [
     { key: 'under_review', label: 'Under Review' },
     { key: 'approved', label: 'Approved' },
