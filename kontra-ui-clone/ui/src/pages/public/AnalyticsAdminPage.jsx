@@ -196,7 +196,7 @@ export default function AnalyticsAdminPage() {
             <div className="grid grid-cols-3 gap-4">
               {[
                 { label: "Events (7d)", value: data.total_events.toLocaleString(), icon: "⚡" },
-                { label: "Unique deal rooms viewed", value: data.unique_workspaces_viewed.toLocaleString(), icon: "🏠" },
+                { label: "Unique workspaces viewed", value: data.unique_workspaces_viewed.toLocaleString(), icon: "🏠" },
                 { label: "Creation funnel starts", value: (data.funnel[0]?.sessions ?? 0).toLocaleString(), icon: "🚀" },
               ].map(k => (
                 <div key={k.label} className="bg-white rounded-2xl border border-gray-200 p-5">
@@ -207,9 +207,9 @@ export default function AnalyticsAdminPage() {
               ))}
             </div>
 
-            {/* Deal room creation funnel */}
+            {/* Workspace creation funnel */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-1">Deal room creation funnel</h2>
+              <h2 className="text-sm font-bold text-gray-900 mb-1">Workspace creation funnel</h2>
               <p className="text-xs text-gray-400 mb-5">
                 How many sessions reached each phase. Drop-off between phases tells you where users get confused or give up.
               </p>
@@ -218,7 +218,7 @@ export default function AnalyticsAdminPage() {
 
             {/* Tab visits */}
             <div className="bg-white rounded-2xl border border-gray-200 p-6">
-              <h2 className="text-sm font-bold text-gray-900 mb-1">Deal room tabs — visit counts</h2>
+              <h2 className="text-sm font-bold text-gray-900 mb-1">Workspace tabs — visit counts</h2>
               <p className="text-xs text-gray-400 mb-5">
                 Which sections coordinators actually open. High-count tabs are load-bearing; low-count may be ignored or hard to find.
               </p>

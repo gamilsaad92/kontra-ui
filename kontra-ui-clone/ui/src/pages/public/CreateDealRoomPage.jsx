@@ -705,7 +705,7 @@ export default function CreateDealRoomPage() {
 
     return {
       propertyId,
-      propertyName: raw || "Deal Room",
+      propertyName: raw || "Workspace",
       plan: "deal",
       email: form.email,
       role: resolvedRole,
