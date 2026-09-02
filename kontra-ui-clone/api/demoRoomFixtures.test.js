@@ -83,6 +83,60 @@ describe('seeded demo Transaction Record state', () => {
     expect(exhibit.package.package.human_summary.missing_preparation_fields).toEqual([]);
     expect(exhibit.package.source_snapshot_id).toBe(exhibit.snapshot.id);
     expect(exhibit.package.source_snapshot_hash).toBe(exhibit.snapshot.snapshot_hash);
+    expect(fixture.readiness.transaction_readiness.status).toBe('Building');
+    expect(fixture.record.record_state.conflictCount).toBe(1);
+    expect(canonicalFields.find(field => field.field_key === 'legal.environmental').value)
+      .toContain('Phase I ESA received and reviewed');
+    expect(canonicalFields.find(field => field.field_key === 'legal.encumbrances').value)
+      .toContain('Schedule B exceptions confirmed as non-material');
+    expect(canonicalFields.find(field => field.field_key === 'approval.counsel').value)
+      .toBe('Counsel review complete');
+    expect(canonicalFields.find(field => field.field_key === 'approval.closing').value)
+      .toBe('Closing authorization recorded for illustrative exhibit');
+  });
+
+  test.each([
+    ['business_acquisition', 'Meridian Software Group, Inc.', 'legal.purchase_agreement', 'Executed purchase agreement reviewed by counsel'],
+    ['fundraising', 'Nexus AI, Inc.', 'legal.term_sheet', 'Executed Series B term sheet reviewed'],
+  ])('%s exposes a completed transaction-specific readiness exhibit', (packId, issuer, resolvedFieldKey, resolvedFieldValue) => {
+    const property = packId === 'business_acquisition'
+      ? require('./lib/demoDataBiz').PROPERTY
+      : require('./lib/demoDataFundraising').PROPERTY;
+    const fixture = getDemoFixture(packId, property);
+    const exhibit = fixture.verifiedAssetExhibit;
+    const snapshot = exhibit.snapshot.snapshot;
+    const canonicalFields = snapshot.created_from.transaction_record.canonical_fields;
+    const packagePayload = exhibit.package.package;
+    const serialized = JSON.stringify(exhibit);
+
+    expect(exhibit.readiness).toEqual(expect.objectContaining({
+      eligibility: 'eligible',
+      status: 'ready_for_external_review',
+      demo_exhibit: true,
+    }));
+    expect(exhibit.readiness.summary).toEqual(expect.objectContaining({
+      confirmed_count: canonicalFields.length,
+      required_count: canonicalFields.length,
+      unresolved_exception_count: 0,
+      provenance_intact: true,
+      approvals_satisfied: true,
+    }));
+    expect(canonicalFields.length).toBeGreaterThan(0);
+    expect(canonicalFields.every(field =>
+      field.current_state === 'confirmed'
+      && field.provenance.source_document_id
+      && field.evidence_lineage?.source_document?.id
+      && field.evidence_lineage?.human_confirmation?.confirmed === true,
+    )).toBe(true);
+    expect(canonicalFields.find(field => field.field_key === resolvedFieldKey).value)
+      .toBe(resolvedFieldValue);
+    expect(packagePayload.package_status).toBe('ready_for_provider_review');
+    expect(packagePayload.human_summary.missing_preparation_fields).toEqual([]);
+    expect(packagePayload.preparation_fields.issuer.value).toBe(issuer);
+    expect(serialized).not.toContain('Harbor View');
+    expect(serialized).not.toContain('Multifamily');
+    expect(exhibit.package.source_snapshot_id).toBe(exhibit.snapshot.id);
+    expect(exhibit.package.source_snapshot_hash).toBe(exhibit.snapshot.snapshot_hash);
   });
 
   test('preserves the complete long Ask Kontra answer', () => {

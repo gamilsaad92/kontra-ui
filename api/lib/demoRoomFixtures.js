@@ -144,9 +144,87 @@ function buildRecord(packId) {
   };
 }
 
-function buildHarborViewReadinessExhibit(property, liveRecordState) {
+function buildReadinessExhibit(property, liveRecordState, packId) {
   const recordedAt = '2026-08-29T16:00:00.000Z';
   const sourceStateAt = '2026-08-29T15:45:00.000Z';
+  const exhibitValues = {
+    cre_acquisition: {
+      'transaction.stage': 'Ready for external review',
+      'legal.title_status': 'Title commitment reviewed; Schedule B exceptions resolved as non-material',
+      'legal.environmental': 'Phase I ESA received and reviewed; no material environmental conditions identified',
+      'legal.encumbrances': 'Schedule B exceptions confirmed as non-material; no unresolved encumbrances',
+      'approval.counsel': 'Counsel review complete',
+      'approval.closing': 'Closing authorization recorded for illustrative exhibit',
+    },
+    business_acquisition: {
+      'transaction.stage': 'Ready for external review',
+      'legal.purchase_agreement': 'Executed purchase agreement reviewed by counsel',
+      'legal.contingencies': 'Quality of Earnings and key customer retention conditions satisfied',
+      'approval.board': 'Board approval recorded',
+      'approval.closing': 'Closing authorization recorded for illustrative exhibit',
+    },
+    fundraising: {
+      'transaction.stage': 'Ready for external review',
+      'legal.term_sheet': 'Executed Series B term sheet reviewed',
+      'legal.securities_exemption': 'Regulation D, Rule 506(b) recorded for counsel review',
+      'approval.board': 'Board approval recorded; closing conditions satisfied for external review',
+    },
+  }[packId] || {};
+  const preparationValues = {
+    cre_acquisition: {
+      issuer: 'Harbor View Holdings LLC',
+      jurisdiction: { choice: 'united_states', detail: 'Florida, United States' },
+      legal_entity: 'Harbor View Holdings LLC',
+      underlying_asset: 'Harbor View Apartments — 1425 Brickell Ave, Miami, Florida',
+      settlement_method: { choice: 'traditional', detail: 'Provider-neutral institutional settlement review' },
+      ownership_evidence: 'Illustrative recorded deed, title commitment, and executed purchase agreement',
+      governing_documents: 'Illustrative purchase agreement, title materials, and counsel review record',
+      investor_restrictions: {
+        choices: ['qualified_investors', 'transfer_restrictions'],
+        detail: 'Any participation restrictions remain subject to qualified professional review.',
+      },
+      security_offering_structure: {
+        choice: 'provider_neutral_participation',
+        detail: 'Illustrative participation structure for external review only',
+      },
+    },
+    business_acquisition: {
+      issuer: 'Meridian Software Group, Inc.',
+      jurisdiction: { choice: 'united_states', detail: 'Texas, United States' },
+      legal_entity: 'Meridian Software Group, Inc.',
+      underlying_asset: 'Meridian Software Group, Inc. — B2B vertical SaaS operating business',
+      settlement_method: { choice: 'traditional', detail: 'Provider-neutral institutional settlement review' },
+      ownership_evidence: 'Illustrative cap table, stock ledger, and executed purchase agreement',
+      governing_documents: 'Illustrative purchase agreement, disclosure schedule, cap table, and counsel review record',
+      investor_restrictions: {
+        choices: ['transfer_restrictions'],
+        detail: 'Transfer and participation terms remain subject to transaction counsel review.',
+      },
+      security_offering_structure: {
+        choice: 'equity_interest',
+        detail: 'Illustrative acquisition equity interest for external review only',
+      },
+    },
+    fundraising: {
+      issuer: 'Nexus AI, Inc.',
+      jurisdiction: { choice: 'united_states', detail: 'California, United States' },
+      legal_entity: 'Nexus AI, Inc.',
+      underlying_asset: 'Nexus AI, Inc. — Series B preferred equity fundraising',
+      settlement_method: { choice: 'traditional', detail: 'Provider-neutral institutional settlement review' },
+      ownership_evidence: 'Illustrative pre-money cap table, stock ledger, and board approval record',
+      governing_documents: 'Illustrative Series B term sheet, stock purchase agreement, and counsel review record',
+      investor_restrictions: {
+        choices: ['qualified_investors', 'transfer_restrictions'],
+        detail: 'Participation and transfer restrictions remain subject to qualified professional review.',
+      },
+      security_offering_structure: {
+        choice: 'regulation_d',
+        detail: 'Rule 506(b) recorded for counsel review; not a legal or regulatory conclusion',
+      },
+    },
+  }[packId] || {};
+  const sourcePrefix = `demo-${String(packId || 'transaction').replace(/_/g, '-')}`;
+  const sourceLabel = property.property_name || property.name || 'demo transaction';
   const sourceCategory = {
     transaction: 'transaction',
     asset: 'asset_identity',
@@ -159,18 +237,18 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
   const fields = (liveRecordState.requiredFields || []).map((field, index) => {
     const fieldKey = field.key || field.field_key;
     const categoryKey = String(fieldKey || '').split('.')[0];
-    const sourceDocumentId = `demo-harbor-view-source-${String(index + 1).padStart(2, '0')}`;
+    const sourceDocumentId = `${sourcePrefix}-source-${String(index + 1).padStart(2, '0')}`;
     return {
-      id: `demo-harbor-view-snapshot-field-${index + 1}`,
+      id: `${sourcePrefix}-snapshot-field-${index + 1}`,
       key: fieldKey,
       label: field.label || field.display_label || fieldKey,
       category: sourceCategory[categoryKey] || categoryKey || 'transaction',
-      value: field.value || `Confirmed in illustrative Harbor View source materials`,
+      value: exhibitValues[fieldKey] ?? field.value ?? `Confirmed in illustrative ${sourceLabel} source materials`,
       status: 'confirmed',
       sourceDocId: sourceDocumentId,
-      sourceFileHash: `sha256:demo-harbor-view-${String(index + 1).padStart(2, '0')}`,
+      sourceFileHash: `sha256:${sourcePrefix}-${String(index + 1).padStart(2, '0')}`,
       sourcePage: (index % 8) + 1,
-      sourceExcerpt: `Illustrative source confirmation for ${field.label || fieldKey}.`,
+      sourceExcerpt: `Illustrative ${sourceLabel} source confirmation for ${field.label || fieldKey}.`,
       sourceType: 'illustrative_demo_record',
       extractionTimestamp: sourceStateAt,
       extractedBy: 'Kontra demo fixture',
@@ -207,7 +285,7 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
   const approvals = fields
     .filter(field => String(field.key || '').startsWith('approval.'))
     .map(field => ({
-      id: `demo-harbor-view-approval-${field.id}`,
+      id: `${sourcePrefix}-approval-${field.id}`,
       field_id: field.id,
       action: 'approved',
       actor_role: 'deal_coordinator',
@@ -227,7 +305,7 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
     sourceStateAt,
   });
   const snapshotRow = {
-    id: 'demo-harbor-view-verified-asset-v1',
+    id: `${sourcePrefix}-verified-asset-v1`,
     version: 1,
     eligibility_status: 'eligible',
     source_state_at: sourceStateAt,
@@ -235,23 +313,6 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
     snapshot,
     created_by: 'Kontra demo exhibit',
     created_at: recordedAt,
-  };
-  const preparationValues = {
-    issuer: 'Harbor View Holdings LLC',
-    jurisdiction: { choice: 'united_states', detail: 'Florida, United States' },
-    legal_entity: 'Harbor View Holdings LLC',
-    underlying_asset: 'Harbor View Apartments — 1425 Brickell Ave, Miami, Florida',
-    settlement_method: { choice: 'traditional', detail: 'Provider-neutral institutional settlement review' },
-    ownership_evidence: 'Illustrative recorded deed, title commitment, and executed purchase agreement',
-    governing_documents: 'Illustrative purchase agreement, title materials, and counsel review record',
-    investor_restrictions: {
-      choices: ['qualified_investors', 'transfer_restrictions'],
-      detail: 'Any participation restrictions remain subject to qualified professional review.',
-    },
-    security_offering_structure: {
-      choice: 'provider_neutral_participation',
-      detail: 'Illustrative participation structure for external review only',
-    },
   };
   const initialPackage = buildDigitalAssetPreparationPackage({
     propertyId: property.property_id,
@@ -263,10 +324,10 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
     revision: 1,
     preparationValues,
     explicitKeys: Object.keys(PREPARATION_FIELD_DEFINITIONS),
-    revisionMetadata: { save_request_id: 'demo-harbor-view-preparation-revision-1' },
+    revisionMetadata: { save_request_id: `${sourcePrefix}-preparation-revision-1` },
   });
   const packageRow = {
-    id: 'demo-harbor-view-preparation-package-v1',
+    id: `${sourcePrefix}-preparation-package-v1`,
     property_id: property.property_id,
     source_snapshot_id: snapshotRow.id,
     source_snapshot_version: snapshotRow.version,
@@ -274,7 +335,7 @@ function buildHarborViewReadinessExhibit(property, liveRecordState) {
     package_hash: packagePayload.package_hash,
     package: packagePayload,
     revision: 1,
-    revision_id: 'demo-harbor-view-preparation-revision-1',
+    revision_id: `${sourcePrefix}-preparation-revision-1`,
     created_by: 'Kontra demo exhibit',
     created_at: recordedAt,
   };
@@ -342,9 +403,7 @@ function getDemoFixture(packId, property) {
   const coordination = { stage: 'under_review', submissions, parties: submissions, docsByRole: Object.fromEntries(submissions.map(row => [row.role, row.doc_count])), participantInvites };
   const state = record.record_state;
   const readiness = { record_type: 'transaction_readiness', asset_id: property.property_id, overall_score: packId === 'cre_acquisition' ? 82 : packId === 'business_acquisition' ? 76 : 71, status: 'Building', closing_ready: false, transaction_ready: false, transaction_readiness: { overall_pct: Math.round((state.confirmedCount / state.requiredCount) * 100), status: 'Building', categories: [], confirmed_fields: state.confirmedCount, required_fields: state.requiredCount, awaiting_fields: state.awaitingCount, awaiting_required_fields: state.awaitingRequiredCount, awaiting_optional_fields: state.awaitingOptionalCount, conflicts: state.conflictCount }, transaction_record: state, digital_asset_readiness: { status: 'Building quietly', percent: Math.round((state.confirmedCount / state.requiredCount) * 100), sufficient: false, captured_facts: state.confirmedCount, note: 'AI-prepared only. Kontra does not provide legal or regulatory verification.' } };
-  const verifiedAssetExhibit = packId === 'cre_acquisition'
-    ? buildHarborViewReadinessExhibit(property, state)
-    : null;
+  const verifiedAssetExhibit = buildReadinessExhibit(property, state, packId);
   const events = [
     { id: `demo-event-${packId}-1`, event_type: 'document_analyzed', description: 'Kontra completed AI analysis on newly uploaded transaction materials', actor_role: 'coordinator', actor_name: 'Demo Coordinator', created_at: '2026-08-14T15:30:00.000Z' },
     { id: `demo-event-${packId}-2`, event_type: 'field_verified', description: 'Key transaction facts were confirmed from source documents', actor_role: 'coordinator', actor_name: 'Demo Coordinator', created_at: '2026-08-13T17:10:00.000Z' },

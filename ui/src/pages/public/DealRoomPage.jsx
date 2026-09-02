@@ -6952,7 +6952,7 @@ function SnapshotInspectionModal({
             </p>
             {isDemo && (
               <p className="mt-2 text-xs font-semibold text-indigo-700">
-                Separate from the live Harbor View transaction example shown in the Deal Room.
+                Separate from the live transaction example shown in the Deal Room.
               </p>
             )}
           </div>
@@ -7747,7 +7747,7 @@ function DigitalAssetPackageModal({
             </p>
             {readOnly && (
               <p className="mt-2 text-xs font-semibold text-indigo-700">
-                Separate from the live Harbor View transaction example. This demo exhibit is read-only.
+                Separate from the live transaction example. This demo exhibit is read-only.
               </p>
             )}
           </div>
@@ -8163,7 +8163,7 @@ function VerifiedAssetReadinessCard({
             Illustrative completed readiness exhibit
           </p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-900">
-            The Harbor View transaction above is the live demo example. The completed snapshot and preparation package below are separate, read-only exhibits built from an illustrative confirmed record.
+            The transaction above is the live demo example. The completed snapshot and preparation package below are separate, read-only exhibits built from an illustrative confirmed record.
           </p>
         </div>
       )}

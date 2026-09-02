@@ -3149,6 +3149,16 @@ app.post('/api/webhook/stripe',
   app.get(`/api/public/deal-room/${BIZ_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
   app.get(`/api/public/deal-room/${BIZ_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
   app.get(`/api/public/deal-room/${BIZ_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${BIZ_ID}/verified-asset/readiness`, (_req, res) =>
+    res.json(fixture.verifiedAssetExhibit.readiness));
+  app.get(`/api/public/deal-room/${BIZ_ID}/verified-asset/snapshots`, (_req, res) =>
+    res.json({ snapshots: [fixture.verifiedAssetExhibit.snapshot] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/verified-asset/snapshots/1`, (_req, res) =>
+    res.json({ snapshot: fixture.verifiedAssetExhibit.snapshot }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/digital-asset-packages`, (_req, res) =>
+    res.json({ packages: [fixture.verifiedAssetExhibit.package] }));
+  app.get(`/api/public/deal-room/${BIZ_ID}/digital-asset-packages/${fixture.verifiedAssetExhibit.package.id}`, (_req, res) =>
+    res.json({ package: fixture.verifiedAssetExhibit.package }));
   app.get(`/api/public/deal-room/${BIZ_ID}/stages`, (_req, res) => res.json({
     stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
   }));
@@ -3226,6 +3236,16 @@ app.post('/api/webhook/stripe',
   app.get(`/api/public/deal-room/${FUND_ID}/checklist`, (_req, res) => res.json({ items: fixture.checklist }));
   app.get(`/api/public/deal-room/${FUND_ID}/transaction-record`, (_req, res) => res.json(fixture.record));
   app.get(`/api/public/deal-room/${FUND_ID}/readiness`, (_req, res) => res.json(fixture.readiness));
+  app.get(`/api/public/deal-room/${FUND_ID}/verified-asset/readiness`, (_req, res) =>
+    res.json(fixture.verifiedAssetExhibit.readiness));
+  app.get(`/api/public/deal-room/${FUND_ID}/verified-asset/snapshots`, (_req, res) =>
+    res.json({ snapshots: [fixture.verifiedAssetExhibit.snapshot] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/verified-asset/snapshots/1`, (_req, res) =>
+    res.json({ snapshot: fixture.verifiedAssetExhibit.snapshot }));
+  app.get(`/api/public/deal-room/${FUND_ID}/digital-asset-packages`, (_req, res) =>
+    res.json({ packages: [fixture.verifiedAssetExhibit.package] }));
+  app.get(`/api/public/deal-room/${FUND_ID}/digital-asset-packages/${fixture.verifiedAssetExhibit.package.id}`, (_req, res) =>
+    res.json({ package: fixture.verifiedAssetExhibit.package }));
   app.get(`/api/public/deal-room/${FUND_ID}/stages`, (_req, res) => res.json({
     stages: fixture.stages, currentStage: fixture.coordination.stage, packId: fixture.packId,
   }));
