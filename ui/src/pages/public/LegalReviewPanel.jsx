@@ -301,7 +301,7 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
             {[
               {
                 icon: "📁",
-                text: "Parties upload legal documents into the Kontra workspace through their role-specific link.",
+                text: "Parties upload legal documents into the Kontra deal room through their role-specific link.",
               },
               {
                 icon: "⚖️",

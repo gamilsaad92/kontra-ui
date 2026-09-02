@@ -465,7 +465,7 @@ export default function ParticipantsPanel({
                         <span className="text-sm font-semibold text-gray-800 truncate">{role.label}</span>
                       </div>
                       <div className="hidden sm:block min-w-0">
-                        <p className="text-xs text-gray-400 italic">Workspace coordinator · Active</p>
+                        <p className="text-xs text-gray-400 italic">Deal room coordinator · Active</p>
                       </div>
                       <div className="shrink-0">
                         <StatusBadge status="coordinator" />

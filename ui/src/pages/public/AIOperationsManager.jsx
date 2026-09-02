@@ -149,7 +149,7 @@ export default function AIOperationsManager({ propertyId, ownerName }) {
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask about this workspace… e.g. What's blocking closing?"
+              placeholder="Ask about this deal room… e.g. What's blocking closing?"
               className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2"
               style={{ '--tw-ring-color': '#80002033' }}
             />

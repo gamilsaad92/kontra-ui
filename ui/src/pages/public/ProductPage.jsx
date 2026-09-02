@@ -40,8 +40,8 @@ const TRANSACTION_TYPES = [
   },
   {
     icon: "📈",
-    label: "Private Fundraising",
-    items: ["Equity raises", "Private placements", "SPV formation", "LP / GP structures"],
+    label: "Other Private Transactions",
+    items: ["Multi-party diligence", "Structured review", "Document coordination", "Custom workflows"],
     color: "#059669",
   },
   {

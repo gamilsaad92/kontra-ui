@@ -16,9 +16,9 @@ const PILLARS = [
     icon: "🏗️",
     title: "Infrastructure",
     items: [
-      "API server hosted on Render. Render maintains SOC 2 Type 2 and related compliance controls covering its own infrastructure.",
-      "Database and file storage on Supabase, running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its own infrastructure.",
-      "Provider certifications apply to each provider's own infrastructure and do not mean that Kontra itself holds those certifications. Kontra is not currently SOC 2 certified (see Compliance Roadmap).",
+      "API server hosted on Render. Refer to Render's current security documentation for provider-level controls.",
+      "Database and file storage on Supabase, running on AWS. Refer to Supabase's current security documentation for provider-level controls.",
+      "Provider security and compliance statements apply to each provider's own infrastructure and do not mean that Kontra itself holds a certification. Kontra is not currently SOC 2 certified (see Compliance Roadmap).",
       "Document files stored in AWS S3-compatible storage.",
     ],
   },

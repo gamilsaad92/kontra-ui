@@ -67,12 +67,12 @@ function ManageStagesPanel({ stages, currentStageKey, propertyId, onSave, onCanc
 
   function handleDelete(idx) {
     if (items.length <= 2) {
-      setError('A workspace needs at least 2 stages.');
+      setError('A deal room needs at least 2 stages.');
       return;
     }
     const toDelete = items[idx];
     if (toDelete.key === currentStageKey) {
-      setError(`"${toDelete.label}" is the active stage — advance the workspace first.`);
+      setError(`"${toDelete.label}" is the active stage — advance the deal room first.`);
       return;
     }
     setError('');

@@ -171,7 +171,7 @@ export default function DealSummaryPage() {
       <div className="text-center">
         <p className="text-red-500 text-sm mb-4">{error}</p>
         <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`} className="text-sm underline text-gray-500">
-          ← Back to workspace
+          ← Back to deal room
         </Link>
       </div>
     </div>
@@ -196,7 +196,7 @@ export default function DealSummaryPage() {
       <div className="no-print bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <Link to={`/deal-room/${propertyId}?role=${getPrimaryRole(room?.workflow_pack_id)}`}
           className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5 transition">
-          ← Back to workspace
+          ← Back to deal room
         </Link>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 no-print">In print dialog → select "Save as PDF"</span>

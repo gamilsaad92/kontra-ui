@@ -16,7 +16,7 @@ const PRINCIPLES = [
   {
     icon: "⚡",
     title: "Speed over ceremony",
-    desc: "No enterprise contracts. No 6-month onboarding. Pay once, get your deal room in minutes, invite every party the same day.",
+    desc: "Designed for fast deployment without lengthy implementation. Pay once, get your deal room in minutes, and invite every party the same day.",
   },
   {
     icon: "📊",

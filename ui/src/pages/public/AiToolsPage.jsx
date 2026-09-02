@@ -470,7 +470,7 @@ export default function AiToolsPage() {
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-6">
               <div className="h-px flex-1 bg-gray-200" />
-              <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">More Tools — Workspace Required</span>
+              <span className="text-sm font-semibold text-gray-500 uppercase tracking-wider">More Tools — Deal Room Required</span>
               <div className="h-px flex-1 bg-gray-200" />
             </div>
             <div className="grid md:grid-cols-2 gap-5">

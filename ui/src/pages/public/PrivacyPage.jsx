@@ -11,7 +11,7 @@ const SECTIONS = [
       "**Third-party information in documents**: Deal room owners and participants may upload documents containing personal information about individuals who are not direct Kontra users — such as employees, customers, tenants, guarantors, or counterparties. Those users are responsible for providing required notices and establishing a lawful basis for that disclosure.",
       "**AI analysis results**: Structured data extracted from uploaded documents (e.g. financial metrics, condition assessments, coverage gaps) is stored in our database alongside the deal room record.",
       "**Payment data**: When you purchase a deal room, Stripe processes your payment. We receive a payment confirmation and your email — we do not receive or store your full card number.",
-      "**Usage data**: Pages visited, features used, and actions taken within the platform, used to improve the product.",
+      "**Usage data**: Limited first-party telemetry about selected pages and actions within the platform, used to operate and improve the product.",
       "**Device and technical data**: IP address, browser type, and access times — collected automatically.",
     ],
   },
@@ -37,11 +37,11 @@ const SECTIONS = [
   {
     title: "Service Providers and Data Sharing",
     content: [
-      "**Supabase**: Database, authentication, and file storage provider running on AWS. Supabase maintains SOC 2 and ISO 27001 certifications covering its own infrastructure. See supabase.com/privacy.",
+      "**Supabase**: Database, authentication, and file storage provider running on AWS. See supabase.com/privacy and the provider's current security documentation.",
       "**Stripe**: Payment processing. We never store card information. See stripe.com/privacy.",
-      "**Render**: API server hosting. Render maintains SOC 2 Type 2 controls covering its own infrastructure. See render.com/privacy.",
+      "**Render**: API server hosting. See render.com/privacy and the provider's current security documentation.",
       "**Resend**: Transactional email delivery. See resend.com/privacy.",
-      "Provider certifications listed above apply to each provider's own infrastructure and do not mean that Kontra itself holds those certifications.",
+      "Any provider security or compliance statements apply only to that provider's own infrastructure and do not mean that Kontra itself holds a certification.",
       "We do not sell personal information or share it with advertising networks, data brokers, or behavioral tracking services.",
       "**Legally compelled disclosure**: We may disclose information when required by law, court order, or government authority.",
       "**Business transfer**: If Kontra's business or assets are acquired, merged, or transferred, user data may be included among the transferred assets. We will provide notice before your information is transferred and becomes subject to a different privacy policy.",
@@ -61,10 +61,10 @@ const SECTIONS = [
   {
     title: "Audit Logging",
     content: [
-      "**What is logged**: Material workspace actions — including AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with a timestamp and attributed party.",
-      "**Purpose**: Audit logs allow workspace owners to review activity within their workspace and support compliance or legal inquiries.",
+      "**What is logged**: Material deal room actions — including AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with a timestamp and attributed party.",
+      "**Purpose**: Audit logs allow deal room owners to review activity within their deal room and support compliance or legal inquiries.",
       "**Retention**: Audit-log retention depends on the applicable deal room, product configuration, legal requirements, and written agreements.",
-      "**Access**: Workspace owners may request an export of their workspace audit log by emailing privacy@kontraplatform.com.",
+      "**Access**: Deal room owners may request an export of their deal room audit log by emailing privacy@kontraplatform.com.",
     ],
   },
   {
@@ -72,7 +72,7 @@ const SECTIONS = [
     content: [
       "Kontra's public web and API connections use modern TLS encryption. Infrastructure-level connections depend on provider configuration.",
       "Kontra's infrastructure providers encrypt stored data at rest using industry-standard encryption, including AES-256 where supported and configured.",
-      "Row-level security and application-level authorization controls are designed to prevent unauthorized cross-workspace data access.",
+      "Row-level security and application-level authorization controls are designed to prevent unauthorized cross-deal-room data access.",
       "Document download links are signed and expire after 1 hour — sharing a link does not grant permanent access.",
       "We do not sell your data to third parties.",
       "We maintain internal procedures for investigating, containing, and responding to security incidents.",
@@ -85,7 +85,7 @@ const SECTIONS = [
       "**Access**: Request a copy of all data and documents we hold associated with your deal room.",
       "**Correction**: Contact us to correct inaccurate deal room records.",
       "**Deletion**: Request deletion of documents and data associated with your deal room, subject to the applicable process, legal holds, and contractual retention agreements.",
-      "**Portability**: Request your deal room analysis data in JSON format.",
+      "**Portability**: Request available deal room analysis data. Export availability and formats depend on the deal room and current product implementation.",
       "**Audit log export**: Request an export of all logged actions in your deal room.",
       "**Opt-out**: Unsubscribe from non-transactional emails at any time.",
       "To exercise any of these rights, email privacy@kontraplatform.com with your deal room ID or deal room name and the email used at checkout.",
@@ -94,8 +94,7 @@ const SECTIONS = [
   {
     title: "Cookies",
     content: [
-      "We use essential cookies only: session tokens required for the platform to function.",
-      "We do not use advertising cookies, tracking pixels, or third-party analytics cookies.",
+      "**Browser storage and telemetry**: The current frontend uses browser storage for session and room-access state and sends limited first-party product telemetry to Kontra's API for product operations and improvement. Cookie, storage, and analytics details depend on the current product implementation and may change.",
     ],
   },
   {

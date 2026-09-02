@@ -13,7 +13,7 @@ const SECTIONS = [
   },
   {
     title: "3. Not a Broker-Dealer or Investment Adviser",
-    content: "Kontra is a software platform — not a broker-dealer, investment adviser, securities issuer, transfer agent, exchange, custodian, or escrow agent. Kontra does not introduce investors to issuers, arrange or facilitate securities transactions, solicit investments, negotiate deal terms on behalf of any party, or provide any service that would require registration as a broker-dealer under the Securities Exchange Act of 1934 or as an investment adviser under the Investment Advisers Act of 1940. The Fundraising workflow type is designed to help parties who have already identified each other organize documents and track workflow — it does not constitute a securities offering, private placement, or any form of regulated financial intermediation. Kontra does not charge compensation based on capital raised, investors introduced, securities sold, or transaction success. If your use case involves regulated securities activity, you should consult qualified legal counsel before using Kontra.",
+    content: "Kontra is a software platform — not a broker-dealer, investment adviser, securities issuer, transfer agent, exchange, custodian, or escrow agent. Kontra does not introduce investors to issuers, arrange or facilitate securities transactions, solicit investments, negotiate deal terms on behalf of any party, or provide any service that would require registration as a broker-dealer under the Securities Exchange Act of 1934 or as an investment adviser under the Investment Advisers Act of 1940. Kontra does not charge compensation based on capital raised, investors introduced, securities sold, or transaction success. If your use case involves regulated securities activity, you should consult qualified legal counsel before using Kontra.",
   },
   {
     title: "4. Tokenization Disclaimer",
@@ -29,7 +29,7 @@ const SECTIONS = [
   },
   {
     title: "7. Acceptable Use",
-     content: "You agree not to: (a) upload documents you do not own or have authorization to process; (b) upload or process personal information of third parties without a lawful basis and all necessary rights, notices, and authorizations; (c) attempt to reverse-engineer, scrape, or extract data from the platform in bulk; (d) use the AI tools to generate fraudulent documents or misrepresent asset conditions; (e) use the Fundraising workflow to publicly advertise securities offerings, match issuers with investors you did not already know, or conduct any unregistered securities offering; (f) share deal room access links with unauthorized parties; (g) interfere with the operation of the platform or other users' access; (h) use the platform for any illegal purpose. Violation of these terms may result in immediate account termination.",
+    content: "You agree not to: (a) upload documents you do not own or have authorization to process; (b) upload or process personal information of third parties without a lawful basis and all necessary rights, notices, and authorizations; (c) attempt to reverse-engineer, scrape, or extract data from the platform in bulk; (d) use the AI tools to generate fraudulent documents or misrepresent asset conditions; (e) use Kontra to publicly advertise securities offerings, match issuers with investors, or conduct any unregistered securities offering; (f) share deal room access links with unauthorized parties; (g) interfere with the operation of the platform or other users' access; (h) use the platform for any illegal purpose. Violation of these terms may result in immediate account termination.",
   },
   {
     title: "8. Copyright and DMCA",
@@ -49,7 +49,7 @@ const SECTIONS = [
   },
   {
      title: "12. Deal Room Purchases and Billing",
-     content: "Paid deal rooms are purchased as one-time transactions through Stripe Checkout unless the checkout page expressly identifies a recurring plan. The charge amount, included features, and deal room scope are displayed before purchase. Kontra does not store card numbers — payment is processed directly by Stripe. Refunds may be requested within 7 days of purchase provided the deal room has not processed documents, sent participant invitations, or used AI analysis. To request a refund, email support@kontraplatform.com. Kontra may change pricing for future deal room purchases at any time. A price change will not alter the price of a deal room already purchased.",
+      content: "Paid deal rooms are purchased as one-time transactions through Stripe Checkout. The charge amount, included features, and deal room scope are displayed before purchase. Kontra does not store card numbers — payment is processed directly by Stripe. Refunds may be requested within 7 days of purchase provided the deal room has not processed documents, sent participant invitations, or used AI analysis. To request a refund, email support@kontraplatform.com. Kontra may change pricing for future deal room purchases at any time. A price change will not alter the price of a deal room already purchased.",
   },
   {
      title: "13. Deal Room Duration and Retention",

@@ -990,7 +990,7 @@ export default function AssetRecordTab({
     ? Math.round((activeStats.complete / activeStats.total) * 100)
     : 0;
 
-  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Workflow required\" means this item is configured as necessary to complete this workspace workflow. It does not mean the item is legally, regulatorily, or contractually required.";
+  const LEGAL_TOOLTIP = "Kontra organizes transaction information and participant confirmations; it does not provide legal certification or independent verification. \"Workflow required\" means this item is configured as necessary to complete this deal room workflow. It does not mean the item is legally, regulatorily, or contractually required.";
 
   if (loading) {
     return (
