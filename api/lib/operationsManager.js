@@ -76,6 +76,19 @@ function subjectRoleOf(task) {
   return ['owner', 'ai'].includes(or) ? null : or;
 }
 
+function participantTaskTitle(packId, task, participantDefinitions = []) {
+  const roleKey = subjectRoleOf(task);
+  const role = participantDefinitions.find(item => item.key === roleKey);
+  const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
+  if (task.task_type === 'missing_participant' && roleLabel) {
+    return `${roleLabel} has no participant submission on record`;
+  }
+  if (task.task_type === 'pending_submission' && roleLabel) {
+    return `${roleLabel} has a pending participant submission`;
+  }
+  return task.title;
+}
+
 function computeChainStatus(packId, tasks) {
   const deps = getDependencies();
   const packDeps = deps[packId] || deps[DEFAULT_PACK_ID] || null;
@@ -311,15 +324,23 @@ function buildGroundedBlockers({
       if (submitted) return;
 
       const roleLabel = role.label || getPackRoleLabel(packId, role.key);
+      const submissionStatus = participant?.submissionStatus ?? null;
+      const invitationStatus = participant?.inviteStatus ?? null;
+      const documentCount = Number(participant?.documentCount || participant?.doc_count || 0);
       blockers.push({
         sourceType: 'required_participant',
         role: role.key,
         label: roleLabel,
         status: participant?.status || 'missing',
+        submissionStatus,
+        invitationStatus,
         evidence: [
-          participant
-            ? `${roleLabel} status is "${participant.status || participant.inviteStatus || 'unknown'}" with ${Number(participant.documentCount || participant.doc_count || 0)} submitted document(s).`
-            : `No participant submission exists for required role "${role.key}".`,
+          submissionStatus || documentCount > 0
+            ? `party_submissions.status = "${submissionStatus || 'not recorded'}" for role "${role.key}" with ${documentCount} submitted document(s).`
+            : `No party_submissions record exists for required role "${role.key}".`,
+          invitationStatus
+            ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
+            : `No current active deal_room_invites.status is recorded for role "${role.key}"; this does not establish prior invitation history.`,
         ],
       });
     });
@@ -363,7 +384,7 @@ function buildGroundedBlockers({
       blockers.push({
         sourceType: 'explicit_blocking_task',
         taskId: task.id,
-        label: task.title,
+        label: participantTaskTitle(packId, task, effectiveParticipantDefinitions),
         status: task.status,
         evidence: taskEvidence(task),
       });
@@ -436,8 +457,19 @@ async function buildGroundedContext(propertyId) {
 
   const describeTask = t => ({
     id: t.id,
-    title: t.title,
-    description: t.description || null,
+    title: participantTaskTitle(packId, t, participantDefinitions),
+    description: (() => {
+      const roleKey = subjectRoleOf(t);
+      const role = participantDefinitions.find(item => item.key === roleKey);
+      const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
+      if (t.task_type === 'missing_participant' && roleLabel) {
+        return `The ${roleLabel} role is required, but party_submissions has no record for this role.`;
+      }
+      if (t.task_type === 'pending_submission' && roleLabel) {
+        return `${roleLabel} has a party_submissions record that is not yet complete.`;
+      }
+      return t.description || null;
+    })(),
     ownedBy: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(packId, t.owner_role || 'unknown'),
     ownerRole: t.owner_role,
     status: t.status,
@@ -501,6 +533,7 @@ async function buildGroundedContext(propertyId) {
         role: role.key,
         name: submission?.name || null,
         status: submission?.status || invite?.status || null,
+        submissionStatus: submission?.status || null,
         inviteStatus: invite?.status || null,
         invited: !!invite,
         documentCount: Number(submission?.doc_count || 0),

@@ -275,10 +275,11 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       {
         id: 'stale-buyer-task',
         task_type: 'missing_participant',
-        source_id: 'missing-role:buyer',
+        source_id: 'missing-role:property_owner',
         source_type: 'party_role',
         status: 'pending',
         blocking: true,
+        title: 'Property Owner has not been invited or submitted documents yet',
         evidence: ['stale role evidence'],
       },
     ]);
@@ -292,8 +293,26 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       'property_owner',
       'insurance_agent',
     ]);
-    expect(context.openTasks).toEqual([]);
-    expect(context.transactionContext.operations.openTasks).toEqual([]);
+    expect(context.openTasks).toEqual([
+      expect.objectContaining({
+        title: 'Property Owner has no participant submission on record',
+      }),
+    ]);
+    expect(context.transactionContext.operations.openTasks).toEqual([
+      expect.objectContaining({
+        title: 'Property Owner has no participant submission on record',
+      }),
+    ]);
+    expect(context.transactionContext.participants).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'property_owner',
+        submissionStatus: null,
+        inviteStatus: null,
+        invited: false,
+      }),
+    ]));
+    expect(JSON.stringify(context)).not.toContain('has not been invited');
+    expect(JSON.stringify(context)).toContain('No current active deal_room_invites.status is recorded');
     expect(JSON.stringify(context)).not.toContain('Buyer');
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');

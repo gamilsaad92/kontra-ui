@@ -458,7 +458,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     options,
   ));
 
-  // 1) Missing required party — required role never invited/submitted.
+  // 1) Missing required party — required role has no submission record.
   const requiredRoles = (roleConfig.roles || []).filter(r =>
     r.required && r.needsDocs && r.invitable !== false && r.canManage !== true && !r.legacyOnly
   );
@@ -470,8 +470,8 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     const roleLabel = role.label || getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
-      title: `${roleLabel} has not been invited or submitted documents yet`,
-      description: `The ${roleLabel} role is required for this deal type but has no submission on record.`,
+      title: `${roleLabel} has no participant submission on record`,
+      description: `The ${roleLabel} role is required for this deal type, but party_submissions has no record for this role.`,
       ownerType: 'ai',
       ownerRole: 'owner',
       evidence: [`No party_submissions record found for role "${role.key}" (${roleLabel}).`],
@@ -486,7 +486,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     if (task) created.push(task);
   }
 
-  // 2) Stuck-pending submission — invited but hasn't submitted after being asked.
+  // 2) Stuck-pending submission — a submission row exists but is not complete.
   for (const sub of submissions) {
     if (sub.status !== 'pending' && sub.status !== 'invited') continue;
     const sourceId = `pending-submission:${sub.role}`;
@@ -495,11 +495,11 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
       || getPackRoleLabel(packId, sub.role);
     const task = await createTask(propertyId, {
       taskType: 'pending_submission',
-      title: `${roleLabel} invited but hasn't submitted yet`,
-      description: `${sub.name || roleLabel} was invited but has not completed their submission.`,
+      title: `${roleLabel} has a pending participant submission`,
+      description: `${sub.name || roleLabel} has a party_submissions record with status "${sub.status}" but has not completed the submission.`,
       ownerType: 'ai',
       ownerRole: sub.role,
-      evidence: [`party_submissions.status = "${sub.status}" for role "${sub.role}" (invited, not yet submitted).`],
+      evidence: [`party_submissions.status = "${sub.status}" for role "${sub.role}" (submission not yet complete).`],
       draftAction: sub.email ? {
         type: 'email',
         to: sub.email,
