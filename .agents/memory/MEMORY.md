@@ -1,0 +1,5 @@
+- [Kontra GitHub connector writes](kontra-github-connector-writes.md) — reads work reliably, but Git Data/Contents writes may be Cloudflare-blocked; small GraphQL commits are the fallback
+- [Deployment-neutral DOCX ingestion](docx-ingestion.md) — extract word/document.xml before analysis so preview and Render behave consistently
+- [Existing-room conflict hydration](existing-room-conflict-hydration.md) — filter semantically retired rows in returned state even when durable cleanup is unavailable
+- [Render cache rebuilds](render-cache-deploys.md) — a zero-output Node build failure after a huge cache restore may require a clear-cache rebuild before code changes
+- [Node package firewall patches](node-package-firewall.md) — when npm ci is blocked by a vulnerable pinned tarball, update the direct dependency and both lockfiles to the safe patch release
