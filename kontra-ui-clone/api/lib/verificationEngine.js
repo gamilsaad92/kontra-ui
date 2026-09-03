@@ -358,7 +358,11 @@ function buildChecks(documents, runAt) {
   for (const document of documents) {
     for (const fact of extractFacts(document)) {
       const enriched = { ...fact, section: document.section, label: humanizeSection(document.section) };
-      if (fact.role === 'threshold' || fact.relationship) {
+      // Threshold/actual facts that share a comparison identity still need
+      // to meet in the same group. Explicit relationships retain the
+      // threshold-breach path below; untyped semantic pairs become ordinary
+      // value-consistency checks.
+      if (fact.role === 'threshold' || fact.role === 'actual' || fact.relationship) {
         const relationKey = `${fact.relationship || fact.comparison_key}:${fact.value_type}`;
         if (!relationshipGroups.has(relationKey)) relationshipGroups.set(relationKey, []);
         relationshipGroups.get(relationKey).push(enriched);
@@ -415,8 +419,54 @@ function buildChecks(documents, runAt) {
     const thresholds = facts.filter(fact => fact.role === 'threshold');
     const actuals = facts.filter(fact => fact.role === 'actual' || fact.role === 'value');
     if (!thresholds.length || !actuals.length) continue;
-    const threshold = thresholds[0];
+    // A summary can label more than one amount as a threshold even when one
+    // is the paired claim value and another is an unrelated limit mention.
+    // Prefer an equivalent cross-document pair so the unrelated threshold
+    // does not manufacture a discrepancy.
+    const matches = (left, right) => {
+      const deltaPct = left.value === 0
+        ? 0
+        : Math.abs(right.value - left.value) / Math.abs(left.value) * 100;
+      return deltaPct <= 1;
+    };
+    const threshold = thresholds.find(candidate =>
+      actuals.some(actual =>
+        actual.section !== candidate.section && matches(candidate, actual)
+      )
+    ) || thresholds[0];
     const actual = actuals.find(candidate => candidate.section !== threshold.section) || actuals[0];
+    if (!threshold.relationship) {
+      const deltaPct = threshold.value === 0
+        ? 0
+        : Math.abs(actual.value - threshold.value) / Math.abs(threshold.value) * 100;
+      const valueMatches = deltaPct <= 1;
+      checks.push({
+        id: `fact:${relationKey}:${threshold.section}:${actual.section}`,
+        type: 'fact_consistency',
+        status: valueMatches ? 'verified' : 'discrepancy',
+        ...(valueMatches ? {} : { severity: 'warning' }),
+        description: valueMatches
+          ? `${threshold.label} and ${actual.label} report the same ${threshold.semantic_key}: ${formatFactValue(threshold)}.`
+          : `${threshold.label} reports ${formatFactValue(threshold)} for ${threshold.semantic_key} while ${actual.label} reports ${formatFactValue(actual)}.`,
+        doc_section_a: threshold.section,
+        doc_section_b: actual.section,
+        value_a: threshold.value,
+        value_b: actual.value,
+        delta_pct: deltaPct,
+        fact_key: threshold.semantic_key,
+        semantic_key: threshold.semantic_key,
+        value_type: threshold.value_type,
+        unit: threshold.unit,
+        evidence_a: evidencePayload(threshold),
+        evidence_b: evidencePayload(actual),
+        source_page_a: threshold.source_page,
+        source_page_b: actual.source_page,
+        source_excerpt_a: threshold.source_excerpt,
+        source_excerpt_b: actual.source_excerpt,
+        run_at: runAt,
+      });
+      continue;
+    }
     const higherIsWorse = threshold.relationship === 'delinquency_rate'
       || threshold.relationship === 'ltv'
       || /max|limit|threshold|trigger|cap|no\s+more/i.test(threshold.source_excerpt || '');

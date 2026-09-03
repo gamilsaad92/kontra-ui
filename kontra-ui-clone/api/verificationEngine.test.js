@@ -163,6 +163,52 @@ describe('verification upload compatibility', () => {
     ]));
   });
 
+  test('compares threshold-labeled claim facts with actual repair facts', () => {
+    const checks = buildChecks([
+      {
+        id: 'claim',
+        section: 'insurance_coverage',
+        analysis: {
+          normalized_facts: [
+            {
+              key: 'claim amount threshold',
+              semantic_key: 'financial.claim_amount',
+              value: '$2,500,000',
+            },
+            {
+              key: 'claim amount threshold',
+              semantic_key: 'financial.claim_amount',
+              value: '$96,480',
+            },
+          ],
+        },
+      },
+      {
+        id: 'repair',
+        section: 'repair_estimate',
+        analysis: {
+          normalized_facts: [
+            {
+              key: 'repair costs actual',
+              semantic_key: 'financial.repair_costs',
+              value: '$96,480',
+            },
+          ],
+        },
+      },
+    ], '2026-08-29T00:00:00.000Z');
+
+    expect(checks).toEqual([
+      expect.objectContaining({
+        type: 'fact_consistency',
+        status: 'verified',
+        value_a: 96480,
+        value_b: 96480,
+        fact_key: 'financial.claim_amount',
+      }),
+    ]);
+  });
+
   test('uses hydrated Transaction Record amounts for cross-document verification', async () => {
     supabase.from
       .mockReturnValueOnce(builder({
