@@ -28,6 +28,7 @@ import {
   isRoleSatisfiedByWorkspaceOwner,
 } from "../../lib/workflowRoles";
 import { resolveParticipantStates } from "../../lib/participantState";
+import { isDigitalAssetLayerEnabled } from "../../lib/digitalAssetReadiness";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -92,22 +93,6 @@ const JURISDICTION_INFO = {
     border: "#fed7aa",
   },
 };
-
-// Transaction types where digital asset preparation is contextually relevant.
-// For all other types (acquisition, lending, licensing, etc.) DA stays hidden
-// unless the user explicitly turns it on.
-const TOKENIZATION_RELEVANT_TYPES = new Set([
-  'tokenization', 'token_issuance', 'sto', 'security_token', 'digital_asset', 'rwa',
-]);
-
-function isDigitalAssetLayerEnabled(property, pack) {
-  const metadataEnabled = property?.metadata_values?.digital_asset_enabled;
-  return pack?.id === 'tokenization'
-    || pack?.transactionType === 'tokenization'
-    || property?.deal_type === 'tokenization'
-    || metadataEnabled === true
-    || metadataEnabled === 'true';
-}
 
 function JurisdictionComplianceCard({ jurisdiction }) {
   const info = JURISDICTION_INFO[jurisdiction];
@@ -8189,6 +8174,7 @@ function VerifiedAssetReadinessCard({
   snapshotHistory = [],
   packageHistory = [],
   packageAction,
+  digitalAssetEnabled = true,
   onRecordSnapshot,
   onOpenSnapshot,
   onOpenPackage,
@@ -8237,15 +8223,21 @@ function VerifiedAssetReadinessCard({
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
             Verified Asset foundation
           </p>
-          <h2 className="mt-1 text-lg font-bold text-gray-900">Digital Asset Readiness</h2>
+          <h2 className="mt-1 text-lg font-bold text-gray-900">
+            {digitalAssetEnabled ? 'Digital Asset Readiness' : 'Verified Asset Record'}
+          </h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
-            Provider-neutral preparation status derived from the canonical Transaction Record.
+            {digitalAssetEnabled
+              ? 'Provider-neutral preparation status derived from the canonical Transaction Record.'
+              : 'Provider-neutral evidence and immutable record status derived from the canonical Transaction Record.'}
           </p>
-          <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
-            Status: {statusLabel}
-          </p>
+          {digitalAssetEnabled && (
+            <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
+              Status: {statusLabel}
+            </p>
+          )}
         </div>
-        <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+        {digitalAssetEnabled && <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
           eligibility === 'eligible'
             ? 'bg-emerald-100 text-emerald-800'
             : eligibility === 'unavailable'
@@ -8253,7 +8245,7 @@ function VerifiedAssetReadinessCard({
               : 'bg-amber-100 text-amber-800'
         }`}>
           {eligibilityLabel}
-        </span>
+        </span>}
       </div>
       {isDemo && (
         <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3">
@@ -8307,11 +8299,11 @@ function VerifiedAssetReadinessCard({
         </div>
       </div>
 
-      {isUnavailable ? (
+      {digitalAssetEnabled && isUnavailable ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
           Readiness details are loading or currently unavailable. This card stays visible while Kontra reconnects to the readiness service.
         </div>
-      ) : blockerLabels.length > 0 ? (
+      ) : digitalAssetEnabled && blockerLabels.length > 0 ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
             Current blockers and exceptions
@@ -8352,7 +8344,9 @@ function VerifiedAssetReadinessCard({
                 : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
           </p>
           <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
-            Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.
+            {digitalAssetEnabled
+              ? 'Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.'
+              : 'Recording preserves this exact verified record state, including its evidence and exception history.'}
           </p>
         </div>
         <button
@@ -8392,7 +8386,7 @@ function VerifiedAssetReadinessCard({
           </button>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+      {digitalAssetEnabled && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
         <div>
           <p className="text-xs font-semibold text-gray-700">Digital Asset Preparation Packages</p>
           <p className="mt-1 text-[10px] text-gray-400">
@@ -8419,8 +8413,8 @@ function VerifiedAssetReadinessCard({
             Package history ({packageHistory.length})
           </button>
         </div>
-      </div>
-      {packageAction?.message && (
+      </div>}
+      {digitalAssetEnabled && packageAction?.message && (
         <p role={packageAction.error ? 'alert' : 'status'} className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
           packageAction.error
             ? 'border-red-100 bg-red-50 text-red-600'
@@ -9090,7 +9084,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           {readinessPhase === 'complete' && (
             <TransactionSealSummaryCard propertyId={propertyId} />
           )}
-          <DigitalAssetReadinessSection
+          {digitalAssetEnabled && <DigitalAssetReadinessSection
             propertyId={propertyId}
              property={property}
             recordFields={recordFields}
@@ -9107,12 +9101,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             onRecordUpdated={load}
             focusRequest={recordFocus}
              onConflict={setSelectedConflict}
-          />
+          />}
         </div>
       </section>
       <VerifiedAssetReadinessCard
         verifiedAssetReadiness={verifiedAssetReadiness}
         isDemo={isDemo}
+        digitalAssetEnabled={digitalAssetEnabled}
         ownerToken={ownerToken}
         snapshotHistory={snapshotHistory}
         snapshotAction={snapshotAction}
@@ -10618,10 +10613,10 @@ export default function DealRoomPage() {
     : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
-  const isTokenization  = isDigitalAssetLayerEnabled(apiProperty, pack);
-  const isTokenizationRelevant = TOKENIZATION_RELEVANT_TYPES.has(apiProperty?.deal_type)
-    || pack?.id === 'tokenization'
-    || pack?.transactionType === 'tokenization';
+  // Public illustrative rooms predate the creation toggle and intentionally
+  // retain their completed readiness exhibits.
+  const isTokenization  = isDemo || isDigitalAssetLayerEnabled(apiProperty, pack);
+  const isTokenizationRelevant = isTokenization;
 
   // This hook must run on the PIN-gate render and the unlocked render alike.
   // Calling it below the gate's early return triggers React error #310

@@ -4,6 +4,7 @@ import PublicLayout from "./PublicLayout";
 import { trackEvent } from "../../lib/analytics";
 import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
 import { API_BASE } from "../../lib/apiBase";
+import { isDigitalAssetReadinessOptedIn } from "../../lib/digitalAssetReadiness";
 
 const ICON_CHOICES = ["📄","🏢","💼","🏦","🔍","🛡️","⚖️","📊","⚙️","🏗️","🧾","📋","🤝","🏭","👤","🔑","✍️","📝","🌐","🏛️"];
 const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a1","#374151","#dc2626","#0891b2","#7c3aed"];
@@ -338,6 +339,7 @@ export default function CreateDealRoomPage() {
     dealAmount: "",
     closingDate: "",
     jurisdiction: "",
+    digitalAssetReadiness: false,
     firstName: "",
     lastName: "",
     email: "",
@@ -721,6 +723,7 @@ export default function CreateDealRoomPage() {
         transactionStructure: aiTransactionStructure,
         transactionValue: aiTransactionValue,
         transactionValueConfidence: aiTransactionValueConfidence,
+        digitalAssetEnabled: isDigitalAssetReadinessOptedIn(form),
          generationSessionId: isAiGenerated ? generationSessionId : "",
          customConfigReviewed: !!approvalToken,
          customConfigApprovalToken: approvalToken,
@@ -1145,6 +1148,22 @@ export default function CreateDealRoomPage() {
                    <p className="text-xs text-gray-400 mt-1">Used to surface relevant regulatory checkpoints inside your deal room.</p>
                 </div>}
 
+                <label className="flex items-start gap-2.5 cursor-pointer rounded-xl border border-gray-200 bg-gray-50/70 px-3.5 py-3">
+                  <input
+                    type="checkbox"
+                    checked={form.digitalAssetReadiness}
+                    onChange={e => set("digitalAssetReadiness", e.target.checked)}
+                    className="mt-0.5 accent-red-800 w-4 h-4 shrink-0"
+                  />
+                  <span className="leading-relaxed">
+                    <span className="block text-xs font-semibold text-gray-700">Digital Asset Readiness</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      <span className="font-medium text-gray-700">Enable Digital Asset Readiness</span>
+                      <span className="block mt-0.5">Prepare the verified transaction record for potential digital-asset or external-provider workflows.</span>
+                    </span>
+                  </span>
+                </label>
+
                 <div>
                   <label className={labelCls}>Your role in this transaction</label>
                   {creationMode !== "blank" && customConfig.roles.length > 0 ? (
@@ -1184,6 +1203,7 @@ export default function CreateDealRoomPage() {
                   {[
                     { label: "Deal Room", value: form.workspaceName || "—" },
                     jurisdictionRelevant && form.jurisdiction && { label: "Jurisdiction", value: { uae_adgm: "UAE — ADGM / DFSA", eu_mica: "EU — MiCA", us_reg_d: "US — Regulation D", sg_mas: "Singapore — MAS", uk_fca: "UK — FCA", other: "Other / Not listed" }[form.jurisdiction] || form.jurisdiction },
+                    { label: "Digital Asset Readiness", value: form.digitalAssetReadiness ? "Enabled" : "Off" },
                     creationMode !== "blank" && {
                       label: "Type",
                       value: isAiGenerated

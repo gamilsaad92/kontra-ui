@@ -163,6 +163,10 @@ const DEAL_TYPE_TO_PACK_INDEX = {
 function isTokenizationTransaction(packId, transactionType, metadataValues = null) {
   const digitalAssetEnabled = metadataValues?.digital_asset_enabled === true
     || metadataValues?.digital_asset_enabled === 'true';
+  // New rooms persist an explicit false choice. Older tokenization rooms do
+  // not have this key and continue through the historical pack fallback.
+  if (metadataValues?.digital_asset_enabled === false
+      || metadataValues?.digital_asset_enabled === 'false') return false;
   return packId === 'tokenization'
     || transactionType === 'tokenization'
     || transactionType === 'token_issuance'
@@ -2243,6 +2247,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         transactionStructure: meta.transactionStructure || '',
         transactionValue: meta.transactionValue || '',
         transactionValueConfidence: meta.transactionValueConfidence || '',
+        digitalAssetEnabled: meta.digitalAssetEnabled === true,
         generationSessionId: meta.generationSessionId || '',
         customConfigReviewed: workflowApproval.reviewed ? 'true' : 'false',
         customConfigApprovalHash: workflowApproval.approval?.configHash || '',
@@ -2278,6 +2283,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         transaction_structure: meta.transactionStructure || '',
         transaction_value: meta.transactionValue || '',
         transaction_value_confidence: meta.transactionValueConfidence || '',
+        digital_asset_enabled: meta.digitalAssetEnabled === true,
           generation_session_id: meta.generationSessionId || '',
           generated_proposal: generatedProposal || null,
          custom_config_reviewed: workflowApproval.reviewed,
@@ -2385,6 +2391,7 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
          transactionStructure: generatedSubtype,
         transactionValue: meta.transactionValue,
         transactionValueConfidence: meta.transactionValueConfidence,
+        digitalAssetEnabled: meta.digitalAssetEnabled === true,
         customConfigReviewed: workflowApproval.reviewed,
          customConfigApprovalHash: workflowApproval.approval?.configHash || '',
          customConfigGenerationId: workflowApproval.approval?.generationId || '',
@@ -2862,6 +2869,7 @@ app.post('/api/webhook/stripe',
         transactionStructure: metadataTransactionStructure,
         transactionValue: metadataTransactionValue,
         transactionValueConfidence: metadataTransactionValueConfidence,
+        digitalAssetEnabled: metadataDigitalAssetEnabled,
         customConfigReviewed: metadataCustomConfigReviewed,
          customConfigApprovalHash: metadataCustomConfigApprovalHash,
          customConfigGenerationId: metadataCustomConfigGenerationId,
@@ -2957,6 +2965,8 @@ app.post('/api/webhook/stripe',
            generatedBasePack,
            generatedSubtype,
           closingDate: metadataClosingDate || pending.closing_date,
+          digitalAssetEnabled: metadataDigitalAssetEnabled === 'true'
+            || pending.digital_asset_enabled === true,
         }),
       };
 
@@ -3746,6 +3756,7 @@ function buildCreationMetadata({
   transactionStructure,
   transactionValue,
   transactionValueConfidence,
+  digitalAssetEnabled = false,
   customConfigReviewed,
   customConfigApprovalHash,
   customConfigGenerationId,
@@ -3776,6 +3787,7 @@ function buildCreationMetadata({
     generated_proposal: generatedProposal || null,
     generated_base_pack: generatedBasePack || null,
     generated_transaction_subtype: generatedSubtype || null,
+    digital_asset_enabled: digitalAssetEnabled === true,
   };
   if (transactionStructure) metadata.transaction_structure = String(transactionStructure).slice(0, 200);
   const numericValue = Number(transactionValue);
@@ -7523,8 +7535,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
     closing_ready:       overall >= 80 && readiness.approvalReady,
     transaction_ready:   overall >= 80 && readiness.approvalReady,
     tokenization_ready: digitalAssetReadinessSufficient
-      && (meta.digital_asset_enabled === true || meta.digital_asset_enabled === 'true'
-        || room.workflow_pack_id === 'tokenization' || room.deal_type === 'tokenization'),
+      && isTokenizationTransaction(room.workflow_pack_id, room.deal_type, meta),
     transaction_readiness: {
       overall_pct: overall,
       status: overallLabel,
@@ -7553,10 +7564,7 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
       missing_inputs: readiness.digitalAssetGapCount,
       note: 'AI-prepared coordination data only. Kontra does not determine legal or regulatory outcomes.',
     },
-    ...((room.workflow_pack_id === 'tokenization'
-      || room.deal_type === 'tokenization'
-      || meta.digital_asset_enabled === true
-      || meta.digital_asset_enabled === 'true')
+    ...(isTokenizationTransaction(room.workflow_pack_id, room.deal_type, meta)
       ? {
           digital_asset_layer: {
             enabled: true,
@@ -11849,6 +11857,8 @@ app.getRoomAccessContext = getRoomAccessContext;
 app.filterChecklistItemsByRole = filterChecklistItemsByRole;
 app.getChecklistItemAssignedRoles = getChecklistItemAssignedRoles;
 app.getAssignedSectionsForAccess = getAssignedSectionsForAccess;
+app.buildCreationMetadata = buildCreationMetadata;
+app.isTokenizationTransaction = isTokenizationTransaction;
 if (process.env.NODE_ENV === 'test') {
   app.setMyRoomsOtpForTest = (email, code) => {
     otpStore.set(email, { code, expiresAt: Date.now() + 60_000 });
