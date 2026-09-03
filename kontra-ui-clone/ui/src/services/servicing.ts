@@ -1,6 +1,5 @@
 import { api, withOrg } from "../lib/api";
 import type { Application, DrawRequest, Escrow } from "../lib/sdk/types";
-import { api, withOrg } from "../lib/api";
 
 const FALLBACK_DRAWS: DrawRequest[] = [
   {

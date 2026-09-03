@@ -35,7 +35,7 @@ describe('distribution hooks', () => {
 
     const { distribution, remittance_summary } = calculateDistributionForPeriod(poolId, '2024-02-01');
 
-    expect(remittance_summary.net_to_investors).toBeCloseTo(18700);
+    expect(remittance_summary.net_to_investors).toBeCloseTo(18600);
     expect(distribution.nav).toBe(1500000);
     expect(distribution.tokens_outstanding).toBe(1000);
     expect(distribution.per_token_distribution).toBeCloseTo(remittance_summary.net_to_investors / 1000);

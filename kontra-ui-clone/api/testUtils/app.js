@@ -5,7 +5,9 @@ const { createClient } = require('@supabase/supabase-js');
 ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY', 'SENTRY_DSN', 'STRIPE_SECRET_KEY', 'ENCRYPTION_KEY', 'PII_ENCRYPTION_KEY'].forEach(
   key => {
     if (!process.env[key]) {
-      process.env[key] = `${key.toLowerCase()}-test-value`;
+      process.env[key] = key === 'SUPABASE_URL'
+        ? 'https://supabase.test'
+        : `${key.toLowerCase()}-test-value`;
     }
   }
 );

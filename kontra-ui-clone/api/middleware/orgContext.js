@@ -14,11 +14,16 @@ const orgContext = (req, res, next) => {
 
   const userId = req.headers['x-user-id'] || req.query.userId || req.body?.userId;
 
-  if (!orgId) {
+  // authenticate runs before this middleware on the legacy servicing,
+  // payments, and marketplace routers. Reuse the tenant it resolved from
+  // the bearer token when no per-request override was supplied.
+  const resolvedOrgId = orgId || req.orgId;
+
+  if (!resolvedOrgId) {
     return res.status(400).json({ code: 'ORG_CONTEXT_MISSING', message: 'Missing X-Org-Id header' });
   }
 
-  req.orgId = String(orgId);
+  req.orgId = String(resolvedOrgId);
   req.userId = userId ? String(userId) : null;
 
   next();

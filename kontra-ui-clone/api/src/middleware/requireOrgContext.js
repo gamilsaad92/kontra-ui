@@ -69,10 +69,11 @@ function requireOrgContext(req, res, next) {
     return next();
   }
 
-  // No auth, no org header — block unauthenticated org-required requests
-  return res.status(400).json({
-    code: 'ORG_CONTEXT_MISSING',
-    message: 'Missing X-Org-Id header',
+  // No auth, no org header — let protected routers report the correct
+  // authentication failure instead of masking it as a tenancy error.
+  return res.status(401).json({
+    code: 'AUTH_REQUIRED',
+    message: 'Authentication required',
   });
 }
 
