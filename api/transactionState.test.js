@@ -503,6 +503,21 @@ describe('transaction state recalculation', () => {
     }, [])).toBe(true);
   });
 
+  it('retires a parent-versus-subtype loss conflict but preserves sibling conflicts', () => {
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'transaction.loss_type',
+      display_label: 'Loss Type',
+      canonical_value: 'Hazard loss',
+      conflicting_value: 'Hazard loss - fire',
+    }, [])).toBe(false);
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'transaction.loss_type',
+      display_label: 'Loss Type',
+      canonical_value: 'Hazard loss - fire',
+      conflicting_value: 'Hazard loss - water',
+    }, [])).toBe(true);
+  });
+
   it('retires the facility-identifier versus principal conflict automatically', () => {
     expect(isConflictSupportedByActiveEvidence({
       field_key: 'financial.certified_outstanding_principal',

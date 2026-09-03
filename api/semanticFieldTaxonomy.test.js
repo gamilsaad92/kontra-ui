@@ -151,6 +151,39 @@ describe('semantic Transaction Record field taxonomy', () => {
     expect(policy.comparisonKey).not.toBe(repair.comparisonKey);
   });
 
+  test('treats a loss-type parent and its fire subtype as compatible', () => {
+    const definition = inferSemanticDefinition('transaction.loss_type', null, 'Loss Type');
+
+    expect(compareComparableValues(
+      normalizeComparableValue('Hazard loss', definition),
+      normalizeComparableValue('Hazard loss - fire', definition),
+      definition,
+    )).toEqual({ comparable: true, equivalent: true });
+    expect(compareComparableValues(
+      normalizeComparableValue('Hazard loss - fire', definition),
+      normalizeComparableValue('Hazard loss - water', definition),
+      definition,
+    )).toEqual({ comparable: true, equivalent: false });
+  });
+
+  test('shares one comparison relationship for claim amount and repair costs', () => {
+    const claim = inferSemanticDefinition('financial.claim_amount', null, 'Claim Amount');
+    const repair = inferSemanticDefinition('financial.repair_costs', null, 'Repair Costs');
+
+    expect(claim.recordKey).toBe('financial.claim_amount');
+    expect(repair.recordKey).toBe('financial.repair_costs');
+    expect(claim.comparisonKey).toBe(repair.comparisonKey);
+    expect(extractFacts({
+      id: 'claim-doc',
+      section: 'insurance_claim_documentation',
+      analysis: { metrics: { claim_amount: '$96,480' } },
+    })).toEqual([expect.objectContaining({
+      semantic_key: 'financial.claim_amount',
+      comparison_key: 'financial.repair_claim_amount',
+      value: 96480,
+    })]);
+  });
+
   test('does not infer borrower funds from an unrelated approximate amount', () => {
     expect(extractTransactionContext(
       'The policy limit is approximately $2.5M and estimated repair costs are $96,480.',

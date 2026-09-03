@@ -24,9 +24,11 @@ const SEMANTIC_FIELD_DEFINITIONS = [
   { key: 'financial.revenue', pattern: /\b(?:gross\s+)?revenue\b|\bsales\b/i, type: 'amount', recordKey: 'financial.revenue' },
   { key: 'financial.ebitda', pattern: /\bebitda\b/i, type: 'amount', recordKey: 'financial.ebitda' },
   { key: 'financial.equity', pattern: /\b(?:owner|borrower|investor)?\s*equity\b/i, type: 'amount', recordKey: 'financial.equity' },
-  { key: 'financial.repair_costs', pattern: /\b(?:repair|restoration)\s+(?:cost|costs|amount|estimate)\b|\btotal\s+repair\b/i, type: 'amount', recordKey: 'financial.repair_costs' },
+  { key: 'financial.repair_costs', pattern: /\b(?:repair|restoration)\s+(?:cost|costs|amount|estimate)\b|\btotal\s+repair\b/i, type: 'amount', recordKey: 'financial.repair_costs', comparisonKey: 'financial.repair_claim_amount' },
+  { key: 'financial.claim_amount', pattern: /\b(?:insurance\s+)?claim\s+(?:amount|value)\b|\bamount\s+of\s+(?:the\s+)?claim\b|\btotal\s+claim\b/i, type: 'amount', recordKey: 'financial.claim_amount', comparisonKey: 'financial.repair_claim_amount' },
   { key: 'transaction.purchase_price', pattern: /\b(?:purchase|sale)\s+price\b|\bconsideration\b/i, type: 'amount', recordKey: 'transaction.purchase_price' },
   { key: 'transaction.value', pattern: /\btransaction\s+value\b|\bdeal\s+value\b|\bvaluation\b/i, type: 'amount', recordKey: 'transaction.value' },
+  { key: 'transaction.loss_type', pattern: /\bloss\s+type\b|\bincident\s+type\b|\bevent\s+type\b/i, type: 'text', recordKey: 'transaction.loss_type', comparisonMode: 'hierarchical_text' },
   { key: 'covenant.delinquency_rate', pattern: /\bdelinquen(?:cy|t)\b/i, type: 'percent', recordKey: 'financial.delinquency_rate', relationship: 'delinquency_rate' },
   { key: 'covenant.occupancy_rate', pattern: /\boccupancy\b/i, type: 'percent', recordKey: 'financial.occupancy_rate', relationship: 'occupancy_rate' },
   { key: 'covenant.ltv', pattern: /\b(?:loan[\s-]*to[\s-]*value|ltv)\b/i, type: 'percent', recordKey: 'financial.ltv', relationship: 'ltv' },
@@ -57,7 +59,7 @@ function inferSemanticDefinition(key, rawValue = null, explicitLabel = '') {
     : ACTUAL_WORDS.test(context) ? 'actual' : 'value';
   return {
     semanticKey: definition.key,
-    comparisonKey: definition.relationship || definition.key,
+    comparisonKey: definition.comparisonKey || definition.relationship || definition.key,
     valueType: definition.type,
     relationship: definition.relationship || null,
     role,
@@ -117,6 +119,13 @@ function normalizePeriod(value) {
   };
 }
 
+function normalizeHierarchicalText(value) {
+  return normalizedText(value)
+    .replace(/[^\da-z\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeComparableValue(value, definitionOrKey, explicitLabel = '') {
   const definition = typeof definitionOrKey === 'string'
     ? inferSemanticDefinition(definitionOrKey, value, explicitLabel)
@@ -131,6 +140,9 @@ function normalizeComparableValue(value, definitionOrKey, explicitLabel = '') {
   }
   if (definition?.valueType === 'reference') {
     return { type: 'reference', value: normalizedText(textValue) };
+  }
+  if (definition?.comparisonMode === 'hierarchical_text') {
+    return { type: 'hierarchical_text', value: normalizeHierarchicalText(textValue) };
   }
   const numeric = definition?.valueType === 'amount' ? amountParts(value) : numericParts(value);
   if (numeric && definition?.valueType === 'percent') {
@@ -170,6 +182,15 @@ function compareComparableValues(left, right, definition) {
   }
   if (left.type === 'reference') {
     return { comparable: false, equivalent: true };
+  }
+  if (left.type === 'hierarchical_text') {
+    const parentChild = (parent, child) => parent === 'hazard loss'
+      && child.startsWith(`${parent} `)
+      && child.length > parent.length;
+    const equivalent = left.value === right.value
+      || parentChild(left.value, right.value)
+      || parentChild(right.value, left.value);
+    return { comparable: true, equivalent };
   }
   if (left.type === 'text') {
     return { comparable: true, equivalent: left.value === right.value };
