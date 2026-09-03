@@ -1069,7 +1069,9 @@ function sendHealthResponse(res, extra = {}) {
   });
 }
 
-app.get('/api/health', (_req, res) => {
+// Render's web-service health check is configured for /health. Keep the
+// existing API path as well so both deployment probes and API clients work.
+app.get(['/health', '/api/health'], (_req, res) => {
   sendHealthResponse(res, { version: 'v3-hazard-record-gate', deployed: new Date().toISOString() });
 });
 
