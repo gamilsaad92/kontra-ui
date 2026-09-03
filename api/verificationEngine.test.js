@@ -33,6 +33,7 @@ describe('verification upload compatibility', () => {
         data: null,
         error: { message: 'column deal_analyses.is_active does not exist', code: '42703' },
       }))
+      .mockReturnValueOnce(builder({ data: [], error: null }))
       .mockReturnValueOnce(builder({
         data: [{
           id: `${propertyId}-doc`,
@@ -48,7 +49,7 @@ describe('verification upload compatibility', () => {
       propertyId,
       documents_considered: [section],
     }));
-    expect(supabase.from).toHaveBeenCalledTimes(3);
+    expect(supabase.from).toHaveBeenCalledTimes(4);
   });
 
   test('reconciles only semantic matches and detects threshold breaches', () => {
@@ -162,6 +163,64 @@ describe('verification upload compatibility', () => {
     ]));
   });
 
+  test('uses hydrated Transaction Record amounts for cross-document verification', async () => {
+    supabase.from
+      .mockReturnValueOnce(builder({
+        data: [
+          { id: 'repair-doc', section: 'repair_estimate', analysis: { summary: 'Repair estimate uploaded.' } },
+          { id: 'claim-doc', section: 'insurance_claim_documentation', analysis: { summary: 'Insurance claim uploaded.' } },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({
+        data: [
+          {
+            id: 'claim-field',
+            field_key: 'financial.claim_amount',
+            display_label: 'Claim Amount',
+            value_text: '$96,480',
+            status: 'confirmed',
+            source_doc_id: 'claim-doc',
+          },
+          {
+            id: 'repair-field',
+            field_key: 'financial.repair_costs',
+            display_label: 'Repair Costs',
+            value_text: '$96,480',
+            status: 'confirmed',
+            source_doc_id: 'repair-doc',
+          },
+          {
+            id: 'policy-field',
+            field_key: 'financial.policy_limit',
+            display_label: 'Property Damage Limit',
+            value_text: '$2,500,000',
+            status: 'confirmed',
+            source_doc_id: 'claim-doc',
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({ data: { id: 'hydrated-verification' }, error: null }));
+
+    const result = await runVerification('hydrated-hazard-room');
+
+    expect(result.summary).toEqual({ verified: 1, discrepancies: 0, pending: 0 });
+    expect(result.checks).toEqual([
+      expect.objectContaining({
+        status: 'verified',
+        fact_key: 'financial.claim_amount',
+        value_a: 96480,
+        value_b: 96480,
+      }),
+    ]);
+    expect(result.checks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ semantic_key: 'financial.policy_limit' }),
+      expect.objectContaining({ value_a: 2500000 }),
+      expect.objectContaining({ value_b: 2500000 }),
+    ]));
+  });
+
   test('rehydrates a stale room snapshot from active document versions', async () => {
     const documents = [
       {
@@ -228,8 +287,9 @@ describe('verification upload compatibility', () => {
         }],
         error: null,
       }))
-      .mockReturnValueOnce(builder({ data: documents, error: null }))
-      .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
+       .mockReturnValueOnce(builder({ data: documents, error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
+       .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
 
     const state = await getVerificationState('room-with-stale-verification');
     const checks = state.runs[0].checks;
@@ -251,7 +311,7 @@ describe('verification upload compatibility', () => {
       expect.objectContaining({ semantic_key: 'financial.cash_variance' }),
       expect.objectContaining({ semantic_key: 'financial.revenue' }),
     ]));
-    expect(supabase.from).toHaveBeenCalledTimes(3);
+    expect(supabase.from).toHaveBeenCalledTimes(4);
 
     // A second hydration with the same active evidence reuses the current
     // immutable run instead of creating another snapshot.
@@ -263,10 +323,11 @@ describe('verification upload compatibility', () => {
         created_at: currentRun.run_at,
         analysis: currentRun,
       }], error: null }))
-      .mockReturnValueOnce(builder({ data: documents, error: null }));
+       .mockReturnValueOnce(builder({ data: documents, error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }));
     const secondState = await getVerificationState('room-with-stale-verification');
     expect(secondState.runs[0].source_signature).toBe(currentRun.source_signature);
-    expect(supabase.from).toHaveBeenCalledTimes(2);
+    expect(supabase.from).toHaveBeenCalledTimes(3);
   });
 
   test('ignores superseded document evidence when hydrating verification', async () => {
@@ -297,8 +358,9 @@ describe('verification upload compatibility', () => {
 
     supabase.from
       .mockReturnValueOnce(builder({ data: [], error: null }))
-      .mockReturnValueOnce(builder({ data: documents, error: null }))
-      .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
+       .mockReturnValueOnce(builder({ data: documents, error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
+       .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
 
     const state = await getVerificationState('room-with-replacement');
     expect(state.runs[0].checks).toEqual(expect.arrayContaining([

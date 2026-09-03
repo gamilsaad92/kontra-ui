@@ -256,6 +256,55 @@ function latestDocuments(rows) {
   return [...bySection.values()];
 }
 
+function transactionRecordFieldDocuments(fields = []) {
+  return (fields || []).flatMap((field, index) => {
+    const key = field?.field_key || field?.definition_key || field?.key;
+    const value = field?.value_text ?? field?.value_json ?? field?.value;
+    if (!key || value == null || !String(value).trim()) return [];
+    const sourceDocId = field.source_doc_id || null;
+    const fieldId = field.id || `${key}:${index}`;
+    return [{
+      // A field is an evidence source for this verification projection. Keep
+      // source_doc_id in the fact when available, but use a field-specific
+      // section so two canonical facts can reconcile even when their source
+      // document analysis did not retain structured metrics.
+      id: sourceDocId || `transaction-record-field:${fieldId}`,
+      section: `transaction_record_${key}`,
+      filename: 'Transaction Record',
+      created_at: field.updated_at || field.created_at || null,
+      analysis: {
+        normalized_facts: [{
+          key,
+          semantic_key: key,
+          label: field.display_label || field.definition_key || key,
+          value,
+          source_page: field.source_page ?? null,
+          source_excerpt: field.source_excerpt || null,
+        }],
+      },
+    }];
+  });
+}
+
+function withTransactionRecordEvidence(documents = [], fields = []) {
+  const existingFacts = (documents || []).flatMap(extractFacts);
+  const recordDocuments = transactionRecordFieldDocuments(fields).filter(document => {
+    const recordFact = extractFacts(document)[0];
+    if (!recordFact) return false;
+    // If the original analysis already contains the same source fact, avoid
+    // creating a duplicate pair. Otherwise the canonical Transaction Record
+    // field remains a first-class comparison source.
+    return !existingFacts.some(existing =>
+      existing.source_doc_id
+        && recordFact.source_doc_id === existing.source_doc_id
+        && existing.comparison_key === recordFact.comparison_key
+        && existing.value_type === recordFact.value_type
+        && existing.value === recordFact.value
+    );
+  });
+  return [...(documents || []), ...recordDocuments];
+}
+
 function formatAmount(value) {
   return `$${Math.round(value).toLocaleString('en-US')}`;
 }
@@ -417,8 +466,18 @@ function verificationSourceSignature(documents = []) {
   return crypto.createHash('sha256').update(JSON.stringify(source)).digest('hex');
 }
 
-function buildVerificationResult(propertyId, packId, comparableDocuments, runAt = new Date().toISOString()) {
-  const checks = buildChecks(comparableDocuments, runAt);
+function buildVerificationResult(
+  propertyId,
+  packId,
+  comparableDocuments,
+  runAt = new Date().toISOString(),
+  transactionRecordFields = [],
+) {
+  const evidenceDocuments = withTransactionRecordEvidence(
+    comparableDocuments,
+    transactionRecordFields,
+  );
+  const checks = buildChecks(evidenceDocuments, runAt);
   const summary = summarizeChecks(checks);
   return {
     propertyId,
@@ -427,11 +486,11 @@ function buildVerificationResult(propertyId, packId, comparableDocuments, runAt 
       ? 'complete'
       : 'pending',
     run_at: runAt,
-    source_signature: verificationSourceSignature(comparableDocuments),
+    source_signature: verificationSourceSignature(evidenceDocuments),
     summary,
     checks,
-    normalized_facts: comparableDocuments.flatMap(extractFacts),
-    documents_considered: comparableDocuments.map(document => document.section),
+    normalized_facts: evidenceDocuments.flatMap(extractFacts),
+    documents_considered: evidenceDocuments.map(document => document.section),
   };
 }
 
@@ -466,6 +525,15 @@ async function loadComparableDocuments(propertyId) {
   return latestDocuments(documents || []);
 }
 
+async function loadTransactionRecordFields(propertyId) {
+  const { data: fields, error } = await supabase
+    .from('transaction_record_fields')
+    .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, updated_at')
+    .eq('property_id', propertyId);
+  if (error) throw error;
+  return fields || [];
+}
+
 async function persistVerificationResult(result) {
   const { error } = await supabase
     .from('deal_analyses')
@@ -495,9 +563,10 @@ function verificationStateFromAnalysis(analysis, createdAt = null) {
 }
 
 async function getVerificationState(propertyId) {
-  const [rows, comparableDocuments] = await Promise.all([
+  const [rows, comparableDocuments, transactionRecordFields] = await Promise.all([
     loadVerificationRows(propertyId),
     loadComparableDocuments(propertyId),
+    loadTransactionRecordFields(propertyId),
   ]);
   const latestRow = rows[0] || null;
   const latest = latestRow?.analysis || null;
@@ -505,6 +574,8 @@ async function getVerificationState(propertyId) {
     propertyId,
     latest?.packId || null,
     comparableDocuments,
+    undefined,
+    transactionRecordFields,
   );
 
   // Existing rooms may have a verification row created before semantic
@@ -524,8 +595,17 @@ async function getVerificationState(propertyId) {
 }
 
 async function runVerification(propertyId, packId = null) {
-  const comparableDocuments = await loadComparableDocuments(propertyId);
-  const result = buildVerificationResult(propertyId, packId, comparableDocuments);
+  const [comparableDocuments, transactionRecordFields] = await Promise.all([
+    loadComparableDocuments(propertyId),
+    loadTransactionRecordFields(propertyId),
+  ]);
+  const result = buildVerificationResult(
+    propertyId,
+    packId,
+    comparableDocuments,
+    undefined,
+    transactionRecordFields,
+  );
   await persistVerificationResult(result);
   return result;
 }
