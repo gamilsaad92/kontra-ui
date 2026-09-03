@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const { extractDocxText } = require('../lib/docxText');
 
 let openai = null;
 if (process.env.OPENAI_API_KEY) {
@@ -10,8 +11,13 @@ if (process.env.OPENAI_API_KEY) {
   }
 }
 
+function documentTextFromBuffer(buffer) {
+  const docxText = extractDocxText(buffer);
+  return docxText || buffer?.toString('utf8') || '';
+}
+
 function parseDocumentBuffer(buffer) {
-  const text = buffer?.toString('utf8') || '';
+  const text = documentTextFromBuffer(buffer);
   const fields = {};
   if (/income/i.test(text)) fields.income = 100000;
   if (/tax/i.test(text)) fields.taxes = 20000;
@@ -22,7 +28,7 @@ function parseDocumentBuffer(buffer) {
 }
 
 async function summarizeDocumentBuffer(buffer) {
-  const text = buffer?.toString('utf8') || '';
+  const text = documentTextFromBuffer(buffer);
   let summary = text.slice(0, 200);
   let key_terms = {};
   if (openai) {
@@ -52,7 +58,7 @@ async function autoFillFields(buffer) {
   const fields = parseDocumentBuffer(buffer);
   if (openai) {
     try {
-      const text = buffer?.toString('utf8') || '';
+      const text = documentTextFromBuffer(buffer);
       const resp = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
@@ -74,7 +80,7 @@ async function autoFillFields(buffer) {
 }
 
 async function classifyDocumentBuffer(buffer) {
-  const text = buffer?.toString('utf8').toLowerCase() || '';
+  const text = documentTextFromBuffer(buffer).toLowerCase();
   const heuristics = [
     { type: 'invoice', regex: /invoice|bill/ },
     { type: 'bank_statement', regex: /bank[^\n]*statement|statement[^\n]*bank/ },

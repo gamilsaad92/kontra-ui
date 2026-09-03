@@ -607,6 +607,7 @@ const {
   advancedCreditScore,
   detectFraud,
 } = require('./services/underwriting');
+const { extractDocxText } = require('./lib/docxText');
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
@@ -5739,6 +5740,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           let text = '';
           const ext = (filename || '').split('.').pop().toLowerCase();
           const isPdf = mime === 'application/pdf' || ext === 'pdf' || (buf.length > 4 && buf.slice(0, 4).toString() === '%PDF');
+          const isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx';
           if (isPdf) {
             try {
               const { PDFParse } = require('pdf-parse');
@@ -5759,6 +5761,8 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               }
               text = rows.join('\n\n').slice(0, 12000);
             } catch {}
+          } else if (isDocx) {
+            text = extractDocxText(buf).slice(0, 12000);
           } else {
             text = buf.toString('utf8', 0, Math.min(buf.length, 10000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
           }
@@ -5821,10 +5825,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           // Fast text extraction — skips vision pipeline to avoid hangs
           let text = '';
           let isPdf = false;
+          let isDocx = false;
           try {
             const ext = (filename || '').split('.').pop().toLowerCase();
             isPdf = mime === 'application/pdf' || ext === 'pdf' || buf.slice(0,4).toString() === '%PDF';
-            if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
+            isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx';
+            if (isDocx) {
+              text = extractDocxText(buf).slice(0, 15000);
+            } else if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
               const XLSX = require('xlsx');
               const wb = XLSX.read(buf, { type: 'buffer' });
               const rows = [];
@@ -5852,7 +5860,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             // structural garbage (e.g. "obj", "stream", "endobj") that can look like
             // real text but isn't — sending it to the AI causes confusing false
             // "no content" responses instead of an honest "can't extract text" error.
-            if ((!text || text.trim().length < 30) && !isPdf) {
+            if ((!text || text.trim().length < 30) && !isPdf && !isDocx) {
               text = buf.toString('utf8', 0, Math.min(buf.length, 12000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
             }
           } catch (extractErr) {
@@ -10304,6 +10312,8 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (
                   const parser = new PDFParse({ data: buf });
                   const parsed = await parser.getText();
                   text = (parsed?.text || '').slice(0, 8000);
+                } else if (doc.filename?.match(/\.(docx)$/i)) {
+                  text = extractDocxText(buf).slice(0, 8000);
                 } else {
                   text = buf.toString('utf8', 0, 6000);
                 }
