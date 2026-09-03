@@ -221,6 +221,55 @@ describe('verification upload compatibility', () => {
     ]));
   });
 
+  test('uses definition keys and value_json when value_text is empty', async () => {
+    supabase.from
+      .mockReturnValueOnce(builder({
+        data: [
+          { id: 'repair-doc', section: 'repair_estimate', analysis: { summary: 'Repair estimate uploaded.' } },
+          { id: 'claim-doc', section: 'insurance_claim_documentation', analysis: { summary: 'Insurance claim uploaded.' } },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({
+        data: [
+          {
+            id: 'claim-field',
+            field_key: null,
+            definition_key: 'financial.claim_amount',
+            display_label: 'Claim Amount',
+            value_text: '',
+            value_json: { value: '$96,480' },
+            status: 'confirmed',
+            source_doc_id: 'claim-doc',
+          },
+          {
+            id: 'repair-field',
+            field_key: null,
+            definition_key: 'financial.repair_costs',
+            display_label: 'Repair Costs',
+            value_text: '',
+            value_json: { value: '$96,480' },
+            status: 'confirmed',
+            source_doc_id: 'repair-doc',
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({ data: { id: 'hydrated-json-verification' }, error: null }));
+
+    const result = await runVerification('hydrated-json-room');
+
+    expect(result.summary).toEqual({ verified: 1, discrepancies: 0, pending: 0 });
+    expect(result.checks).toEqual([
+      expect.objectContaining({
+        status: 'verified',
+        fact_key: 'financial.claim_amount',
+        value_a: 96480,
+        value_b: 96480,
+      }),
+    ]);
+  });
+
   test('rehydrates a stale room snapshot from active document versions', async () => {
     const documents = [
       {

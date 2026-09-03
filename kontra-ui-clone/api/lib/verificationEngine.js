@@ -256,11 +256,34 @@ function latestDocuments(rows) {
   return [...bySection.values()];
 }
 
+function unwrapTransactionRecordValue(value) {
+  let current = value;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return current;
+    const nested = current.value
+      ?? current.amount
+      ?? current.number
+      ?? current.numeric_value
+      ?? current.display_value
+      ?? current.text;
+    if (nested == null || nested === current) return current;
+    current = nested;
+  }
+  return current;
+}
+
 function transactionRecordFieldDocuments(fields = []) {
   return (fields || []).flatMap((field, index) => {
     const key = field?.field_key || field?.definition_key || field?.key;
-    const value = field?.value_text ?? field?.value_json ?? field?.value;
-    if (!key || value == null || !String(value).trim()) return [];
+    const value = [field?.value_text, field?.value_json, field?.value]
+      .find(candidate => candidate != null && (
+        typeof candidate !== 'string' || candidate.trim()
+      ));
+    if (!key || value == null) return [];
+    const normalizedValue = unwrapTransactionRecordValue(value);
+    if (normalizedValue == null || (
+      typeof normalizedValue === 'string' && !normalizedValue.trim()
+    )) return [];
     const sourceDocId = field.source_doc_id || null;
     const fieldId = field.id || `${key}:${index}`;
     return [{
@@ -277,7 +300,7 @@ function transactionRecordFieldDocuments(fields = []) {
           key,
           semantic_key: key,
           label: field.display_label || field.definition_key || key,
-          value,
+          value: normalizedValue,
           source_page: field.source_page ?? null,
           source_excerpt: field.source_excerpt || null,
         }],
@@ -526,10 +549,16 @@ async function loadComparableDocuments(propertyId) {
 }
 
 async function loadTransactionRecordFields(propertyId) {
-  const { data: fields, error } = await supabase
+  let { data: fields, error } = await supabase
     .from('transaction_record_fields')
-    .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, updated_at')
+    .select('id, field_key, definition_key, display_label, value_text, value_json, status, source_doc_id, source_page, source_excerpt, updated_at, created_at')
     .eq('property_id', propertyId);
+  if (error && /column|schema cache/i.test(error.message || '')) {
+    ({ data: fields, error } = await supabase
+      .from('transaction_record_fields')
+      .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, updated_at, created_at')
+      .eq('property_id', propertyId));
+  }
   if (error) throw error;
   return fields || [];
 }
