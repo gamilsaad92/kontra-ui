@@ -29,6 +29,7 @@ const SEMANTIC_ALIASES = [
   { key: 'financial.ebitda', pattern: /\bebitda\b/i, type: 'amount' },
   { key: 'financial.equity', pattern: /\b(?:owner|borrower|investor)?\s*equity\b/i, type: 'amount' },
   { key: 'financial.repair_costs', pattern: /\b(?:repair|restoration)\s+(?:cost|costs|amount|estimate)\b|\btotal\s+repair\b/i, type: 'amount' },
+  { key: 'financial.claim_amount', pattern: /\b(?:insurance\s+)?claim\s+(?:amount|value)\b|\bamount\s+of\s+(?:the\s+)?claim\b|\btotal\s+claim\b/i, type: 'amount' },
   { key: 'transaction.purchase_price', pattern: /\b(?:purchase|sale)\s+price\b|\bconsideration\b/i, type: 'amount' },
   { key: 'transaction.value', pattern: /\btransaction\s+value\b|\bdeal\s+value\b|\bvaluation\b/i, type: 'amount' },
   { key: 'covenant.delinquency_rate', pattern: /\bdelinquen(?:cy|t)\b/i, type: 'percent', relationship: 'delinquency_rate' },

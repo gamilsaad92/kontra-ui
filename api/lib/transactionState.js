@@ -121,7 +121,12 @@ function storedDocumentAmounts(document) {
 }
 
 async function reconcileStoredDocumentConflicts(propertyId) {
-  if (!propertyId) return;
+  const reconciliation = {
+    retiredConflictIds: new Set(),
+    retiredConflicts: [],
+    activeDocuments: null,
+  };
+  if (!propertyId) return reconciliation;
   try {
     const [
       { data: initialDocuments, error: initialDocumentsError },
@@ -151,6 +156,9 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       documentsError = legacyDocuments.error;
     }
     if (documentsError) throw documentsError;
+    // Preserve the active evidence snapshot even if a legacy field-table
+    // schema prevents the optional field projection from loading.
+    reconciliation.activeDocuments = documents || [];
     if (fieldsError) throw fieldsError;
     if (openConflictsError && !/relation|schema cache|column/i.test(openConflictsError.message || '')) {
       throw openConflictsError;
@@ -158,13 +166,25 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const sourceDocuments = selectActiveDocumentVersions(documents || []);
     for (const conflict of openConflicts || []) {
       if (isConflictSupportedByActiveEvidence(conflict, documents || [])) continue;
+      if (conflict.id) reconciliation.retiredConflictIds.add(conflict.id);
+      reconciliation.retiredConflicts.push(conflict);
       const resolvedAt = new Date().toISOString();
-      const { error: resolveError } = await supabase.from('transaction_record_conflicts').update({
+      let { error: resolveError } = await supabase.from('transaction_record_conflicts').update({
         status: 'resolved',
         resolved_at: resolvedAt,
         resolution_note: 'Removed from live state because its sources are superseded or semantically unrelated.',
         updated_at: resolvedAt,
       }).eq('id', conflict.id).eq('property_id', propertyId);
+      // Existing rooms can be read by a runtime whose conflict table predates
+      // the additive resolution metadata. Keep durable cleanup best-effort;
+      // the in-memory retiredConflictIds projection below still prevents the
+      // stale row from reaching readiness or Operations Manager.
+      if (resolveError && /column|schema cache/i.test(resolveError.message || '')) {
+        ({ error: resolveError } = await supabase.from('transaction_record_conflicts').update({
+          status: 'resolved',
+          updated_at: resolvedAt,
+        }).eq('id', conflict.id).eq('property_id', propertyId));
+      }
       if (resolveError && !/relation|schema cache|column/i.test(resolveError.message || '')) {
         throw resolveError;
       }
@@ -291,7 +311,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         { amount: valueB, excerpt: check.description || null, document: documentB },
       );
     }
-    if (candidates.length < 2) return;
+    if (candidates.length < 2) return reconciliation;
     // Only evidence that can actually produce this field may reopen a resolved
     // conflict. An unrelated document uploaded later (for example a title
     // report) must not resurrect an already resolved repair-cost discrepancy.
@@ -319,7 +339,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const canonicalAmount = parseAmount(field?.value_text) || candidatePool[0].amount;
     const canonicalCandidate = candidatePool.find(item => item.amount === canonicalAmount) || candidatePool[0];
     const different = candidatePool.find(item => item.amount !== canonicalAmount);
-    if (!different) return;
+    if (!different) return reconciliation;
     const canonicalSource = focusedCandidates.length >= 2
       ? (candidatePool.find(item =>
         item.amount === canonicalAmount && item.document?.section === 'contractor_documentation'
@@ -354,14 +374,14 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       .ilike('display_label', 'Repair Costs')
       .order('updated_at', { ascending: false });
     if (conflictLookupError) {
-      if (/relation|schema cache|column/i.test(conflictLookupError.message || '')) return;
+      if (/relation|schema cache|column/i.test(conflictLookupError.message || '')) return reconciliation;
       throw conflictLookupError;
     }
     if (shouldPreserveResolvedConflict({
       resolvedConflicts: openConflict || [],
       fieldKey: canonicalKey,
       latestEvidenceAt,
-    })) return;
+    })) return reconciliation;
     const unresolvedConflict = (openConflict || []).find(conflict =>
       conflict.status === 'unresolved' && conflict.field_key === canonicalKey
     );
@@ -386,11 +406,13 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       : supabase.from('transaction_record_conflicts').insert(payload);
     const { error: saveError } = await query;
     if (saveError) throw saveError;
+    return reconciliation;
   } catch (error) {
     // Conflict migration rollout must not make every room unreadable.
     if (!/relation|schema cache|column/i.test(error.message || '')) {
       console.warn('[transaction-state] stored conflict reconciliation failed:', error.message);
     }
+    return reconciliation;
   }
 }
 
@@ -787,6 +809,81 @@ function isConflictSupportedByActiveEvidence(conflict, documents = []) {
   return true;
 }
 
+function filterRetiredTransactionConflicts(conflicts, reconciliation) {
+  const rows = Array.isArray(conflicts) ? conflicts : [];
+  if (!reconciliation) return rows;
+  const retiredIds = reconciliation.retiredConflictIds instanceof Set
+    ? reconciliation.retiredConflictIds
+    : new Set();
+  return rows.filter(conflict => {
+    if (conflict?.id && retiredIds.has(conflict.id)) return false;
+    if (!Array.isArray(reconciliation.activeDocuments)) return true;
+    return isConflictSupportedByActiveEvidence(
+      conflict,
+      reconciliation.activeDocuments,
+    );
+  });
+}
+
+function clearRetiredTransactionConflictFields(fields, reconciliation) {
+  const rows = Array.isArray(fields) ? fields : [];
+  const retiredConflicts = Array.isArray(reconciliation?.retiredConflicts)
+    ? reconciliation.retiredConflicts
+    : [];
+  if (!retiredConflicts.length) return rows;
+
+  const valueFor = value => String(
+    value && typeof value === 'object'
+      ? (value.value ?? value.value_text ?? value.display_value ?? '')
+      : value ?? '',
+  ).trim().toLowerCase();
+  const sourceIdFor = value => value?.source_doc_id || value?.sourceDocId || null;
+
+  return rows.map(field => {
+    const matchingConflicts = retiredConflicts.filter(conflict =>
+      (conflict.field_id && conflict.field_id === field.id)
+        || (conflict.field_key && conflict.field_key === field.field_key)
+    );
+    if (!matchingConflicts.length) return field;
+
+    const candidates = Array.isArray(field.conflict_candidates)
+      ? field.conflict_candidates
+      : [];
+    let remainingCandidates = candidates;
+    let removedCandidate = false;
+    for (const conflict of matchingConflicts) {
+      const conflictingValue = valueFor(conflict.conflicting_value);
+      const conflictingSourceId = conflict.conflicting_source_doc_id || null;
+      const nextCandidates = remainingCandidates.filter(candidate => {
+        const sameValue = conflictingValue && valueFor(candidate) === conflictingValue;
+        const sameSource = !conflictingSourceId
+          || sourceIdFor(candidate) === conflictingSourceId;
+        if (sameValue && sameSource) {
+          removedCandidate = true;
+          return false;
+        }
+        return true;
+      });
+      remainingCandidates = nextCandidates;
+    }
+
+    // If the stored row has no candidate projection, or its only candidate
+    // was the retired equivalent value, clear the legacy field-level blocker
+    // in memory even when the field update cannot be persisted during rollout.
+    if (!candidates.length || removedCandidate && !remainingCandidates.length) {
+      return {
+        ...field,
+        status: field.verified_by ? 'verified' : 'extracted',
+        conflict_candidates: [],
+      };
+    }
+    if (removedCandidate) {
+      return { ...field, conflict_candidates: remainingCandidates };
+    }
+    return field;
+  });
+}
+
 function recordStatusRank(field) {
   const status = String(field?.status || '').toLowerCase();
   if (CONFLICT_RECORD_STATUSES.has(status)) return 5;
@@ -1109,7 +1206,7 @@ async function readTransactionState(propertyId) {
       console.warn('[transaction-state] verification hydration failed:', error.message);
     }
   }
-  await reconcileStoredDocumentConflicts(propertyId);
+  const conflictReconciliation = await reconcileStoredDocumentConflicts(propertyId);
   await reconcileConfirmedFieldHistory(propertyId);
   const roomQuery = supabase
     .from('deal_rooms')
@@ -1152,11 +1249,23 @@ async function readTransactionState(propertyId) {
   }
   if (roomError) throw roomError;
   if (fieldsError) throw fieldsError;
+  recordFields = clearRetiredTransactionConflictFields(
+    recordFields || [],
+    conflictReconciliation,
+  );
   // Migration 023 is additive. Keep older template rooms readable while the
   // conflict table is being rolled out to an environment.
-  const conflicts = conflictsResult?.error
+  const storedConflicts = conflictsResult?.error
     ? (/relation|schema cache|column/i.test(conflictsResult.error.message || '') ? [] : (() => { throw conflictsResult.error; })())
     : (conflictsResult?.data || []);
+  // The durable update above can be unavailable during an additive migration.
+  // Never let an equivalent or superseded existing-room conflict leak through
+  // to readiness, Overview, or Operations Manager just because that update
+  // could not be persisted on this runtime.
+  const conflicts = filterRetiredTransactionConflicts(
+    storedConflicts,
+    conflictReconciliation,
+  );
   const packId = resolvePackIdFromRoom(room);
   let schemaKey = await resolveSchemaKey(room, packId);
   const generatedProposal = generatedProposalFromRoom(room);
@@ -1270,6 +1379,8 @@ module.exports = {
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,
   reconcileStoredDocumentConflicts,
+  filterRetiredTransactionConflicts,
+  clearRetiredTransactionConflictFields,
   reconcileConfirmedFieldHistory,
   hasMeaningfulRecordValue,
   shouldPreserveResolvedConflict,

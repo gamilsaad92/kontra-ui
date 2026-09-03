@@ -3825,6 +3825,7 @@ function DigitalAssetReadinessSection({
   property,
   recordFields,
   recordState = null,
+  conflicts = [],
   readiness,
   provenanceGaps = [],
   ownerToken = '',
@@ -3835,6 +3836,7 @@ function DigitalAssetReadinessSection({
   embedded = false,
   onRecordUpdated,
   focusRequest = null,
+  onConflict,
 }) {
   const [expandedCat, setExpandedCat] = useState(null);
   const [confirmingField, setConfirmingField] = useState('');
@@ -3905,6 +3907,10 @@ function DigitalAssetReadinessSection({
   // full Transaction Record. This is data wiring only; the rendered layout is
   // intentionally unchanged.
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const unresolvedRecordConflicts = getCanonicalUnresolvedConflicts(
+    canonicalRecordState,
+    conflicts,
+  );
   const proposalFields = Array.isArray(getGeneratedProposal(property)?.transaction_record_fields)
     ? getGeneratedProposal(property).transaction_record_fields
     : [];
@@ -4114,7 +4120,8 @@ function DigitalAssetReadinessSection({
            ? 'Transaction value missing'
            : `${missingDefs[0].label} missing`;
 
-     return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, count, total, sources, st, summary };
+      const conflictDefs = enriched.filter(d => d.state.status === 'conflict');
+      return { ...cat, enriched, confirmedDefs, awaitingDefs, missingDefs, conflictDefs, count, total, sources, st, summary };
   });
 
   const readyCount   = categories.filter(c => c.st === 'ready').length;
@@ -4350,6 +4357,43 @@ function DigitalAssetReadinessSection({
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {cat.conflictDefs.length > 0 && (
+                      <div>
+                        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-red-700">Conflicts to resolve</p>
+                        <ul className="space-y-1">
+                          {cat.conflictDefs.map(d => {
+                            const conflict = unresolvedRecordConflicts.find(item =>
+                              normalizeAttentionFieldKey(item.fieldKey || item.field_key)
+                                === normalizeAttentionFieldKey(d.key),
+                            ) || {
+                              id: `field-conflict:${d.key}`,
+                              fieldKey: d.key,
+                              label: d.label,
+                              canonicalValue: d.state.value || null,
+                              conflictingValue: d.state.field?.conflictCandidates?.[0]?.value || null,
+                            };
+                            return (
+                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg border border-red-100 bg-red-50/60 px-2 py-1.5 text-xs text-red-800 transition-shadow ${focusedFieldKey === d.key ? 'ring-2 ring-red-300 ring-offset-1' : ''}`}>
+                                <span className="flex items-start gap-1.5">
+                                  <span className="mt-0.5 shrink-0 text-red-500">!</span>
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block break-words font-semibold">{d.label}</span>
+                                    <span className="mt-0.5 block break-words text-[11px] text-red-700">
+                                      {conflict.canonicalValue || d.state.value || 'Not recorded'}
+                                      {' '}vs{' '}
+                                      {conflict.conflictingValue || 'another source'}
+                                    </span>
+                                  </span>
+                                  <button type="button" onClick={() => onConflict?.(conflict)} className="shrink-0 rounded-lg border border-red-200 bg-white px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-50">
+                                    Resolve
+                                  </button>
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
                     {/* Confirmed */}
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Confirmed</p>
@@ -8668,6 +8712,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const overviewAction = useCallback((action = {}) => {
     if (action.type === 'conflict' && action.conflict) {
       setSelectedConflict(action.conflict);
+      const conflictKey = normalizeAttentionFieldKey(
+        action.conflict.fieldKey || action.conflict.field_key || '',
+      );
+      if (conflictKey) {
+        onTabChange?.('overview');
+        setRecordFocus({
+          key: conflictKey,
+          keys: [conflictKey],
+          label: action.conflict.label || action.conflict.display_label || '',
+          nonce: Date.now(),
+        });
+      }
       return;
     }
     if (action.type === 'tab') {
@@ -9039,6 +9095,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
              property={property}
             recordFields={recordFields}
             recordState={canonicalRecordState}
+             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             readiness={readiness}
              provenanceGaps={verifiedAssetReadiness?.reasons?.provenance_gaps || []}
              ownerToken={ownerToken}
@@ -9049,6 +9106,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             embedded
             onRecordUpdated={load}
             focusRequest={recordFocus}
+             onConflict={setSelectedConflict}
           />
         </div>
       </section>

@@ -6,6 +6,8 @@ const {
   latestEvidenceTimestamp,
   shouldPreserveResolvedConflict,
   isConflictSupportedByActiveEvidence,
+  filterRetiredTransactionConflicts,
+  clearRetiredTransactionConflictFields,
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
@@ -501,6 +503,73 @@ describe('transaction state recalculation', () => {
       canonical_value: '$8,100,000',
       conflicting_value: '$8,000,000',
     }, [])).toBe(true);
+  });
+
+  it('retires a parent-versus-subtype loss conflict but preserves sibling conflicts', () => {
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'transaction.loss_type',
+      display_label: 'Loss Type',
+      canonical_value: 'Hazard loss',
+      conflicting_value: 'Hazard loss - fire',
+    }, [])).toBe(false);
+    expect(isConflictSupportedByActiveEvidence({
+      field_key: 'transaction.loss_type',
+      display_label: 'Loss Type',
+      canonical_value: 'Hazard loss - fire',
+      conflicting_value: 'Hazard loss - water',
+    }, [])).toBe(true);
+  });
+
+  it('filters an equivalent existing-room conflict from live state even when durable cleanup is pending', () => {
+    const conflicts = filterRetiredTransactionConflicts([
+      {
+        id: 'parent-subtype',
+        field_key: 'transaction.loss_type',
+        display_label: 'Loss Type',
+        canonical_value: 'Hazard loss',
+        conflicting_value: 'Hazard loss - fire',
+        status: 'unresolved',
+      },
+      {
+        id: 'siblings',
+        field_key: 'transaction.loss_type',
+        display_label: 'Loss Type',
+        canonical_value: 'Hazard loss - fire',
+        conflicting_value: 'Hazard loss - water',
+        status: 'unresolved',
+      },
+    ], {
+      retiredConflictIds: new Set(['parent-subtype']),
+      activeDocuments: [],
+    });
+
+    expect(conflicts.map(conflict => conflict.id)).toEqual(['siblings']);
+  });
+
+  it('clears a legacy field-level blocker for a retired existing-room conflict', () => {
+    const fields = clearRetiredTransactionConflictFields([{
+      id: 'loss-type-field',
+      field_key: 'transaction.loss_type',
+      status: 'conflicting',
+      value_text: 'Hazard loss',
+      conflict_candidates: [{
+        value: 'Hazard loss - fire',
+        source_doc_id: 'fire-document',
+      }],
+    }], {
+      retiredConflicts: [{
+        field_id: 'loss-type-field',
+        field_key: 'transaction.loss_type',
+        canonical_value: 'Hazard loss',
+        conflicting_value: 'Hazard loss - fire',
+        conflicting_source_doc_id: 'fire-document',
+      }],
+    });
+
+    expect(fields[0]).toEqual(expect.objectContaining({
+      status: 'extracted',
+      conflict_candidates: [],
+    }));
   });
 
   it('retires the facility-identifier versus principal conflict automatically', () => {

@@ -127,6 +127,41 @@ describe('verification upload compatibility', () => {
     })).toEqual([]);
   });
 
+  test('compares repair and claim amounts while keeping policy limits separate', () => {
+    const checks = buildChecks([
+      {
+        id: 'repair',
+        section: 'repair_estimate',
+        analysis: { metrics: { repair_costs: '$96,480' } },
+      },
+      {
+        id: 'claim',
+        section: 'insurance_claim_documentation',
+        analysis: { metrics: { claim_amount: '$96,480' } },
+      },
+      {
+        id: 'policy',
+        section: 'insurance_coverage',
+        analysis: { metrics: { policy_limit: '$2,500,000' } },
+      },
+    ], '2026-08-29T00:00:00.000Z');
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'fact_consistency',
+        status: 'verified',
+        fact_key: 'financial.repair_costs',
+        value_a: 96480,
+        value_b: 96480,
+      }),
+    ]));
+    expect(checks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ value_a: 2500000 }),
+      expect.objectContaining({ value_b: 2500000 }),
+      expect.objectContaining({ semantic_key: 'financial.policy_limit' }),
+    ]));
+  });
+
   test('rehydrates a stale room snapshot from active document versions', async () => {
     const documents = [
       {
