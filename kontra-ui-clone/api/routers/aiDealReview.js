@@ -21,6 +21,7 @@ const {
   selectActiveDocumentVersions,
 } = require('../lib/documentVersions');
 const { clearBriefingCache } = require('../lib/operationsManager');
+const { extractDocxText } = require('../lib/docxText');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
@@ -72,9 +73,10 @@ function buildDocumentVersionInsertPayloads({
 // uploads: an earlier version remains auditable but cannot remain live evidence.
 async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText }) {
   const sourceHash = fileBuffer ? crypto.createHash('sha256').update(fileBuffer).digest('hex') : null;
+  let existingRecordId = null;
   if (sourceHash) {
     let { data: existing, error: existingError } = await supabase.from('deal_analyses')
-      .select('id').eq('property_id', propertyId).eq('section', section)
+      .select('id, processing_status, analysis').eq('property_id', propertyId).eq('section', section)
       .eq('source_hash', sourceHash).eq('is_active', true).maybeSingle();
     if (existingError && /is_active|superseded_at|superseded_by|schema cache/i.test(existingError.message || '')) {
       const legacy = await supabase.from('deal_analyses')
@@ -86,7 +88,35 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
         .find(row => row.source_hash === sourceHash) || null;
       existingError = legacy.error;
     }
-    if (!existingError && existing?.id) return existing.id;
+    if (!existingError && existing?.id) {
+      // The original generic route could persist a successful-looking analysis
+      // after sending raw DOCX ZIP bytes to the model. Re-uploading that same
+      // file must replace the stale result, not return its id unchanged.
+      existingRecordId = existing.id;
+      const refreshedPayload = {
+        filename,
+        analysis,
+        uploaded_by_role: role || 'unknown',
+        storage_path: storagePath,
+        source_hash: sourceHash,
+        processing_status: 'extracted',
+        is_active: true,
+      };
+      let { error: refreshError } = await supabase.from('deal_analyses')
+        .update(refreshedPayload)
+        .eq('id', existingRecordId);
+      if (refreshError && /column|schema cache/i.test(refreshError.message || '')) {
+        ({ error: refreshError } = await supabase.from('deal_analyses')
+          .update({
+            filename,
+            analysis,
+            uploaded_by_role: role || 'unknown',
+            storage_path: storagePath,
+          })
+          .eq('id', existingRecordId));
+      }
+      if (refreshError) throw refreshError;
+    }
   }
   // Keep the source hash and processing state when only the active-version
   // columns are missing. The final payload is for older installations that
@@ -94,14 +124,18 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   const payloads = buildDocumentVersionInsertPayloads({
     propertyId, section, filename, analysis, role, storagePath, sourceHash,
   });
-  let { data: saved, error } = await supabase.from('deal_analyses')
-    .insert(payloads[0]).select('id').single();
-  if (error && /column|schema cache/i.test(error.message || '')) {
-    for (const payload of payloads.slice(1)) {
-      ({ data: saved, error } = await supabase.from('deal_analyses')
-        .insert(payload).select('id').single());
-      if (!error) break;
-      if (!/column|schema cache/i.test(error.message || '')) break;
+  let saved = existingRecordId ? { id: existingRecordId } : null;
+  let error = null;
+  if (!existingRecordId) {
+    ({ data: saved, error } = await supabase.from('deal_analyses')
+      .insert(payloads[0]).select('id').single());
+    if (error && /column|schema cache/i.test(error.message || '')) {
+      for (const payload of payloads.slice(1)) {
+        ({ data: saved, error } = await supabase.from('deal_analyses')
+          .insert(payload).select('id').single());
+        if (!error) break;
+        if (!/column|schema cache/i.test(error.message || '')) break;
+      }
     }
   }
   if (error) throw error;
@@ -352,9 +386,27 @@ async function extractTextFromFile(buffer, mimetype = '', filename = '') {
   if (mimetype === 'text/csv' || mimetype === 'text/plain' || ext === 'csv') {
     return buffer.toString('utf8').slice(0, 15000);
   }
-  // DOCX / fallback — strip binary noise
+  // DOCX — read the actual XML payload rather than decoding the ZIP as UTF-8.
+  // This is the path used by custom workflow-pack checklist uploads.
+  if (
+    mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || ext === 'docx'
+  ) {
+    return extractDocxText(buffer).slice(0, 15000);
+  }
+  // Legacy fallback — strip binary noise for unsupported document types.
   const raw = buffer.toString('utf8', 0, Math.min(buffer.length, 60000));
   return raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim().slice(0, 12000);
+}
+
+function safeExtractionExcerpt(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[phone]')
+    .replace(/\b\d{6,}\b/g, '[number]')
+    .trim()
+    .slice(0, 180);
 }
 
 router.post('/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
@@ -719,9 +771,33 @@ router.post('/analyze-document', aiRateLimit, upload.single('file'), async (req,
   const uploadAccess = await authorizeDocumentUpload(req, res, section);
   if (!uploadAccess) return;
   const role = uploadAccess.role;
-  console.log('[analyze-document] section:', section, 'file:', req.file.originalname);
+  const extension = (req.file.originalname || '').split('.').pop()?.toLowerCase() || '';
+  const isDocx = req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    || extension === 'docx';
+  const sourceHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+  console.log(
+    '[analyze-document] received',
+    JSON.stringify({
+      section,
+      filename: req.file.originalname,
+      mimetype: req.file.mimetype,
+      extension,
+      bytes: req.file.buffer.length,
+      source: 'multer.memoryStorage:req.file.buffer',
+      sha256_prefix: sourceHash.slice(0, 12),
+    }),
+  );
   try {
     const text = await extractTextFromFile(req.file.buffer, req.file.mimetype, req.file.originalname);
+    console.log(
+      '[analyze-document] extracted',
+      JSON.stringify({
+        section,
+        extractor: isDocx ? 'docx:word/document.xml' : 'content-type/extension',
+        text_length: text.length,
+        excerpt: safeExtractionExcerpt(text),
+      }),
+    );
     if (!text || text.trim().length < 30) {
       return res.status(422).json({ error: 'Could not extract text from this file. Please ensure it is not password-protected and contains readable content.' });
     }
@@ -769,7 +845,7 @@ Return only valid JSON. No extra text.`;
         propertyId: property_id, section, filename: _name, analysis: result,
         role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
-      console.log(`[deal_analyses] ${section} saved (analyze-document)`);
+      console.log(`[deal_analyses] ${section} saved (analyze-document) — fresh content analysis persisted`);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }
     res.json({ success: true, analysis: result });
