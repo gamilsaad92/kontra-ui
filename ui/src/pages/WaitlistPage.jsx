@@ -101,7 +101,7 @@ export default function WaitlistPage() {
                   <label className="text-xs font-medium text-gray-600 block mb-1.5">Work email</label>
                   <input
                     type="email"
-                    placeholder="alex@firm.com"
+                    placeholder="Your email"
                     value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                     className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-black
