@@ -8,3 +8,4 @@
 - [Participant invitation grounding](participant-invitation-grounding.md) — absent invite rows show no current invitation status, never that a role was historically never invited
 - [Vercel deployment inspection](vercel-deployment-inspection.md) — an installed Vercel API-key connection can block deployment/SHA checks with a structured invalid-token 403
 - [Deal room document lifecycle](deal-room-document-lifecycle.md) — retain private originals for room lifetime, then verify storage cleanup before deleting mutable room data
+- [Frontend API base resolution](frontend-api-base.md) — hosted UI requests must use the shared API-base resolver, not page-local Vite variables
