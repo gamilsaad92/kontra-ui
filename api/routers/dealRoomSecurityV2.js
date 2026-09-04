@@ -40,7 +40,7 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 
 // ── Resend email sender ──────────────────────────────────────────────────────
 const RESEND_KEY  = process.env.RESEND_API_KEY;
-const FROM_EMAIL  = 'Kontra <notifications@kontraplatform.com>';
+const FROM_EMAIL  = 'Kontra <support@kontraplatform.com>';
 const BASE_URL    = process.env.APP_BASE_URL || 'https://kontraplatform.com';
 
 async function sendResendEmail({ to, subject, text, html }) {

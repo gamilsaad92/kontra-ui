@@ -44,7 +44,7 @@ const DEMO_LOAN = {
   next_payment_date: "2026-05-01",
   next_payment_amount: 29_968.75,
   servicer_name: "Kontra Capital Servicing",
-  servicer_contact: "servicing@kontraplatform.com",
+  servicer_contact: "support@kontraplatform.com",
 };
 
 const DEMO_PAYMENTS = [

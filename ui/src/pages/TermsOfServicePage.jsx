@@ -178,7 +178,7 @@ export default function TermsOfServicePage() {
               <br /><br />
               <span className="text-white">Kontra Technologies, Inc.</span><br />
               Legal Department<br />
-              <a href="mailto:legal@kontraplatform.com" style={{ color: '#800020' }}>legal@kontraplatform.com</a>
+              <a href="mailto:gamilsaad@kontraplatform.com" style={{ color: '#800020' }}>gamilsaad@kontraplatform.com</a>
             </p>
           </section>
 

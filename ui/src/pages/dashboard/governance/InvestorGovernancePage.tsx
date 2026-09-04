@@ -219,16 +219,16 @@ const DEMO_AUDIT: AuditEntry[] = [
 ];
 
 const DEMO_ROLES: RoleAssignment[] = [
-  { id: "r1", user_name: "James Whitfield",  email: "j.whitfield@kontraplatform.com", role: "lender_controller", voting_power: 0,    active: true },
+  { id: "r1", user_name: "James Whitfield",  email: "j.whitfield@example.com", role: "lender_controller", voting_power: 0,    active: true },
   { id: "r2", user_name: "Maria Chen",       email: "m.chen@abcservicing.com",         role: "master_servicer",   voting_power: 0,    active: true },
   { id: "r3", user_name: "David Okafor",     email: "d.okafor@specialserv.com",        role: "special_servicer",  voting_power: 0,    active: true },
-  { id: "r4", user_name: "Sarah Müller",     email: "s.muller@kontraplatform.com",     role: "asset_manager",     voting_power: 0,    active: true },
+  { id: "r4", user_name: "Sarah Müller",     email: "s.muller@example.com",     role: "asset_manager",     voting_power: 0,    active: true },
   { id: "r5", user_name: "Apex Capital LLC", email: "ops@apexcapital.com",             role: "investor",          voting_power: 24.5, active: true },
   { id: "r6", user_name: "Bridgewater Fund", email: "ops@bridgewaterfund.com",         role: "investor",          voting_power: 18.3, active: true },
   { id: "r7", user_name: "Harbor Equity",    email: "invest@harborequity.com",         role: "investor",          voting_power: 15.1, active: true },
   { id: "r8", user_name: "Summit RE Fund",   email: "info@summitrefund.com",           role: "investor",          voting_power: 12.8, active: true },
   { id: "r9", user_name: "Pacific Trust",    email: "ops@pacifictrust.io",             role: "investor",          voting_power: 9.6,  active: true },
-  { id: "r10", user_name: "Aria Patel",      email: "a.patel@kontraplatform.com",      role: "admin",             voting_power: 0,    active: true },
+  { id: "r10", user_name: "Aria Patel",      email: "a.patel@example.com",      role: "admin",             voting_power: 0,    active: true },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────

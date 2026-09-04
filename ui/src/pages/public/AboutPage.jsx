@@ -156,9 +156,9 @@ export default function AboutPage() {
               className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl text-sm font-semibold text-white border border-white/20 hover:bg-white/10 transition">
               <span>✉️</span> hello@kontraplatform.com
             </a>
-            <a href="mailto:security@kontraplatform.com"
+            <a href="mailto:support@kontraplatform.com"
               className="flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl text-sm font-medium text-gray-400 border border-white/10 hover:bg-white/5 transition">
-              <span>🔒</span> security@kontraplatform.com
+              <span>🔒</span> support@kontraplatform.com
             </a>
           </div>
           <div className="mt-8 pt-8 border-t border-white/10">

@@ -519,7 +519,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
             method: 'POST',
             headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              from: 'Kontra Platform <notifications@kontraplatform.com>',
+              from: 'Kontra Platform <support@kontraplatform.com>',
               to: [email],
               subject: `Verified Transaction Package — ${assetName}`,
               html: `

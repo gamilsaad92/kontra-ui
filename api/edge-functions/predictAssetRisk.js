@@ -61,7 +61,7 @@ module.exports = async function predictAssetRisk() {
       console.log('⚠️ High risk asset', asset.id, 'score:', predicted_risk, explanation);
     }
     if (predicted_risk > 0.9) {
-      await sendEmail('alerts@kontra.com', 'High risk asset', 'Asset ' + asset.id + ' risk ' + predicted_risk);
+      await sendEmail('support@kontraplatform.com', 'High risk asset', 'Asset ' + asset.id + ' risk ' + predicted_risk);
     }
 
     if (predicted_risk > 0.7) {

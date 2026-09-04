@@ -302,7 +302,7 @@ router.get('/openapi', (req, res) => {
       title: 'Kontra Enterprise API',
       version: '5.0.0',
       description: 'Headless enterprise infrastructure API for CRE loan servicing. Provides model routing, webhooks, event bus, plugin connectors, and API key management.',
-      contact: { name: 'Kontra Platform', email: 'api@kontraplatform.com', url: 'https://kontraplatform.com' },
+      contact: { name: 'Kontra Platform', email: 'support@kontraplatform.com', url: 'https://kontraplatform.com' },
       license: { name: 'Enterprise License' },
     },
     servers: [{ url: '/api/v1', description: 'Kontra API v1' }],

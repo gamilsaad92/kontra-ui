@@ -708,7 +708,7 @@ export default function ReportBuilder() {
                 </label>
                 <Input
                   id="schedule-email"
-                  placeholder="reports@kontra.ai"
+                  placeholder="hello@kontraplatform.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />

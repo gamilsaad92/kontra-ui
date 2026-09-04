@@ -15,7 +15,7 @@ async function seed() {
     deal_type: 'Acquisition',
     deal_stage: 'under_review',
     status: 'active',
-    customer_email: 'demo@kontraplatform.com',
+    customer_email: 'hello@kontraplatform.com',
     first_name: 'Demo',
     activated_at: daysAgo(12),
     created_at: daysAgo(14),
@@ -176,10 +176,10 @@ async function seed() {
   // 3. Party submissions
   await supabase.from('party_submissions').delete().eq('property_id', 'kontra-demo');
   const parties = [
-    { role: 'lender',    name: 'First National Capital',      email: 'lender@demo.kontraplatform.com',    doc_count: 0, submitted_at: daysAgo(7) },
-    { role: 'inspector', name: 'Rodriguez & Associates',      email: 'inspector@demo.kontraplatform.com', doc_count: 1, submitted_at: daysAgo(10) },
-    { role: 'insurer',   name: 'Allied Property & Casualty',  email: 'insurer@demo.kontraplatform.com',   doc_count: 1, submitted_at: daysAgo(9) },
-    { role: 'attorney',  name: 'Morrison & Foerster LLP',     email: 'attorney@demo.kontraplatform.com',  doc_count: 1, submitted_at: daysAgo(8) },
+    { role: 'lender',    name: 'First National Capital',      email: 'lender@example.com',    doc_count: 0, submitted_at: daysAgo(7) },
+    { role: 'inspector', name: 'Rodriguez & Associates',      email: 'inspector@example.com', doc_count: 1, submitted_at: daysAgo(10) },
+    { role: 'insurer',   name: 'Allied Property & Casualty',  email: 'insurer@example.com',   doc_count: 1, submitted_at: daysAgo(9) },
+    { role: 'attorney',  name: 'Morrison & Foerster LLP',     email: 'attorney@example.com',  doc_count: 1, submitted_at: daysAgo(8) },
   ];
   for (const p of parties) {
     const { error } = await supabase.from('party_submissions').upsert(

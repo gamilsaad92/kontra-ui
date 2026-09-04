@@ -48,7 +48,7 @@ const PILLARS = [
     items: [
       "Material deal room actions — AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with timestamps and attributed parties.",
       "Audit logs are designed to be append-only through the application layer. Administrative or infrastructure-level access is separate and restricted.",
-      "Deal room owners can request an audit log export by emailing privacy@kontraplatform.com.",
+      "Deal room owners can request an audit log export by emailing gamilsaad@kontraplatform.com.",
     ],
   },
   {
@@ -66,7 +66,7 @@ const PILLARS = [
     title: "Incident Response",
     items: [
       "In the event of a confirmed data breach affecting personal information, Kontra will provide legally required notices without unreasonable delay and within any time period required by applicable law.",
-      "To report a security concern, email security@kontraplatform.com — we aim to acknowledge reports within one business day.",
+      "To report a security concern, email support@kontraplatform.com — we aim to acknowledge reports within one business day.",
     ],
   },
   {
@@ -74,8 +74,8 @@ const PILLARS = [
     title: "Compliance Roadmap",
     items: [
       "Kontra is not currently SOC 2 certified. Any future audit or certification work remains subject to scope, timing, and completion.",
-      "Data Processing Agreement requests may be discussed by contacting legal@kontraplatform.com; availability depends on the applicable service arrangement.",
-      "For vendor security questionnaires, email legal@kontraplatform.com.",
+      "Data Processing Agreement requests may be discussed by contacting gamilsaad@kontraplatform.com; availability depends on the applicable service arrangement.",
+      "For vendor security questionnaires, email gamilsaad@kontraplatform.com.",
     ],
   },
 ];
@@ -146,8 +146,8 @@ export default function SecurityPage() {
             <p className="text-sm font-semibold text-gray-900 mb-1">Report a security issue</p>
             <p className="text-sm text-gray-600">
               Email{" "}
-              <a href="mailto:security@kontraplatform.com" className="underline hover:text-gray-900">
-                security@kontraplatform.com
+              <a href="mailto:support@kontraplatform.com" className="underline hover:text-gray-900">
+                support@kontraplatform.com
               </a>
               {" "}— we aim to acknowledge reports within one business day.
             </p>
@@ -156,8 +156,8 @@ export default function SecurityPage() {
             <p className="text-sm font-semibold text-gray-900 mb-1">Enterprise and DPA requests</p>
             <p className="text-sm text-gray-600">
               For vendor security questionnaires or Data Processing Agreement requests, email{" "}
-              <a href="mailto:legal@kontraplatform.com" className="underline hover:text-gray-900">
-                legal@kontraplatform.com
+              <a href="mailto:gamilsaad@kontraplatform.com" className="underline hover:text-gray-900">
+                gamilsaad@kontraplatform.com
               </a>
               .
             </p>

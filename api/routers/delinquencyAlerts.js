@@ -29,7 +29,7 @@ router.post('/loans/:loanId/alerts/delinquency', async (req, res) => {
       try {
         await transporter.sendMail({
           to: email,
-          from: 'noreply@example.com',
+          from: 'support@kontraplatform.com',
           subject: 'Delinquency Alert',
           text,
         });
