@@ -11,12 +11,15 @@
  *   - Human review required for any recommended action above confidence 0.92
  */
 
-const OpenAI = require('openai');
+const {
+  createInstitutionalOpenAIClient,
+  safeAIErrorMetadata,
+} = require('./openaiClient');
 const { supabase } = require('../db');
 const { TOOL_DEFINITIONS, executeTool } = require('./agentToolRegistry');
 const { getAgent } = require('./agentDefinitions');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createInstitutionalOpenAIClient();
 
 const CONFIDENCE_THRESHOLDS = {
   AUTO_APPROVE: 0.95,
@@ -75,9 +78,9 @@ async function runAgent({ agent_id, org_id, loan_id, workflow_run_id, input_payl
         response_format: { type: 'json_object' },
       });
     } catch (err) {
-      console.error(`[agentRunner] OpenAI error (${agent_id}):`, err.message);
+      console.error(`[agentRunner] OpenAI error (${agent_id})`, safeAIErrorMetadata(err));
       // Return a graceful error artifact
-      return buildErrorArtifact({ agent_id, agentDef, loan_id, org_id, error: err.message, toolCalls, startedAt });
+      return buildErrorArtifact({ agent_id, agentDef, loan_id, org_id, error: 'AI service unavailable', toolCalls, startedAt });
     }
 
     const choice = completion.choices[0];
@@ -103,7 +106,7 @@ async function runAgent({ agent_id, org_id, loan_id, workflow_run_id, input_payl
         try {
           result = await executeTool(fnName, args, context);
         } catch (err) {
-          result = { error: err.message };
+          result = { error: 'Tool execution failed' };
         }
 
         // Record tool call
@@ -122,8 +125,8 @@ async function runAgent({ agent_id, org_id, loan_id, workflow_run_id, input_payl
             agent_name: agent_id,
             step_name: fnName,
             status: result?.error ? 'failed' : 'completed',
-            input_payload: args,
-            output_payload: result || {},
+            input_payload: { summary: summarizeInput(args) },
+            output_payload: { summary: summarizeOutput(result) },
             started_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
           }).then(() => {}).catch(() => {});
@@ -199,14 +202,26 @@ function buildUserContext(agentDef, loan_id, input_payload) {
 }
 
 function summarizeInput(args) {
-  return Object.entries(args).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(', ');
+  return Object.entries(args || {})
+    .map(([key, value]) => `${key}: ${describeValue(value)}`)
+    .join(', ');
 }
 
 function summarizeOutput(result) {
   if (!result) return 'null';
-  if (result.error) return `ERROR: ${result.error}`;
-  const keys = Object.keys(result);
-  return keys.slice(0, 4).map((k) => `${k}: ${String(result[k]).slice(0, 60)}`).join(', ');
+  if (result.error) return 'ERROR';
+  return Object.entries(result)
+    .slice(0, 8)
+    .map(([key, value]) => `${key}: ${describeValue(value)}`)
+    .join(', ');
+}
+
+function describeValue(value) {
+  if (value === null) return 'null';
+  if (Buffer.isBuffer(value)) return `buffer(${value.length} bytes)`;
+  if (Array.isArray(value)) return `array(${value.length})`;
+  if (typeof value === 'object') return `object(${Object.keys(value).length} keys)`;
+  return typeof value;
 }
 
 function buildDecisionArtifact({ agent_id, agentDef, loan_id, org_id, decision, toolCalls, startedAt }) {
