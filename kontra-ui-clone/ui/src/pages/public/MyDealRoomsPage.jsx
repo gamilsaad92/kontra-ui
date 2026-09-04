@@ -109,6 +109,7 @@ function DealCard({ room, email, onDeleted }) {
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const stage = room.deal_stage || "uploading";
   const cfg = STAGE_CONFIG[stage] || STAGE_CONFIG.uploading;
   const isActive = room.status === "active";
@@ -122,6 +123,7 @@ function DealCard({ room, email, onDeleted }) {
 
   async function handleDelete() {
     setDeleting(true);
+    setDeleteError("");
     try {
       const res = await fetch(`${API_BASE}/api/public/my-rooms/${room.property_id}`, {
         method: "DELETE",
@@ -129,13 +131,16 @@ function DealCard({ room, email, onDeleted }) {
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (data.ok) onDeleted(room.property_id);
-      else alert(data.error || "Failed to delete");
+      if (data.ok) {
+        onDeleted(room.property_id);
+        setConfirmDelete(false);
+      } else {
+        setDeleteError(data.message || data.error || "Room cleanup is incomplete. Retry to finish removing it.");
+      }
     } catch {
-      alert("Failed to delete room");
+      setDeleteError("Room cleanup could not be confirmed. Retry to finish removing it.");
     } finally {
       setDeleting(false);
-      setConfirmDelete(false);
     }
   }
 
@@ -183,15 +188,26 @@ function DealCard({ room, email, onDeleted }) {
               Delete
             </button>
           ) : (
-            <div className="flex gap-1">
-              <button onClick={handleDelete} disabled={deleting}
-                className="flex-1 px-2 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition text-center disabled:opacity-50">
-                {deleting ? "…" : "Yes, delete"}
-              </button>
-              <button onClick={() => setConfirmDelete(false)}
-                className="flex-1 px-2 py-2 rounded-xl text-xs font-semibold text-gray-500 border border-gray-200 hover:bg-gray-50 transition text-center">
-                Cancel
-              </button>
+            <div className="space-y-1.5">
+              {deleteError && (
+                <div className="text-[10px] leading-4 text-red-700 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5">
+                  <div>{deleteError}</div>
+                  <button type="button" onClick={handleDelete} disabled={deleting}
+                    className="font-bold underline underline-offset-2 disabled:opacity-50">
+                    {deleting ? "Retrying…" : "Retry cleanup"}
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-1">
+                <button onClick={handleDelete} disabled={deleting}
+                  className="flex-1 px-2 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition text-center disabled:opacity-50">
+                  {deleting ? "…" : deleteError ? "Retry delete" : "Yes, delete"}
+                </button>
+                <button onClick={() => { setConfirmDelete(false); setDeleteError(""); }}
+                  className="flex-1 px-2 py-2 rounded-xl text-xs font-semibold text-gray-500 border border-gray-200 hover:bg-gray-50 transition text-center">
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>

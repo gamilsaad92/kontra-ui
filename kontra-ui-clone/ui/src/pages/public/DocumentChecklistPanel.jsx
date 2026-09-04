@@ -1,273 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
-import { getRoomAuthHeaders } from "../../lib/inviteUtils";
-
-const normalizeRoleKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
-
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-function slugify(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
-function uid() {
-  return `ci_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
-// ── Category grouping ─────────────────────────────────────────────────────────
-// Maps known section keys → display category.  Items that already carry a
-// category field (from the pack schema or a previously-saved checklist) use
-// that value directly; unknown sections fall back to "General".
-const SECTION_TO_CATEGORY = {
-  // Financial
-  financials: "Financial", audited_financials: "Financial",
-  tax_returns: "Financial", qoe: "Financial",
-  rent_roll: "Financial", cap_table: "Financial",
-  // Legal
-  legal: "Legal", title: "Legal", loi: "Legal",
-  purchase_agreement: "Legal", spa: "Legal",
-  disclosure_schedule: "Legal", estoppel: "Legal",
-  contracts: "Legal", term_sheet: "Legal",
-  // Operational
-  environmental: "Operational",
-  // Property / Asset
-  inspection: "Property / Asset", survey: "Property / Asset",
-  // Insurance
-  insurance: "Insurance",
-  // Closing
-  "brand-standards": "Closing",
-  // Regulatory (jurisdiction-specific tokenization docs)
-  fsra_licence: "Regulatory", dfsa_promotion_approval: "Regulatory",
-  mica_white_paper: "Regulatory", national_authority_receipt: "Regulatory",
-  form_d: "Regulatory", accredited_verification: "Regulatory",
-  mas_prospectus_or_exemption: "Regulatory", mas_ps_licence: "Regulatory",
-  fca_promotion_approval: "Regulatory", fca_aml_registration: "Regulatory",
-};
-
-const CATEGORY_DISPLAY_ORDER = [
-  "Financial", "Legal", "Operational",
-  "Property / Asset", "Insurance", "Regulatory", "Closing", "General",
-];
-
-function getItemCategory(item) {
-  if (item.category && item.category !== "General") return item.category;
-  return SECTION_TO_CATEGORY[item.section] || "General";
-}
-
-// Seed the checklist from the pack's document schema when the workspace has no
-// persisted items yet. Passes jurisdiction as second arg so tokenization packs
-// can merge in jurisdiction-specific required documents.
-function seedFromPack(pack, propertyType, jurisdiction) {
-  const schema = pack.getDocumentSchema?.(propertyType, jurisdiction) || [];
-  return schema.map((d, i) => ({
-    id: d.id || d.section || uid(),
-    section: d.section || d.id,
-    label: d.label || "",
-    required: !!d.required,
-    ai: !!d.ai,
-    assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo : [],
-    category: d.category || "General",
-    isCustom: false,
-    sortOrder: i,
-    aiExtraction: d.aiExtraction || null,
-  }));
-}
-
-// ── SuggestionDrawer ─────────────────────────────────────────────────────────
-const CATEGORY_ORDER = [
-  "Corporate & Ownership", "Financial", "Legal", "Tax", "Operations",
-  "Employees", "Insurance", "Intellectual Property", "Regulatory",
-  "Environmental", "Real Estate", "Financing", "Closing",
-];
-
-function SuggestionDrawer({ open, onClose, onAdd, existingIds }) {
-  const [allSuggestions, setAllSuggestions] = useState([]);
-  const [query, setQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [selected, setSelected] = useState(new Set());
-  const [loading, setLoading] = useState(false);
-  const [customName, setCustomName] = useState("");
-  const [showCustom, setShowCustom] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) { setSelected(new Set()); setQuery(""); setCustomName(""); setShowCustom(false); return; }
-    setLoading(true);
-    fetch(`${API_BASE}/api/suggestions`)
-      .then(r => r.ok ? r.json() : { suggestions: [] })
-      .then(d => setAllSuggestions(d.suggestions || []))
-      .catch(() => {})
-      .finally(() => { setLoading(false); setTimeout(() => inputRef.current?.focus(), 50); });
-  }, [open]);
-
-  const categories = ["All", ...CATEGORY_ORDER.filter(c => allSuggestions.some(s => s.category === c))];
-
-  const filtered = allSuggestions.filter(s => {
-    const matchesCat = activeCategory === "All" || s.category === activeCategory;
-    const matchesQ = !query.trim() || s.label.toLowerCase().includes(query.toLowerCase());
-    return matchesCat && matchesQ;
-  });
-
-  const alreadyAdded = id => existingIds.has(id);
-
-  function toggle(id) {
-    if (alreadyAdded(id)) return;
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function handleAdd() {
-    const newItems = allSuggestions
-      .filter(s => selected.has(s.id))
-      .map(s => ({
-        id: uid(),
-        // Track which suggestion this came from so the drawer can reliably
-        // detect "already added" across sessions without comparing generated ids.
-        sourceSuggestionId: s.id,
-        section: `${s.id}_${Date.now().toString(36)}`,
-        label: s.label,
-        required: false,
-        ai: !!s.ai,
-        assignedTo: [],
-        category: s.category,
-        isCustom: true,
-        sortOrder: 9999,
-        aiExtraction: null,
-      }));
-    if (newItems.length) onAdd(newItems);
-    onClose();
-  }
-
-  function handleAddCustom() {
-    if (!customName.trim()) return;
-    onAdd([{
-      id: uid(),
-      section: `custom_${slugify(customName)}_${Date.now().toString(36)}`,
-      label: customName.trim(),
-      required: false,
-      ai: false,
-      assignedTo: [],
-      category: "General",
-      isCustom: true,
-      sortOrder: 9999,
-      aiExtraction: null,
-    }]);
-    setCustomName("");
-    setShowCustom(false);
-    onClose();
-  }
-
-  if (!open) return null;
-
-  // Group filtered items by category for display
-  const grouped = {};
-  for (const s of filtered) {
-    if (!grouped[s.category]) grouped[s.category] = [];
-    grouped[s.category].push(s);
-  }
-  const groupKeys = CATEGORY_ORDER.filter(c => grouped[c]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
-      {/* Drawer */}
-      <div className="relative ml-auto w-full max-w-md bg-white h-full flex flex-col shadow-2xl">
-        {/* Header */}
-        <div className="px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="font-bold text-gray-900 text-base">Browse Suggested Items</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Items are suggestions only — you decide what's relevant.</p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Search */}
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Search documents…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
-          />
-
-          {/* Category pills */}
-          <div className="flex gap-1.5 overflow-x-auto py-2 mt-1 hide-scrollbar">
-            {categories.map(c => (
-              <button
-                key={c}
-                onClick={() => setActiveCategory(c)}
-                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition ${
-                  activeCategory === c
-                    ? "text-white"
-                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-                style={activeCategory === c ? { background: "#800020" } : {}}>
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Item list */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          {loading ? (
-            <p className="text-sm text-gray-400 text-center py-8">Loading suggestions…</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">No items match your search.</p>
-          ) : (
-            <div className="space-y-5">
-              {groupKeys.map(cat => (
-                <div key={cat}>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{cat}</p>
-                  <div className="space-y-1">
-                    {grouped[cat].map(s => {
-                      const isAdded = alreadyAdded(s.id);
-                      const isChecked = selected.has(s.id);
-                      return (
-                        <button
-                          key={s.id}
-                          onClick={() => toggle(s.id)}
-                          disabled={isAdded}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition ${
-                            isAdded
-                              ? "opacity-40 cursor-default"
-                              : isChecked
-                                ? "bg-[#800020]/8 border border-[#800020]/20"
-                                : "hover:bg-gray-50 border border-transparent"
-                          }`}>
-                          {/* Checkbox */}
-                          <span className={`shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition ${
-                            isChecked ? "border-[#800020] bg-[#800020]" : "border-gray-300"
-                          }`}>
-                            {isChecked && (
-                              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            )}
-                          </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="text-sm text-gray-800">{s.label}</span>
-                          </span>
-                          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                            s.tag === "commonly_requested"
-                              ? "bg-amber-50 text-amber-600"
-                              : "bg-gray-100 text-gray-400"
-                          }`}>
-                            {s.tag === "commonly_requested" ? "common" : "suggested"}
-                          </span>
-                          {s.ai && (
-                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium">AI</span>
+<span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium">AI</span>
                           )}
                           {isAdded && <span className="shrink-0 text-[10px] text-gray-400">added</span>}
                         </button>
@@ -569,6 +300,8 @@ export default function DocumentChecklistPanel({
   const [requestedDocSections, setRequestedDocSections] = useState(new Set());
   const [requestError, setRequestError] = useState(null);
   const [focusedRequestSection, setFocusedRequestSection] = useState(null);
+  const [documentAction, setDocumentAction] = useState(null);
+  const [documentActionError, setDocumentActionError] = useState(null);
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
@@ -870,9 +603,54 @@ export default function DocumentChecklistPanel({
     }
   }
 
+  async function handleOriginalDocumentAction(analysisRecord, action) {
+    if (!propertyId || !analysisRecord?.id) return;
+    const actionKey = `${analysisRecord.id}:${action}`;
+    setDocumentAction(actionKey);
+    setDocumentActionError(null);
+    const popup = action === "view" ? window.open("about:blank", "_blank") : null;
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${encodeURIComponent(propertyId)}/document/${encodeURIComponent(analysisRecord.id)}/url${action === "download" ? "?download=1" : ""}`,
+        { headers: getRoomAuthHeaders(propertyId) },
+      );
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.url) {
+        throw new Error(result.error || "The original document is not available.");
+      }
+
+      if (action === "view") {
+        if (popup) {
+          popup.opener = null;
+          popup.location.href = result.url;
+        } else {
+          window.open(result.url, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        const link = document.createElement("a");
+        link.href = result.url;
+        link.download = result.filename || analysisRecord.filename || "original-document";
+        link.rel = "noopener";
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+    } catch (error) {
+      popup?.close();
+      setDocumentActionError({
+        id: analysisRecord.id,
+        message: error?.message || "The original document is not available.",
+      });
+    } finally {
+      setDocumentAction(null);
+    }
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────────
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
+  const analysisRecordBySection = Object.fromEntries(analyses.map(a => [a.section, a]));
 
   // Build the template this role should see
   const schemaItems = workflowPack.getDocumentSchema?.(propertyType, jurisdiction) || [];
@@ -932,6 +710,7 @@ export default function DocumentChecklistPanel({
     const done = uploadedSections.has(item.section);
     const isUploading = uploadingSection === item.section;
     const analysis = analysisBySection[item.section];
+    const analysisRecord = analysisRecordBySection[item.section];
     const isPending = analysis?.pending;
     const issues = done && !isPending ? getCompletenessIssues(analysis, item.section) : [];
     const facts = done && !isPending ? getInlineFacts(analysis, item.section) : [];
@@ -1169,6 +948,31 @@ export default function DocumentChecklistPanel({
             )}
             {done && !isDemo && (
               <>
+                {analysisRecord?.id && analysisRecord?.storage_path && !isPending && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={documentAction === `${analysisRecord.id}:view`}
+                      onClick={() => handleOriginalDocumentAction(analysisRecord, "view")}
+                      className="px-2 py-0.5 rounded text-[10px] font-medium border border-gray-100 text-gray-400 hover:text-gray-600 hover:border-gray-200 transition disabled:opacity-40"
+                      title="Open the stored original document">
+                      {documentAction === `${analysisRecord.id}:view` ? "…" : "View original"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={documentAction === `${analysisRecord.id}:download`}
+                      onClick={() => handleOriginalDocumentAction(analysisRecord, "download")}
+                      className="px-2 py-0.5 rounded text-[10px] font-medium border border-gray-100 text-gray-400 hover:text-gray-600 hover:border-gray-200 transition disabled:opacity-40"
+                      title="Download the stored original document">
+                      {documentAction === `${analysisRecord.id}:download` ? "…" : "Download original"}
+                    </button>
+                    {documentActionError?.id === analysisRecord.id && (
+                      <span className="text-[10px] text-red-600" role="alert">
+                        {documentActionError.message}
+                      </span>
+                    )}
+                  </>
+                )}
                 <input type="file" className="hidden"
                   ref={el => { fileRefs.current[`re_${item.section}`] = el; }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.csv"
