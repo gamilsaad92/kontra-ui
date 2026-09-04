@@ -613,6 +613,7 @@ const {
 } = require('./services/underwriting');
 const { extractDocxText } = require('./lib/docxText');
 const { deleteDealRoomData } = require('./lib/dealRoomDeletion');
+const { loadOriginalDocument } = require('./lib/originalDocumentAccess');
 
 const { handleVoice, handleVoiceQuery } = require('./voiceBot');
 const { recordFeedback, retrainModel } = require('./feedback');
@@ -1108,25 +1109,24 @@ app.get(['/api/public/document-url', '/api/public/deal-room/:propertyId/document
   if (!propertyId || !documentId) {
     return res.status(400).json({ error: 'propertyId and documentId required' });
   }
+  let stage = 'access';
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (!['owner', 'participant'].includes(access.mode)) return accessDenied(res);
 
-    const { data: document, error: documentError } = await supabase
-      .from('deal_analyses')
-      .select('id, property_id, section, filename, storage_path, is_active, superseded_at')
-      .eq('id', documentId)
-      .eq('property_id', propertyId)
-      .maybeSingle();
+    stage = 'document_lookup';
+    const { data: document, error: documentError } = await loadOriginalDocument(supabase, propertyId, documentId);
     if (documentError) throw documentError;
     if (!document) return res.status(404).json({ error: 'Document not found' });
-    if (!document.storage_path) {
+    const storagePath = document.storage_path;
+    if (!storagePath) {
       return res.status(404).json({ error: 'Original document is not available' });
     }
 
     // Participants can only retrieve the current version of a document that
     // is assigned to their role. Owners may retrieve superseded versions.
     if (access.mode === 'participant') {
+      stage = 'participant_authorization';
       if (document.is_active === false || document.superseded_at) {
         return accessDenied(res, 'This document version is no longer shared');
       }
@@ -1146,9 +1146,10 @@ app.get(['/api/public/document-url', '/api/public/deal-room/:propertyId/document
       }
     }
 
+    stage = 'signed_url';
     const { data: urlData, error: urlError } = await supabase.storage
       .from('deal-documents')
-      .createSignedUrl(document.storage_path, 300);
+      .createSignedUrl(storagePath, 300, req.query.download ? { download: document.filename || true } : undefined);
     if (urlError || !urlData?.signedUrl) {
       return res.status(404).json({ error: 'Document not found or expired' });
     }
@@ -1169,7 +1170,7 @@ app.get(['/api/public/document-url', '/api/public/deal-room/:propertyId/document
       filename: document.filename || 'original-document',
     });
   } catch (err) {
-    console.error('[document-url]', err.message);
+    console.error('[document-url]', { propertyId, documentId, stage, error: err.message });
     res.status(500).json({ error: 'Failed to generate document link' });
   }
 });

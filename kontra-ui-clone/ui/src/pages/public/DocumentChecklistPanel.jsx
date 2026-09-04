@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 import { getRoomAuthHeaders } from "../../lib/inviteUtils";
+import { API_BASE } from "../../lib/apiBase";
 
 const normalizeRoleKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
-
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function slugify(s) {
