@@ -6734,11 +6734,11 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
       if (cancelled) return;
       setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
       setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
-      setStage(coordination?.stage || '');
+      setStage(coordination?.stage || property?.deal_stage || '');
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [propertyId, refreshKey]);
+  }, [propertyId, property?.deal_stage, refreshKey]);
 
   const configuredItems = Array.isArray(pack?.documentSchema) ? pack.documentSchema : [];
   const sourceItems = checklistItems.length > 0 ? checklistItems : configuredItems;
@@ -10749,7 +10749,34 @@ export default function DealRoomPage() {
     );
   }
 
-  // Every resolved deal-room URL uses the current workspace shell. The
+  // A role query parameter is presentation metadata, not authorization. Do
+    // not render a misleading participant workspace when a notification deep
+    // link is opened without the verified owner token or invite session.
+    const hasVerifiedWorkspaceAccess = isDemo
+      || ['owner', 'participant'].includes(property?.access?.mode);
+    if (isCustom && !isDemo && !loadingApi && !hasVerifiedWorkspaceAccess) {
+      return (
+        <PublicLayout hideFooter>
+          <div className="min-h-[60vh] flex items-center justify-center px-6">
+            <div className="max-w-lg w-full rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+              <div className="text-3xl mb-3">🔒</div>
+              <h1 className="text-lg font-bold text-gray-900 mb-2">Verify workspace access</h1>
+              <p className="text-sm leading-relaxed text-gray-600">
+                This workspace requires a verified owner or participant session. Open the invitation again or sign in to your Kontra deal rooms before continuing.
+              </p>
+              <Link
+                to="/my-deal-rooms"
+                className="mt-5 inline-flex rounded-xl bg-[#800020] px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Open My Deal Rooms
+              </Link>
+            </div>
+          </div>
+        </PublicLayout>
+      );
+    }
+
+      // Every resolved deal-room URL uses the current workspace shell. The
   // property.isCustom flag is retained for data/panel behavior, but must not
   // select the retired welcome/activity/checklist layout.
   const isCurrentWorkspace = Boolean(property);
