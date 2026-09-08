@@ -65,7 +65,7 @@ async function getRoomContext(propertyId) {
       .eq('property_id', propertyId)
       .maybeSingle(),
     supabase.from('party_submissions')
-      .select('email, name, role, status')
+      .select('email, name, role')
       .eq('property_id', propertyId),
   ]);
   if (roomResult?.error) throw roomResult.error;
