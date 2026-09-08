@@ -171,6 +171,7 @@ async function createTask(propertyId, fields) {
     ),
   };
   const { data, error } = await supabase.from('deal_room_tasks').insert(row).select('*').single();
+  let createdTask = data;
   if (error) {
     if (error.code === '23505' || /duplicate|unique/i.test(error.message || '')) return null;
     const legacyRow = {
@@ -181,13 +182,22 @@ async function createTask(propertyId, fields) {
     };
     const legacy = await supabase.from('deal_room_tasks').insert(legacyRow).select('*').single();
     if (legacy.error) { console.warn('[taskEngine] createTask:', legacy.error.message); return null; }
-    return legacy.data;
+    createdTask = legacy.data;
   }
   emit('task.created', {
-    propertyId, taskId: data.id, taskType: data.task_type,
-    sourceType: data.source_type, sourceId: data.source_id, correlationId,
+    propertyId,
+    taskId: createdTask.id,
+    taskType: createdTask.task_type,
+    title: createdTask.title,
+    ownerType: createdTask.owner_type || fields.ownerType,
+    ownerRole: createdTask.owner_role || fields.ownerRole,
+    requiredApproverRole: createdTask.required_approver_role || fields.requiredApproverRole,
+    blocking: createdTask.blocking === true || fields.blocking === true,
+    sourceType: createdTask.source_type || fields.sourceType,
+    sourceId: createdTask.source_id || fields.sourceId,
+    correlationId,
   }, { correlationId, source: fields.sourceAgent || 'task-engine' });
-  return data;
+  return createdTask;
 }
 
 async function updateTaskStatus(taskId, status) {
@@ -352,7 +362,7 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       if (!RESEND_KEY) throw new Error('Email delivery is not configured');
       await sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: action.to,
         subject: action.subject,
         html: action.html || `<p>${action.body || ''}</p>`,

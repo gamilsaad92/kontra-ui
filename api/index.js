@@ -59,7 +59,6 @@ const {
   sealClosingRecord,
   notifyPartySubmitted,
   notifyLender,
-  notifyStageAdvance,
   notifyStatusChange,
   notifyOwner,
 } = require('./lib/dealRoomHelpers');
@@ -82,6 +81,7 @@ const {
   resolveSchemaKey: resolveTransactionSchemaKey,
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
+const { startDealNotificationDispatcher } = require('./lib/dealNotificationDispatcher');
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
@@ -105,6 +105,8 @@ const {
   presentStoredDigitalAssetPackage,
   digitalAssetPackagesUnavailable,
 } = require('./lib/digitalAssetPreparationPackage');
+
+startDealNotificationDispatcher();
 const {
   ARTIFACT_HASH_PLACEHOLDER,
   PREPARATION_PDF_BUCKET,
@@ -2723,7 +2725,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
         const firstName = pilotName.split(' ')[0] || pilotName;
         const packLabel = PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId;
         await sendResendEmail(RESEND_KEY, {
-          from: 'Kontra <support@kontraplatform.com>',
+          from: 'Kontra <notifications@kontraplatform.com>',
           to: pilotEmail,
           subject: `Your Kontra workspace is ready: ${workspaceName}`,
           html: `
@@ -2787,7 +2789,7 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
   try {
     const firstName = (pilotName || pilotEmail).split(' ')[0];
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to: pilotEmail,
       subject: `Your Kontra workspace is ready: ${workspaceName || 'your workspace'}`,
       html: `
@@ -3459,7 +3461,7 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
@@ -6148,7 +6150,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleAction = roleConfig?.inviteAction || 'access the deal room';
     const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to: email,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to a deal room — ${propName}`,
@@ -6218,7 +6220,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
         const roleLabel = roleConf?.label || roleKey;
         const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
         await sendResendEmail(process.env.RESEND_API_KEY, {
-          from: 'Kontra <support@kontraplatform.com>',
+          from: 'Kontra <notifications@kontraplatform.com>',
           to: invitedEmail,
           reply_to: 'support@kontraplatform.com',
           subject: `You've been invited to a deal room — ${propName}`,
@@ -6399,7 +6401,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     const to         = invite.invited_email;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to ${propName} — Kontra Deal Room`,
@@ -6561,19 +6563,19 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
         message: 'The deal lifecycle changed before this transition was saved. Refresh the room and try again.',
       });
     }
-    logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, { stage, stageLabel });
+    if (stageChanging) {
+      logEvent(propertyId, 'stage_advanced', 'owner', null, `Deal advanced to ${stageLabel}`, {
+        stage,
+        stageLabel,
+        previousStage: currentStage,
+      });
+    }
     recalculateTransactionState(propertyId, {
       source: 'stage_advanced',
       actorId: access.actorId,
       actorType: access.actorType,
     }).catch(e => console.warn('[transaction-state] stage recalculation failed:', e.message));
     res.json({ ok: true, stage, unchanged: !stageChanging });
-
-    // Only fire notifications when the stage actually changes — prevents duplicate
-    // emails if the advance endpoint is called twice with the same stage.
-    if (!stageChanging) return;
-
-    notifyStageAdvance(propertyId, stage, stageLabel).catch(() => {});
 
     // Package generation is deliberately not a lifecycle side effect. An owner
     // must select a specific eligible immutable readiness snapshot and invoke
@@ -7668,7 +7670,7 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
     const workspaceUrl = `${req.headers.origin || 'https://kontraplatform.com'}/deal-room/${propertyId}`;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to: notif.to_email,
       subject: `[Resent] ${notif.subject}`,
       html: `
@@ -7753,7 +7755,7 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
     // Send an email to each found participant
     await Promise.all(recipients.map(({ email, roleKey }) =>
       sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: email,
         subject: `Action needed: please upload "${docLabel}" — ${propName}`,
         text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your deal room to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,

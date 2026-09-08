@@ -5,6 +5,7 @@
 // logic — see kontra-workflow-roles / kontra-workflow-packs memory notes for
 // why role/stage labels must always resolve through the active Workflow Pack.
 const { supabase } = require('../db');
+const { emit: emitInternalEvent } = require('./eventBus');
 
 // ── Lifecycle stage keys, per Workflow Pack ─────────────────────────────────
 // Single source of truth lives in shared/workflowStages.json — the same file
@@ -148,6 +149,20 @@ async function logEvent(propertyId, eventType, actorRole, actorName, description
       console.warn('[logEvent]', fallbackError.message || e.message);
     }
   }
+  emitInternalEvent('transaction.event', {
+    propertyId,
+    eventType,
+    actorRole,
+    actorName,
+    description,
+    metadata,
+  }, {
+    orgId: metadata.orgId || null,
+    actorId: metadata.actorId || null,
+    actorType: metadata.actorType || null,
+    correlationId: metadata.correlationId || null,
+    source: metadata.source || 'deal-room',
+  });
 }
 
 // ── Seals a closing record — called when deal_stage → funded ──────────────────
@@ -271,7 +286,7 @@ async function notifyPartySubmitted(propertyId, role, name) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
@@ -307,7 +322,7 @@ async function notifyLender(propertyId, uploaderRole, section, summary) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: lenderRes.data.email,
         subject: `New document ready for review: ${SECTION_LABELS[section] || section} — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px"><h2 style="color:#800020;margin-bottom:4px">Document ready for review</h2><p style="color:#555">Hi ${lenderRes.data.name || 'there'},</p><p style="color:#555">The <strong>${uploaderLabel}</strong> uploaded a <strong>${SECTION_LABELS[section] || section}</strong> to <strong>${propName}</strong>. AI has analyzed it and it is ready for your review.</p>${summary ? `<p style="background:#f9fafb;border-radius:8px;padding:12px;color:#374151;font-size:14px">${summary}</p>` : ''}<a href="https://kontraplatform.com/deal-room/${propertyId}?role=lender" style="display:inline-block;margin-top:16px;padding:12px 20px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:bold">Review Workspace →</a><p style="color:#aaa;font-size:12px;margin-top:24px">Kontra · Transaction Intelligence</p></div>`,
@@ -361,7 +376,7 @@ async function notifyStageAdvance(propertyId, stage, resolvedLabel) {
         method: 'POST',
         headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'Kontra <support@kontraplatform.com>',
+          from: 'Kontra <notifications@kontraplatform.com>',
           to,
           subject: stageSubject,
           html: makeHtml(name, role),
@@ -393,7 +408,7 @@ async function notifyStatusChange(propertyId, subRole, status, statusNote, updat
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject: `${partyLabel} submission: ${statusLabel} — ${propName}`,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
@@ -428,7 +443,7 @@ async function notifyVAPReady(propertyId, stage, resolvedLabel) {
     const stageLabel = resolvedLabel || (stage === 'funded' ? 'Funded' : 'Closing');
     const vapSubject = `Your Verified Transaction Package is ready — ${propName}`;
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: 'Kontra <notifications@kontraplatform.com>',
       to: room.customer_email,
       subject: vapSubject,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:24px">
@@ -473,7 +488,7 @@ async function notifyOwner(propertyId, section, summary) {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: 'Kontra <notifications@kontraplatform.com>',
         to: room.customer_email,
         subject: ownerSubject,
         html: `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px">
