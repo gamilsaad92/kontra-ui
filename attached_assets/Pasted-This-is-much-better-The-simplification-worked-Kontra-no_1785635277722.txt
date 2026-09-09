@@ -1,0 +1,792 @@
+This is **much better**. The simplification worked.
+
+Kontra now feels like a usable product instead of a collection of features. The four-step setup flow is clearer, the workspace navigation is cleaner, and the Overview finally communicates the product’s purpose.
+
+That said, I see several important issues to fix before treating this as the pilot baseline.
+
+## What improved
+
+The strongest changes are:
+
+* The homepage is clearer and more focused.
+* The setup flow is now understandable.
+* The Preview screen is much less intimidating.
+* “Not Enough Information” is more accurate than showing low risk.
+* Overview, Documents, Participants, Tasks, Activity, and Settings is the right navigation.
+* The Operations Manager is now placed correctly as the main workspace concept.
+* Participant status is easier to scan.
+* Document categories make the checklist more understandable.
+* The legal-provider section no longer dominates the experience.
+
+The direction is correct.
+
+# Remaining issues to fix
+
+## 1. The generated workspace is inconsistent with the user’s input
+
+This is the biggest functional problem.
+
+You entered:
+
+> acquiring Marriott hotel
+
+You selected:
+
+> Business Acquisition
+
+But the activated workspace became:
+
+> CRE Acquisition
+
+And it generated CRE-specific roles and documents:
+
+* Lender / Underwriter
+* Inspector
+* Insurance Broker
+* Servicer
+* Rent Roll
+* T-12 Financial Statement
+* Estoppel Certificates
+* Environmental Report
+* Survey / ALTA
+
+That means the generated preview and the actual activated workspace are not using the same configuration.
+
+This is a serious trust problem.
+
+A user reviews one workspace, pays, and then receives something different.
+
+### Developer instruction
+
+The exact generated configuration approved during Preview must be persisted and used to create the workspace.
+
+Do not regenerate the workspace after payment or activation.
+
+The activation process should use a saved configuration object containing:
+
+```ts
+{
+  workspaceName,
+  transactionType,
+  currentStage,
+  targetClosingDate,
+  participants,
+  documents,
+  stages,
+  ownerInfo
+}
+```
+
+The Preview screen, Review and Activate screen, and created workspace must all reference the same immutable draft configuration.
+
+Only changes explicitly made by the user should modify that configuration.
+
+Add an automated test:
+
+```txt
+Given the user previews 5 participants, 13 documents, and 5 stages,
+when the user activates the workspace,
+then the created workspace must contain those same participants,
+documents, stages, transaction type, and assignments.
+```
+
+This should be treated as a launch-blocking bug.
+
+---
+
+## 2. The AI generation quality is still weak
+
+For “acquiring Marriott hotel,” the preview generated questionable roles:
+
+* Operations Manager
+* Investor Relations
+
+It also generated:
+
+* Marketing Materials
+* Employee Documents
+* Property Condition Reports
+* Lease Agreements
+
+Some may be relevant, but this feels like generic keyword generation rather than a coherent transaction structure.
+
+A Marriott acquisition could mean:
+
+* acquiring a hotel property,
+* acquiring a hotel operating company,
+* acquiring a franchise interest,
+* acquiring a hotel management company.
+
+The system should not confidently invent the structure when the description is ambiguous.
+
+### Better behavior
+
+When the input is ambiguous, ask one short clarification before generating:
+
+> Are you acquiring the hotel real estate, the operating business, or both?
+
+Options:
+
+* Real estate only
+* Operating business only
+* Real estate and operating business
+* Not sure
+
+This would prevent incorrect workflows.
+
+### Developer instruction
+
+Add ambiguity detection before workspace generation.
+
+When the described transaction could map to multiple transaction types, do not silently choose one.
+
+Return:
+
+```ts
+{
+  requiresClarification: true,
+  question: "Are you acquiring the hotel real estate, the operating business, or both?",
+  options: [...]
+}
+```
+
+Generate only after the user selects an option.
+
+---
+
+## 3. The homepage still has too much empty space
+
+The homepage is cleaner, but the vertical spacing between sections is excessive.
+
+The “Workspace” section in particular has a large amount of unused white space before the visual.
+
+This makes the site feel unfinished and forces unnecessary scrolling.
+
+### Developer instruction
+
+Reduce vertical section padding by approximately 25–35%.
+
+Suggested desktop spacing:
+
+```css
+section {
+  padding-top: 80px;
+  padding-bottom: 80px;
+}
+```
+
+For tightly related content:
+
+```css
+padding-top: 56px;
+padding-bottom: 56px;
+```
+
+The benefit cards and workspace demonstration should visually connect as one story.
+
+---
+
+## 4. The homepage product example is too faint
+
+The transaction example under “The Workspace” is difficult to read.
+
+Most text and statuses are extremely light. It looks disabled rather than active.
+
+The demonstration is supposed to prove the product’s value, but it currently recedes into the page.
+
+### Developer instruction
+
+Increase contrast significantly.
+
+The demonstration should show one obvious hierarchy:
+
+* Transaction name
+* Current status
+* Main blocker
+* Responsible party
+* Recommended action
+
+Use a real card with a visible border, shadow, and stronger text contrast.
+
+Do not present the product demonstration as faint floating text.
+
+---
+
+## 5. “AI Operations Manager — Now Live” feels unnecessary
+
+The homepage headline already says Operations Manager.
+
+The badge above it repeats the same idea and adds “Now Live,” which may quickly become outdated.
+
+Use either:
+
+> AI Operations Manager
+
+or remove the badge completely.
+
+I would remove it. The headline is strong enough by itself.
+
+---
+
+## 6. The setup page defaults the closing date to today
+
+The target closing date field appears prefilled with August 1, 2026.
+
+That creates accidental bad data.
+
+If the field is optional, it should be blank.
+
+### Developer instruction
+
+Do not default optional dates to the current date.
+
+Use:
+
+> Select target closing date
+
+The date must remain `null` unless the user selects one.
+
+Also validate that the selected target closing date is not earlier than today, unless the transaction is marked as already closed or historical.
+
+---
+
+## 7. Stage options are not transaction-aware enough
+
+The stage dropdown shows:
+
+* LOI / Term Sheet
+* Due Diligence
+* Financing
+* Closing
+* Pre-LOI
+
+The ordering is wrong because Pre-LOI appears last.
+
+Also, “Financing” may happen during due diligence rather than being a clean universal lifecycle stage.
+
+### Developer instruction
+
+Order stages logically:
+
+* Pre-LOI
+* LOI / Term Sheet
+* Due Diligence
+* Final Review
+* Closing
+* Closed
+
+Use transaction-specific options where possible.
+
+For a fundraising transaction:
+
+* Preparation
+* Investor Outreach
+* Term Sheet
+* Due Diligence
+* Documentation
+* Funded
+
+For lending:
+
+* Application
+* Underwriting
+* Approval
+* Documentation
+* Closing
+* Funded
+
+---
+
+## 8. The Preview screen is better, but the editing controls are still visually dense
+
+Collapsed mode looks good.
+
+Expanded mode still brings back much of the old complexity:
+
+* Required pills
+* Uploads pills
+* AI pills
+* role selectors
+* remove icons
+* multiple tiny controls
+
+That is acceptable as an advanced editor, but it needs better row structure.
+
+### Developer instruction
+
+Replace multiple pills with one secondary description.
+
+Instead of:
+
+> Financial Advisor | Required | Uploads
+
+Use:
+
+**Financial Adviser**
+Required participant · Can upload documents
+
+For documents:
+
+**Financial Statements**
+Assigned to Financial Adviser · Required · AI review enabled
+
+On desktop, those details can be shown in columns. On mobile, use the two-line format.
+
+Use an overflow menu for secondary actions instead of displaying every control inline.
+
+---
+
+## 9. Role names generated in Preview do not match the final workspace
+
+The Preview used:
+
+* Financial Adviser
+* Legal Adviser
+* Operations Manager
+* Investor Relations
+
+The final workspace used:
+
+* Lender
+* Inspector
+* Insurance Broker
+* Attorney
+* Investor
+* Servicer
+* Franchisor / Brand
+
+This reinforces the persistence bug, but it also reveals a terminology problem.
+
+### Developer instruction
+
+Roles should have stable IDs and editable display names.
+
+Example:
+
+```ts
+{
+  id: "legal_counsel",
+  displayName: "Legal Counsel",
+  permissions: {...}
+}
+```
+
+Do not derive final roles again from the transaction template after activation.
+
+---
+
+## 10. “Workspace Activated” confirmation contains corrupted text
+
+The confirmation shows something like:
+
+> Marriott Hotel Acquisition 0gmu · Workspace
+
+There is an unexplained suffix.
+
+The previous version showed similar random characters.
+
+### Developer instruction
+
+Do not append internal workspace IDs, slugs, or generated tokens to the user-facing workspace name.
+
+Display only:
+
+> Marriott Hotel Acquisition
+
+If an identifier is needed:
+
+> Workspace ID: KTR-1042
+
+Place it separately and only where useful.
+
+---
+
+## 11. The activated workspace header is contradictory
+
+The top green bar says:
+
+> Workspace active — add documents and invite parties below
+
+But the header also has:
+
+* Share Deal
+* Paid & Active
+
+“Share Deal” conflicts with the product’s newer “workspace” terminology.
+
+### Developer instruction
+
+Rename:
+
+> Share Deal
+
+to:
+
+> Invite Participants
+
+or:
+
+> Share Workspace
+
+“Invite Participants” is clearer because that is the actual action.
+
+Also remove “Paid & Active” from the normal workspace header. Payment status is not useful as a permanent primary badge.
+
+Place billing status in Settings or Billing.
+
+---
+
+## 12. “No sign-in required” should be reconsidered
+
+The green banner says:
+
+> No sign-in required
+
+This may create a security concern, especially for private transaction documents.
+
+Even though access may use secure invitation links and identity verification, “No sign-in required” can sound like unrestricted access.
+
+### Better copy
+
+> Secure role-based access for every participant
+
+or:
+
+> Participants access the workspace through secure invitation links
+
+Do not market the absence of sign-in more prominently than the security controls.
+
+---
+
+## 13. The Overview is much better, but the empty Operations Manager is too large
+
+The Operations Manager section occupies a large card while showing no information.
+
+It recreates some of the previous empty-state problem.
+
+### Developer instruction
+
+When there are no actions, reduce the card height.
+
+Show:
+
+> Get your workspace moving
+
+* Invite participants
+* Upload the first document
+
+Buttons:
+
+> Invite Participants
+> Upload Document
+
+Once actions exist, the section can expand into prioritized action cards.
+
+The empty state should help initiate the transaction, not only explain why no actions exist.
+
+---
+
+## 14. Transaction progress has inconsistent information
+
+The Overview says:
+
+* 0 invited
+* None open blockers
+* 6 days to close
+
+Yet the workspace has no documents and no participants invited.
+
+“None” open blockers is misleading. There are many incomplete requirements; they simply have not been evaluated.
+
+Use:
+
+> Not assessed
+
+instead of:
+
+> None
+
+for blockers before sufficient information exists.
+
+### Developer instruction
+
+Blocker count should support three states:
+
+```ts
+type BlockerStatus =
+  | { state: "not_assessed" }
+  | { state: "assessed", count: number };
+```
+
+Display:
+
+* Not assessed
+* 0 blockers
+* 3 blockers
+
+Do not map missing analysis to zero.
+
+---
+
+## 15. Participant responsibility text is written incorrectly
+
+The participant status section says things like:
+
+> You've been invited to review this deal
+
+But the participants have not been invited.
+
+It is also written from the participant’s point of view inside the owner’s dashboard.
+
+### Better copy
+
+For Lender:
+
+> Review financing materials and provide underwriting feedback
+
+For Inspector:
+
+> Upload property inspection and environmental reports
+
+For Insurance Broker:
+
+> Provide insurance certificates and coverage documentation
+
+For Attorney:
+
+> Review legal documents and title materials
+
+### Developer instruction
+
+Responsibilities must be neutral role descriptions, not invitation messages.
+
+Add a separate invitation-message template only inside the invitation modal.
+
+---
+
+## 16. Participant status table is good, but the participant page layout is broken
+
+The Overview participant table is compact and clear.
+
+The dedicated Participants page is not.
+
+Each participant takes up a large vertical block with:
+
+* Role
+* Not invited yet
+* Status pill
+* Dash
+* Invite button
+
+This wastes a huge amount of space.
+
+### Developer instruction
+
+Use the same compact table on the Participants page.
+
+Columns:
+
+| Role | Participant | Status | Last activity | Action |
+
+Example:
+
+| Lender | — | Not invited | — | Invite |
+| Inspector | — | Not invited | — | Invite |
+| Attorney | — | Not invited | — | Invite |
+
+The page should fit all six participants without scrolling on a normal desktop screen.
+
+---
+
+## 17. The workspace still contains the old progress component
+
+On the Participants page, the old “Deal Progress” section appears again, including:
+
+* Verified stage
+* Party cards
+* Signal Ready
+
+This directly contradicts the new simplified architecture.
+
+The developer did not fully remove the old component.
+
+### Developer instruction
+
+Remove the legacy deal-progress component from every page.
+
+There should be only one transaction progress component, located on Overview.
+
+Do not show progress, participant cards, and stage actions again below Participants.
+
+Remove:
+
+* “Verified” as a stage
+* “Signal Ready”
+* duplicate party-status cards
+* duplicate lifecycle tracker
+
+This is another launch-blocking cleanup item.
+
+---
+
+## 18. The Documents page still has too many pills
+
+Each document row may contain:
+
+* required
+* Missing
+* AI
+* Owner / Borrower
+
+This is still visually noisy.
+
+### Better row
+
+**Rent Roll**
+Owner / Borrower · Required
+
+Right side:
+
+> Missing Upload
+
+The AI review status does not need to appear on every missing document. It only becomes relevant after upload or inside document settings.
+
+### Developer instruction
+
+Before upload, show only:
+
+* document name
+* responsible participant
+* required or optional
+* due date
+* status
+* action
+
+After upload, show:
+
+* AI review status
+* issues found
+* review status
+
+Do not display “AI” on a document that does not yet exist.
+
+---
+
+## 19. “Browse suggested items” is good, but “Reset to defaults” is risky
+
+Resetting a checklist could destroy customization.
+
+### Developer instruction
+
+Use:
+
+> Restore template items
+
+When clicked, show a confirmation:
+
+> Restore the original template checklist?
+
+Explain:
+
+* Custom items will remain, or
+* Custom changes will be replaced
+
+The exact behavior must be explicit.
+
+Do not use an ambiguous one-click reset.
+
+---
+
+## 20. Cross-document checks should be collapsed by default
+
+The empty Cross-document checks card is still large.
+
+Because no documents exist, it adds little value.
+
+### Developer instruction
+
+Collapse Cross-document checks by default until at least two eligible documents are uploaded.
+
+Show only the compact header:
+
+> Cross-document checks
+> Begins after related documents are uploaded
+
+Expand automatically when the first check is created.
+
+Remove “Re-run verification checks” when no checks are eligible.
+
+---
+
+## 21. Tasks page is too empty and not actionable
+
+The page says:
+
+> Nothing needs attention right now
+
+But the workspace has zero participants invited and zero documents uploaded.
+
+There are clearly setup actions.
+
+### Developer instruction
+
+Generate onboarding tasks immediately after workspace creation.
+
+Examples:
+
+* Invite required participants
+* Upload or request the first required document
+* Confirm target closing date
+* Review workspace checklist
+
+Tasks should be split into:
+
+### Needs your attention
+
+* Invite 4 required participants
+* Upload the first required document
+
+### Waiting on others
+
+Empty until invitations are sent.
+
+The system should not claim nothing needs attention when setup is incomplete.
+
+---
+
+# Priority order
+
+## Fix before pilot testing
+
+1. Preview-to-activation configuration mismatch.
+2. Wrong transaction type after activation.
+3. Remove legacy Deal Progress and Signal Ready component.
+4. Fix random workspace-name suffix.
+5. Fix participant responsibilities.
+6. Generate real onboarding tasks.
+7. Change blocker state from “None” to “Not assessed.”
+8. Prevent optional target date from defaulting to today.
+
+## Fix immediately afterward
+
+9. Compact Participants page.
+10. Reduce document badges.
+11. Collapse empty cross-document checks.
+12. Improve AI ambiguity handling.
+13. Reduce homepage spacing.
+14. Increase homepage demonstration contrast.
+15. Replace “Share Deal” and “No sign-in required.”
+
+# Overall verdict
+
+The product is now **structurally much better**.
+
+Before the update, the main issue was conceptual overload. That issue is largely resolved.
+
+The current problem is now **consistency and completion**. Some new simplified components sit on top of old components, and the generated workspace does not reliably match what the user approved.
+
+I would describe the current state as:
+
+> **The right product design, but not yet a trustworthy end-to-end flow.**
+
+Once the Preview configuration reliably becomes the exact activated workspace, and the remaining legacy UI is removed, this will be a strong pilot-ready version.

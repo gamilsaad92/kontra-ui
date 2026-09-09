@@ -10527,7 +10527,7 @@ export default function DealRoomPage() {
           plan: "deal",
           propertyId,
           propertyName: property?.property_name || property?.name || propertyId,
-          email: "dev@kontraplatform.com",
+          email: "hello@kontraplatform.com",
           role: "owner",
         }),
       });

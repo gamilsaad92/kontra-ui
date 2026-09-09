@@ -1,0 +1,59 @@
+Proceed with schema parity only. Do not make product, UI, agent, workflow, readiness, participant, settlement, or task-engine changes.
+Current main:
+a2c43716aed81808d44467a671906b018f615049
+The participant-state blocker is resolved.
+The only release blocker is Production missing the committed migration:
+019_transaction_pipeline.sql
+1. Review migration 019 before applying
+Confirm it is additive/replay-safe and does not:
+drop tables
+delete data
+alter existing column types destructively
+reset task state
+overwrite existing transaction records
+recreate settlement/seal structures already present
+Confirm the migration creates only the missing Production objects already identified:
+deal_events
+processing columns on deal_analyses
+durable task columns on deal_room_tasks
+event metadata/correlation fields
+required processing/correlation indexes
+generated-task uniqueness index
+If the migration does anything outside that scope, stop and report before applying.
+2. Apply migration 019 to Production Supabase
+Use the authorized Supabase migration process.
+Do not manually add individual columns or tables outside the migration.
+3. Re-run Production schema parity audit
+Confirm Production now contains every required object for:
+Transaction Record
+invitations/access sessions
+document processing
+task durability/idempotency
+deal events/correlation
+lifecycle advancement
+settlement readiness
+Transaction Seal
+post-completion records
+4. Development parity
+Replay the updated migration 015 in Development only if needed to add the five missing provenance columns.
+Do not change Production 015 if Production already has those fields.
+5. Focused regression checks
+After Production parity is confirmed, run:
+four accepted participants still resolve Joined/Active
+no stale Invite actions
+source_changed still preserves the authoritative confirmed value
+Transaction Readiness remains explainable
+task creation/refresh does not duplicate completed work
+lifecycle advancement works
+settlement readiness still works
+exactly one Transaction Seal can be created
+duplicate completion remains blocked
+Return
+migration 019 review result
+Production migration status
+Production parity PASS/FAIL
+Development 015 replay status
+regression PASS/FAIL
+current main SHA
+final recommendation: READY TO DEPLOY or NOT READY
+Do not deploy Production application code automatically after the migration.

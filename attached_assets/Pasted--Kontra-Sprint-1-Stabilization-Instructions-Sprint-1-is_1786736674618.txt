@@ -1,0 +1,213 @@
+# Kontra Sprint 1 Stabilization Instructions
+
+Sprint 1 is accepted.
+
+Before beginning Sprint 2, perform a focused stabilization and validation pass. Do not add new agent capabilities yet.
+
+## 1. Fix the blocked API integration suite
+
+Resolve the pre-existing duplicate `logOrgError` declaration in:
+
+`api/src/routes/orgDiscovery.js`
+
+Do not change behavior beyond what is necessary to remove the duplicate declaration and restore the test runner.
+
+After fixing it, run the complete API integration test suite.
+
+Report any failures separately as:
+
+* caused by Sprint 1
+* pre-existing
+* unrelated infrastructure/test issue
+
+Do not silently modify unrelated behavior just to make tests green.
+
+## 2. Restore UI Jest execution
+
+Install/configure the appropriate `jest-environment-jsdom` dependency for the existing UI test setup.
+
+Do not migrate the test framework or restructure the UI test stack during this pass.
+
+Run the existing UI Jest suite and report:
+
+* passing tests
+* failing tests
+* pre-existing failures
+* Sprint 1 regressions, if any
+
+## 3. Run a real end-to-end CRE transaction test
+
+Use a fresh CRE Acquisition room and validate the actual user flow, not only unit tests.
+
+Test:
+
+1. Create/open a fresh CRE Acquisition room.
+2. Upload a Purchase Agreement.
+3. Confirm processing moves through:
+
+   * uploaded
+   * processing
+   * extracted
+4. Confirm canonical Transaction Record fields populate.
+5. Confirm source document/page/excerpt/confidence remain attached.
+6. Confirm readiness recalculates.
+7. Confirm corresponding requirements/tasks recalculate.
+8. Confirm Overview updates without a manual page refresh.
+9. Confirm the impact message shows actual before/after readiness.
+10. Confirm Operations Manager / Ask Kontra sees the newly extracted information.
+
+Capture any mismatch between backend state and rendered UI.
+
+## 4. Test idempotency
+
+Upload the identical document again.
+
+Expected:
+
+* no duplicate Transaction Record facts
+* no duplicate task
+* no duplicate material activity event
+* no duplicate readiness impact
+* source-hash/idempotency handling behaves correctly
+
+Document exactly what the user sees on duplicate upload.
+
+## 5. Test conflicting evidence
+
+Upload a second document containing a different value for an existing canonical field.
+
+Example:
+
+Original Purchase Agreement:
+
+`Purchase Price = $4,250,000`
+
+Amendment:
+
+`Purchase Price = $4,350,000`
+
+Expected:
+
+* existing confirmed value is not silently overwritten
+* field history/source-change behavior records the competing evidence
+* human review is surfaced when required
+* Overview/Operations Manager recognizes the issue
+* no separate duplicate issue object is unnecessarily created
+
+If the current field/history model cannot represent this cleanly, report the limitation before adding another schema.
+
+## 6. Test confirmed-field protection
+
+Confirm a Transaction Record field.
+
+Then upload a document containing a different value.
+
+Expected:
+
+* confirmed value remains unchanged
+* new evidence is retained
+* discrepancy is visible
+* human confirmation remains authoritative
+
+## 7. Test failed extraction and retry
+
+Force or simulate one document-analysis failure.
+
+Confirm:
+
+* document reaches `failed`
+* failure reason is durable
+* UI exposes the failure
+* room remains usable
+* retry/re-upload works
+* retry uses correlation/attempt tracking
+* successful retry ends in `extracted`
+* duplicate facts/tasks are not created
+
+## 8. Validate participant/access boundaries
+
+Run focused authorization checks for:
+
+* anonymous access
+* owner access
+* invited participant access
+* wrong role
+* wrong room
+* wrong organization
+* reused/invalid invite access
+* participant attempting an owner-only mutation
+
+Verify both reads and mutations where applicable.
+
+Do not loosen authorization to make legacy flows work.
+
+## 9. Validate task approval lifecycle
+
+Create a safe test task with a draft action.
+
+Test:
+
+* approve
+* reject
+* send back
+* duplicate approve request
+* wrong-role approval
+* approval after task is already resolved
+* failed execution outcome
+
+Confirm audit records contain:
+
+* actor
+* role
+* decision
+* reason
+* correlation ID
+* timestamp
+* execution state/result
+
+No action should execute more than once.
+
+## 10. Validate compatibility
+
+Confirm these existing capabilities still work:
+
+* Transaction Record manual confirmation
+* custom workflow packs
+* `/brain/briefing`
+* `/brain/ask`
+* settlement mode/readiness
+* stage transitions
+* participant invitations
+* existing document analysis views
+* Issues & Exceptions
+* activity history
+
+## Exit criteria
+
+Do not start Sprint 2 until:
+
+* complete API integration suite can run
+* UI Jest suite can run
+* fresh CRE room E2E test passes
+* duplicate upload test passes
+* conflict test passes
+* confirmed-field protection passes
+* failure/retry test passes
+* authorization tests pass
+* task approval lifecycle passes
+* no critical regression remains
+
+After completion, provide:
+
+1. fixes made
+2. API test results
+3. UI test results
+4. CRE E2E results
+5. idempotency results
+6. conflict handling results
+7. retry results
+8. authorization results
+9. approval lifecycle results
+10. remaining known issues
+
+Do not begin Financial Agent, Legal Agent, Diligence Agent, or Transaction Agent expansion during this stabilization pass.

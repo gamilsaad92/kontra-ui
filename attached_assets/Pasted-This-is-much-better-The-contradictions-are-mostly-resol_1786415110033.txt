@@ -1,0 +1,38 @@
+This is **much better**. The contradictions are mostly resolved now, and the room finally reads like one system instead of several competing dashboards.
+
+A few things stand out positively from the screenshots: the Overview is now clearly one command center; Transaction Readiness is separated from Lifecycle; the Transaction Record is compact and expandable; and the People tab now correctly shows the Deal Coordinator as **Owner / Active** with no Invite button, while the denominator is **0 of 4 participants invited**. That is exactly the semantic fix we wanted.
+
+The main remaining issue I see is that the **Next Actions** area is too weak compared with the rest of the page. Right now it says essentially “Start this transaction” with a generic description. That does not yet feel like Kontra is intelligently prioritizing work. It should surface 2–4 specific actionable items such as “Upload Letter of Intent,” “Invite Buyer,” or “Confirm transaction terms,” and each should deep-link to the relevant place.
+
+I would also make the Transaction Record rows just a little more informative in collapsed state. Instead of only “0 of 6 confirmed,” add one short issue summary when useful, for example:
+
+**Identity & Parties — 0 of 6 confirmed**
+Buyer and seller not identified
+
+**Financial Information — 0 of 7 confirmed**
+Transaction value missing
+
+That gives the user intelligence without forcing them to expand every row.
+
+The lifecycle now feels appropriately secondary. I would keep it that way. I would not add more visual weight or another progress score there.
+
+So at this point, I would tell Replit the redesign is **approved structurally**, with one final polish pass:
+
+> The Overview architecture is now correct. Do not redesign it again.
+>
+> Make one final UX polish pass only:
+>
+> 1. Upgrade **Next Actions** from generic copy to 2–4 specific prioritized actions using the existing attention/briefing data.
+> 2. Make each action clickable and route to the relevant existing destination:
+>
+>    * document → Documents / upload
+>    * participant → People / invite
+>    * field confirmation → relevant Transaction Record section
+> 3. Add one concise missing/attention summary to collapsed Transaction Record categories when useful.
+> 4. Preserve the current hierarchy and spacing.
+> 5. Do not add new cards, scores, APIs, tabs, database fields, or backend systems.
+> 6. Keep the current People behavior exactly as shown: coordinator = Owner/Active, not inviteable, denominator excludes coordinator.
+>
+> After this polish, stop feature work and run an end-to-end pilot flow through Overview, Documents, People, Settlement, and Transaction Seal.
+
+I would not touch the architecture again after that. The current version is finally coherent enough to start testing as a real product rather than continuing to redesign the shell.

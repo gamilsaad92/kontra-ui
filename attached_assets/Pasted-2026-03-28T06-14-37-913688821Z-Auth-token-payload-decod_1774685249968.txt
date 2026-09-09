@@ -1,0 +1,50 @@
+2026-03-28T06:14:37.913688821Z [Auth] token payload decoded {
+2026-03-28T06:14:37.913701881Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:37.913706781Z   audience: 'authenticated'
+2026-03-28T06:14:37.913711162Z }
+2026-03-28T06:14:38.66192162Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:38.66193962Z 
+2026-03-28T06:14:39.028736555Z [OrgContext] local membership lookup failed psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:39.028754296Z 
+2026-03-28T06:14:52.062741798Z [REQ] GET /api/payments/stablecoin
+2026-03-28T06:14:52.063805273Z [Auth] token payload decoded {
+2026-03-28T06:14:52.063817583Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:52.063822323Z   audience: 'authenticated'
+2026-03-28T06:14:52.063827403Z }
+2026-03-28T06:14:52.072652854Z [REQ] GET /api/ai/reviews
+2026-03-28T06:14:52.073351061Z [Auth] token payload decoded {
+2026-03-28T06:14:52.073365411Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:52.073382411Z   audience: 'authenticated'
+2026-03-28T06:14:52.073386132Z }
+2026-03-28T06:14:53.673772061Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:53.673787541Z 
+2026-03-28T06:14:53.941352518Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:53.941366548Z 
+2026-03-28T06:14:54.470386525Z [OrgContext] local membership lookup failed psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:54.470401865Z 
+2026-03-28T06:14:54.561852178Z [OrgContext] local membership lookup failed psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:54.561865808Z 
+2026-03-28T06:14:54.650851972Z [Auth] token payload decoded {
+2026-03-28T06:14:54.650870273Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:54.650873973Z   audience: 'authenticated'
+2026-03-28T06:14:54.650876813Z }
+2026-03-28T06:14:55.270704308Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:55.270720108Z 
+2026-03-28T06:14:55.27246443Z [Auth] token payload decoded {
+2026-03-28T06:14:55.27247385Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:55.27247598Z   audience: 'authenticated'
+2026-03-28T06:14:55.27247784Z }
+2026-03-28T06:14:55.681660786Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:55.681676587Z 
+2026-03-28T06:14:55.682812344Z [Auth] token payload decoded {
+2026-03-28T06:14:55.682823534Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:55.682826194Z   audience: 'authenticated'
+2026-03-28T06:14:55.682828634Z }
+2026-03-28T06:14:56.106433485Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:56.106447016Z 
+2026-03-28T06:14:56.108568056Z [Auth] token payload decoded {
+2026-03-28T06:14:56.108580337Z   issuer: 'https://jfhojgtnmcfqretrrxam.supabase.co/auth/v1',
+2026-03-28T06:14:56.108584127Z   audience: 'authenticated'
+2026-03-28T06:14:56.108587517Z }
+2026-03-28T06:14:56.535288992Z [Auth] local DB lookup failed, falling back to Supabase psql: error: connection to server at "aws-0-us-west-1.pooler.supabase.com" (52.8.172.168), port 6543 failed: error received from server in SCRAM exchange: Wrong password
+2026-03-28T06:14:56.535319792Z 

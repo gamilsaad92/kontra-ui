@@ -1,0 +1,17 @@
+Coordinator Overview refinement — do not change the underlying transaction-state architecture.
+Refine the Overview so every visible status derives from the existing durable transaction state and tells one consistent story.
+Separate the concepts of document collection, document review, Transaction Record verification, issues/blockers, and transaction stage. Never describe a transaction as “ready for final review” merely because all required documents have been uploaded.
+Replace the current top metrics with:
+Documents: X/Y received + number requiring review
+Transaction Record: X/Y required fields confirmed + extracted facts awaiting confirmation
+Open Issues: blocker count + conflict count
+Participants: X/Y required participants active
+Rename the current “Transaction Readiness %” to Record Verification if the percentage is calculated primarily from confirmed Transaction Record fields. Do not imply that 3% means the entire transaction is only 3% ready.
+Tighten the Coordinator Transaction Brief. Remove duplicated recommendations that also appear in Next Actions or Stage Recommendation. The Brief should prioritize only the highest-value 3–5 coordinator decisions.
+Add a compact Key Transaction Facts summary using canonical Transaction Record values and statuses: purchase price/value, buyer, seller, deposit, closing date, and other transaction-type-specific key facts. Clearly distinguish Confirmed, Awaiting Confirmation, and Conflict.
+Reconcile participant requirements with blockers. A role cannot simultaneously be excluded from “4 of 4 required participants” while its absence is classified as an “Actual Blocker” unless there is an explicit contextual requirement explaining why. Blockers must mean something that prevents progression to the next required milestone.
+Replace low-value activity messages such as “readiness updated from 3% to 3%” with a Since your last visit / Recent Changes summary showing meaningful uploads, extracted facts, participant joins, conflicts, confirmations, and stage changes.
+Participant Overview must remain role-scoped, but empty participant states should show transaction context: transaction name, participant role, current stage, target close, and “Nothing requires your action right now.” Do not expose coordinator controls or unrestricted Transaction Record information.
+De-emphasize or remove the large Create Your Room CTA from active invited-participant workflows.
+Do not modify durable state, authorization boundaries, stage approval behavior, Transaction Seal behavior, canonical field preservation, or participant role isolation as part of this UI refinement.
+After implementation, run one authenticated coordinator acceptance scenario and Buyer, Seller, Legal Advisor and Financial Advisor participant scenarios. Verify that the same underlying transaction produces logically consistent status language across every role.

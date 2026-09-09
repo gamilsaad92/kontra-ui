@@ -1,0 +1,48 @@
+A–F look approved. Before Task G production deployment, perform a pre-deployment verification pass only. Do not modify production or deploy yet.
+Verify the following:
+1. Server-side capability enforcement
+Confirm Settlement/Complete stage availability is enforced by the API and not only by getEffectiveStages() in the frontend. Direct API calls must not allow a room without Settlement capability to enter Settlement or Complete.
+2. Legacy funded behavior
+Test:
+Existing funded room + Settlement OFF → remains unchanged
+Existing funded room + Settlement ON → Settlement Readiness becomes available without destructive stage migration
+New room + Settlement ON → Closing → Settlement → Complete
+New room + Settlement OFF → existing pack lifecycle remains unchanged
+3. Atomic completion
+Confirm POST /:transactionId/settlement/complete performs seal creation, sealed_at, completed_at, and stage advancement atomically. Simulate a failure during completion and confirm no partially completed state can remain.
+4. Full seal immutability
+Confirm sealing prevents modification of:
+transaction record fields
+settlement conditions
+required approvals
+pre-seal documents included in the Transaction Seal
+the Transaction Seal itself
+Post-completion document uploads must remain allowed and automatically marked post_completion: true.
+5. Mock isolation
+In production-mode tests confirm all tokenRegistry-dependent endpoints return 503 MOCK_DISABLED, while the safe production endpoints such as /assess, /contract/abi, /contract/preflight, and other explicitly permitted routes continue working.
+6. Settlement condition tests
+Verify:
+missing = incomplete
+needs_review contributes partial readiness but blocks completion
+verified = satisfied
+missing required approval blocks completion
+rejected/flagged approval blocks completion
+100% cached readiness alone cannot bypass all_conditions_met
+7. Mode locking
+Verify Traditional/Digital/Tokenized mode can be changed before lock, cannot be changed after lock, and cannot be altered after sealing.
+8. Migration safety
+Run Migration 017 against a non-production database/schema copy and confirm:
+migration succeeds
+existing rooms remain readable
+no existing stage values are changed
+existing deal analyses remain readable
+migration can safely handle the current production schema
+Then return:
+PASS/FAIL for each test
+any errors
+API responses for critical gates
+migration result
+screenshots of Traditional, Digital, Tokenized, and Completed/Sealed states
+confirmation that no production changes were made
+If all tests pass, stop and wait for production deployment approval.
+If those tests come back clean, then I would approve Task G.

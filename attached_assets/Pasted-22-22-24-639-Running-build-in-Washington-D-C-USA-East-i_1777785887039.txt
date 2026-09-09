@@ -1,0 +1,55 @@
+22:22:24.639 Running build in Washington, D.C., USA (East) – iad1
+22:22:24.640 Build machine configuration: 2 cores, 8 GB
+22:22:24.761 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 4812fc4)
+22:22:26.661 Warning: Failed to fetch one or more git submodules
+22:22:26.662 Cloning completed: 1.900s
+22:22:27.099 Restored build cache from previous deployment (HjJinrBEGNSQoWNMSv9G5Cx5ULcz)
+22:22:28.102 Running "vercel build"
+22:22:28.813 Vercel CLI 51.6.1
+22:22:29.410 Installing dependencies...
+22:24:04.141 
+22:24:04.142 up to date in 2m
+22:24:04.142 
+22:24:04.143 213 packages are looking for funding
+22:24:04.143   run `npm fund` for details
+22:24:04.317 
+22:24:04.318 > kontra-ui@1.0.0 build
+22:24:04.318 > vite build
+22:24:04.318 
+22:24:04.604 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+22:24:04.687 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+22:24:04.761 transforming...
+22:24:09.166 [1m[33m[plugin:vite:esbuild][39m[22m [33m[plugin vite:esbuild] src/pages/dashboard/EnterpriseApiPage.tsx: [33mDuplicate key "text" in object literal[33m
+22:24:09.167 468|        const result = await apiFetch(`/plugins/install/${installId}/execute`, {
+22:24:09.167 469|          method: "POST",
+22:24:09.167 470|          body: JSON.stringify({ actionId, payload: { channel: "#kontra-alerts", text: "Kontra test execution — draw approved for LN-0094 ($82,000)", summary: "Kontra test", severity: "info", to: "test@example.com", subject: "Kontra Integration Test", text: "Test message from Kontra" } }),
+22:24:09.167    |                                                                                                                                                                                                                                                              ^
+22:24:09.167 471|        });
+22:24:09.168 472|        setExecResult(r => ({ ...r, [installId]: result }));
+22:24:09.168 [39m
+22:24:10.115 [32m✓[39m 2020 modules transformed.
+22:24:10.137 [31mx[39m Build failed in 5.42s
+22:24:10.137 [31merror during build:
+22:24:10.138 [31m[vite:esbuild] Transform failed with 1 error:
+22:24:10.138 /vercel/path0/ui/src/components/QuickStartTour.jsx:163:18: ERROR: Expected "}" but found "s"[31m
+22:24:10.138 file: [36m/vercel/path0/ui/src/components/QuickStartTour.jsx:163:18[31m
+22:24:10.139 [33m
+22:24:10.139 [33mExpected "}" but found "s"[33m
+22:24:10.139 161|      ),
+22:24:10.140 162|      headline: 'Tokenize CRE loans and enable secondary trading.',
+22:24:10.140 163|      body: 'Kontra's Capital Markets module turns illiquid CRE loans into ERC-1400 compliant digital securities. Lenders can tokenize senior tranches, create Reg D/S offerings, and enable accredited investors to trade on a compliant secondary market.',
+22:24:10.140    |                    ^
+22:24:10.140 164|      features: [
+22:24:10.140 165|        '$225.4M tokenized across 2 active ERC-1400 tokens',
+22:24:10.140 [31m
+22:24:10.141     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+22:24:10.141     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+22:24:10.141     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+22:24:10.141     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+22:24:10.141     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+22:24:10.141     at Socket.emit (node:events:519:28)
+22:24:10.141     at addChunk (node:internal/streams/readable:561:12)
+22:24:10.141     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+22:24:10.141     at Readable.push (node:internal/streams/readable:392:5)
+22:24:10.142     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+22:24:10.178 Error: Command "npm run build" exited with 1

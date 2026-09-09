@@ -1,4 +1,4 @@
-- [Kontra GitHub connector writes](kontra-github-connector-writes.md) — reads work reliably, but Git Data/Contents writes may be Cloudflare-blocked; small GraphQL commits are the fallback
+- [Kontra GitHub connector writes](kontra-github-connector-writes.md) — large GraphQL blob reads can be truncated; verify byte sizes and publish complete local contents with bounded commits
 - [Deployment-neutral DOCX ingestion](docx-ingestion.md) — extract word/document.xml before analysis so preview and Render behave consistently
 - [Existing-room conflict hydration](existing-room-conflict-hydration.md) — filter semantically retired rows in returned state even when durable cleanup is unavailable
 - [Render cache rebuilds](render-cache-deploys.md) — a zero-output Node build failure after a huge cache restore may require a clear-cache rebuild before code changes
@@ -9,3 +9,7 @@
 - [Vercel deployment inspection](vercel-deployment-inspection.md) — an installed Vercel API-key connection can block deployment/SHA checks with a structured invalid-token 403
 - [Deal room document lifecycle](deal-room-document-lifecycle.md) — retain private originals for room lifetime, then verify storage cleanup before deleting mutable room data
 - [Frontend API base resolution](frontend-api-base.md) — hosted UI requests must use the shared API-base resolver, not page-local Vite variables
+- [AI data-handling boundary](ai-data-handling-boundary.md) — institutional AI calls use explicit non-storage requests and exclude sensitive identifiers before model submission
+- [Vertical video overlay checks](vertical-video-overlay-checks.md) — FFmpeg text overlays need keyframe inspection for clipping before a social cut is delivered
+- [Production notification schema](notification-production-schema.md) — participant rows have no status column; verify live notification columns/indexes before event delivery
+- [Existing-room Digital Asset Readiness](digital-asset-readiness-toggle.md) — enable only as a preserved metadata layer over canonical state; historical artifacts lock destructive disable

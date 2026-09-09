@@ -1,0 +1,210 @@
+Then the direction should be tightened further:
+
+> **Kontra coordinates, organizes, verifies, and prepares. Kontra does not issue, sell, recommend, exchange, custody, or settle digital assets.**
+
+That boundary matters because facilitating securities issuance or trading can create broker-dealer concerns; providing compensated investment advice can create investment-adviser concerns; and accepting or transmitting convertible virtual currency can create money-transmitter obligations. Whether registration is required always depends on the exact facts, so this product boundary should still be reviewed by securities counsel before launch. ([SEC][1])
+
+Send Replit this revised instruction:
+
+---
+
+## Kontra Product Boundary — Coordination and Preparation Only
+
+Kontra must remain a **software coordination, diligence, verification, and preparation platform**.
+
+Do not build features that cause Kontra to act as an issuer, broker, placement agent, exchange, investment adviser, custodian, money transmitter, transfer agent, or settlement provider.
+
+### Kontra may provide
+
+* Transaction workspaces
+* Document collection and organization
+* Due-diligence checklists
+* AI extraction and document analysis
+* Cross-document consistency checks
+* Participant coordination
+* Task, deadline, approval, and stage tracking
+* Identity-verification status received from third-party providers
+* Structured transaction and asset records
+* Ownership and cap-table information entered by authorized users
+* Readiness assessments
+* Missing-document and unresolved-risk indicators
+* Audit trails and source-document citations
+* Verified transaction packages
+* Exportable preparation packages for external legal, compliance, issuance, custody, or settlement providers
+* Neutral educational explanations of preparation requirements
+* Third-party integration placeholders and referral links
+
+### Kontra must not provide
+
+* Token minting or deployment
+* Smart-contract deployment for customers
+* Token sales or investor subscriptions
+* Investor solicitation or matching
+* Recommendations about whether someone should invest
+* Recommendations regarding token price, supply, valuation, returns, or offering terms
+* Negotiation of securities transactions
+* Order routing, trading, or secondary-market functionality
+* Handling or transmitting fiat, stablecoins, cryptocurrency, or investor funds
+* Custody of tokens, assets, wallets, keys, or funds
+* Executing settlement or distributions
+* Approving regulatory compliance or declaring an offering legally compliant
+* Acting as the official securities holder registry
+* Receiving commissions or fees based on capital raised, tokens sold, investors introduced, or transaction value
+
+Transaction-based compensation is particularly sensitive in determining whether activity may require broker-dealer registration, so Kontra’s pricing should remain a fixed software fee or subscription unrelated to whether an offering closes or how much capital is raised. ([FINRA][2])
+
+## Replace “Digital Asset Preparation” with a safer workflow
+
+The capability should be called:
+
+### **Digital Asset Readiness**
+
+Alternative acceptable name:
+
+### **Digital Issuance Preparation**
+
+Do not call it:
+
+* Tokenization Engine
+* Launch Token
+* Issue Tokens
+* Create Offering
+* Investor Marketplace
+* Token Sale
+* Compliance Approval
+
+The purpose is to help the customer and their licensed advisers organize the information that may be needed by an external provider.
+
+## Digital Asset Readiness workflow
+
+The tab should display preparation categories only:
+
+### Asset Record
+
+* Asset identity
+* Asset type
+* Ownership entity
+* Supporting documents
+* Valuation documents
+* Encumbrances
+* Verification status
+
+### Ownership and Governance
+
+* Legal owner
+* Beneficial owners
+* Existing cap table
+* Governing documents
+* Required approvals
+* Transfer restrictions
+
+### Legal Preparation
+
+* Proposed jurisdiction, entered by the customer or counsel
+* Counsel assigned
+* Legal analysis uploaded
+* Offering documents uploaded
+* Entity structure documented
+* Required disclosures tracked
+
+Kontra must not determine that an asset is or is not a security and must not select the legal exemption. Digital assets can fall within securities laws depending on their facts and circumstances. ([SEC][3])
+
+### Compliance Preparation
+
+* KYC provider selected
+* AML provider selected
+* Accreditation or eligibility provider selected
+* Sanctions-screening status
+* Required policies uploaded
+* Compliance reviewer assigned
+
+Kontra may display statuses returned by external providers but must not perform or certify regulated compliance itself.
+
+### Issuance Preparation
+
+* External issuance provider
+* External transfer agent or registry provider
+* External custodian
+* Proposed network
+* Proposed token structure
+* Draft supply and economics
+* Counsel approval status
+
+Token name, ticker, supply, price, and raise target may be stored as **customer-provided draft information**, but Kontra must label them:
+
+> Draft information supplied by the workspace owner. Kontra does not structure, recommend, approve, issue, or sell digital assets.
+
+### Export and Handoff
+
+The final output should be:
+
+## Digital Asset Preparation Package
+
+This package may include:
+
+* Verified Asset Record
+* Document index
+* Ownership and governance information
+* Compliance-preparation checklist
+* Uploaded legal materials
+* Open issues
+* Approvals and audit history
+* Structured JSON or PDF export
+* Handoff destination for an external licensed provider
+
+The primary action must be:
+
+**Export Preparation Package**
+
+or:
+
+**Send to External Provider**
+
+It must not be:
+
+**Issue Token**
+
+## Readiness language
+
+Use:
+
+* Preparation incomplete
+* Information collected
+* Awaiting professional review
+* Ready for external review
+* Package prepared for handoff
+
+Do not use:
+
+* Legally compliant
+* Approved for issuance
+* SEC compliant
+* Cleared for sale
+* Guaranteed tokenization-ready
+* Authorized offering
+
+A readiness score should measure **document and workflow completion only**, not legal eligibility.
+
+Include this disclosure:
+
+> Kontra provides software for transaction coordination, document organization, verification support, and digital-asset preparation. Kontra does not provide legal, investment, brokerage, issuance, custody, money-transmission, or regulatory services. Readiness indicators measure workspace completion and do not constitute legal approval or eligibility for issuance.
+
+## Architecture
+
+The architecture should now be:
+
+> **Transaction → Verification Support → Verified Record → Digital Asset Readiness → External Provider Handoff**
+
+Not:
+
+> **Transaction → Kontra Token Issuance**
+
+Keep Digital Asset Readiness as a real workspace tab when enabled, but ensure its entire function is preparation and handoff. Do not integrate any execution functionality until Kontra deliberately partners with appropriately licensed providers and receives legal approval for the exact integration model.
+
+---
+
+This preserves your original vision. Kontra can still become the infrastructure immediately upstream of tokenization, but it does not cross into executing or intermediating the regulated activity.
+
+[1]: https://www.sec.gov/about/divisions-offices/division-trading-markets/division-trading-markets-compliance-guides/guide-broker-dealer-registration?utm_source=chatgpt.com "Guide to Broker-Dealer Registration"
+[2]: https://www.finra.org/rules-guidance/notices/26-12?utm_source=chatgpt.com "Regulatory Notice 26-12 | FINRA.org"
+[3]: https://www.sec.gov/about/divisions-offices/division-corporation-finance/framework-investment-contract-analysis-digital-assets?utm_source=chatgpt.com "Framework for “Investment Contract” Analysis of Digital ..."

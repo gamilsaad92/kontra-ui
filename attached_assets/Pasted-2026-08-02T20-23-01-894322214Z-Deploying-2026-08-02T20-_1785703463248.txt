@@ -1,0 +1,34 @@
+2026-08-02T20:23:01.894322214Z ==> Deploying...
+2026-08-02T20:23:56.782109493Z ==> Running 'npm run start'
+2026-08-02T20:23:57.991625536Z 
+2026-08-02T20:23:57.991648668Z > kontra-api@1.0.0 start
+2026-08-02T20:23:57.991653778Z > node index.js
+2026-08-02T20:23:57.991656378Z 
+2026-08-02T20:24:04.969730669Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-08-02T20:24:06.533859646Z Redis package not installed, falling back to memory cache
+2026-08-02T20:24:06.677021806Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-08-02T20:24:06.677040557Z [WARN] Optional env var not set: STRIPE_SECRET_KEY — related features disabled
+2026-08-02T20:24:06.677068519Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-08-02T20:24:06.677237119Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-08-02T20:24:08.423574762Z ==> No open ports detected, continuing to scan...
+2026-08-02T20:24:08.522544368Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-02T20:24:12.595022131Z [localAuth] JWT_SECRET is not set — auth will fail. Set JWT_SECRET in environment.
+2026-08-02T20:24:17.480529622Z Kontra API listening on port 10000
+2026-08-02T20:24:17.894905971Z [startup] workflow_pack_id column ensure skipped: 
+2026-08-02T20:24:17.979610719Z [REQ] HEAD /
+2026-08-02T20:24:18.877586512Z [score-assets] analyzed 0 records
+2026-08-02T20:24:19.179599566Z [score-loans] analyzed 0 records
+2026-08-02T20:24:19.576790534Z [score-troubled] analyzed 0 records
+2026-08-02T20:24:22.875221577Z ==> Your service is live 🎉
+2026-08-02T20:24:22.943811346Z [REQ] GET /
+2026-08-02T20:24:22.954383586Z ==> 
+2026-08-02T20:24:22.959463783Z ==> ///////////////////////////////////////////////////////////
+2026-08-02T20:24:22.96294748Z ==> 
+2026-08-02T20:24:22.96612599Z ==> Available at your primary URL https://kontra-ui.onrender.com
+2026-08-02T20:24:22.969999397Z ==> 
+2026-08-02T20:24:22.973648248Z ==> ///////////////////////////////////////////////////////////
+2026-08-02T20:29:23.095461754Z ==> Detected service running on port 10000
+2026-08-02T20:29:23.184432852Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-02T20:38:45.259585395Z ==> Deploying...
+2026-08-02T20:38:48.788593121Z ==> Cause of failure could not be determined
+2026-08-02T20:38:48.795290401Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys

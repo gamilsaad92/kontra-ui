@@ -1,0 +1,45 @@
+Proceed with #267 before deployment. Treat this as a workflow-pack role reconciliation, not a UI workaround.
+The E2E test confirmed that Buyer and Seller authenticate correctly, but the CRE Acquisition pack cannot assign them documents because its durable checklist assignments still use legacy roles (owner, insurer, inspector, attorney).
+We need one canonical participant-role model across:
+workflow pack definitions
+checklist assignments
+invitations
+participant sessions
+participant Overview
+participant Documents
+coordinator People
+document requests/uploads
+dashboard participant state
+Do not hardcode Buyer/Seller exceptions in the participant UI.
+For CRE Acquisition, audit every required and optional document and explicitly determine its appropriate participant role(s). The participant should see only documents actually assigned to that role.
+Preserve backward compatibility for existing rooms using legacy role assignments. Do not rewrite historical Production room data merely to adopt the new role model.
+Also fix the remaining Coordinator Overview inconsistency:
+3 of 7 received + No documents requiring review
+is misleading when required documents remain missing.
+Separate these concepts clearly:
+Received — uploaded
+Needs review — received but requiring coordinator attention
+Missing/request needed — required but not received
+Missing required documents should generate appropriate Next Actions, but they should not be mislabeled as documents “requiring review.”
+Then rerun the same E2E scenario with:
+Coordinator
+Buyer
+Seller
+Legal Advisor
+Financial Advisor
+Verify for every participant:
+correct authentication role
+only assigned documents visible
+correct role-specific denominator/progress
+authorized uploads succeed
+unauthorized document access/upload remains blocked
+Verify Coordinator:
+participant count reflects accepted invitations
+People and Overview agree
+document received/missing/review counts reconcile
+missing required documents create appropriate actions
+Transaction Record metrics match canonical record_state
+owner re-entry and refresh remain fixed
+Important: investigate why the E2E expected 0 of 3 active while Buyer and Seller were accepted. Participant requirements/counts must come from the same canonical pack/room participant definition used by People—not from a separate default CRE role list.
+Run backward-compatibility acceptance against at least one legacy CRE room after the change.
+Do not deploy. Report the canonical CRE role mapping you establish, root cause, changed files, tests, E2E results, and commit SHA first.

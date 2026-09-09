@@ -1,0 +1,47 @@
+Please stop making additional changes to the current PIN implementation. The deal room is now less stable and more complicated than it was before, and I do not want us to continue patching this architecture.
+
+Restore the previous working deal-room interface and preserve the current database before running another migration. The owner experience, room layout, document workflow, AI analysis, role views, and invitation panel should not be redesigned as part of the security work.
+
+We need to rebuild participant security as a separate, controlled access layer.
+
+Required architecture:
+
+1. Each participant must receive an individual invitation tied to their email, deal room, and role. Do not use one PIN or credential per room or per role.
+
+2. Use a unique, random invitation token. Store only the token hash in the database. The room slug or property ID must not act as an access credential.
+
+3. When the participant opens the invitation, send a one-time verification code to the invited email through Supabase Auth. Do not require the owner to manually generate and separately distribute a permanent room PIN.
+
+4. After successful email verification, create an authenticated Supabase session and an active deal_room_participants record tied to auth.uid().
+
+5. Protect every deal-room table using Row Level Security. Access must be enforced by the database, not by React state, sessionStorage, localStorage, route guards, or hidden interface components.
+
+6. Protect all Supabase Storage objects with private bucket policies. A participant must not be able to retrieve a document by copying its URL or calling Supabase Storage directly.
+
+7. The service-role key or secret key must never be included in browser code. Sensitive actions such as invitation creation, email sending, acceptance, revocation, and security-event logging should run through a protected Edge Function.
+
+8. Create independent revocation and expiration for each participant. Revoking one buyer, lender, investor, attorney, or other participant must not affect anyone else.
+
+9. Add an append-only security audit log for invitation creation, email sends, verification attempts, successful access, document downloads, document uploads, role changes, expiration, and revocation.
+
+10. Do not use browser-based failed-attempt lockouts. Verification limits and lockouts must be enforced server-side.
+
+11. Avoid SECURITY DEFINER functions unless strictly necessary. Any required privileged function must use an empty search_path, fully qualified table names, restricted EXECUTE permissions, and minimal return values.
+
+12. Build this behind a feature flag and test it on one internal room before enabling it for existing rooms.
+
+The following tests must pass before deployment:
+
+* Anonymous users cannot retrieve room data.
+* Anonymous users cannot retrieve document files.
+* One participant cannot access another deal room.
+* One participant cannot change their own role or permissions.
+* Direct Supabase queries are rejected without authorization.
+* Direct Storage requests are rejected without authorization.
+* Clearing or modifying browser storage does not grant access.
+* Revoked users lose access immediately.
+* Expired invitations cannot be accepted.
+* A forwarded invitation still requires verification through the invited email.
+* Existing owner functionality and the previous room design remain unchanged.
+
+Please provide the proposed database schema, RLS policies, Storage policies, Edge Function responsibilities, migration rollback plan, and test results before changing the live flow again. Do not deploy another security migration directly to production without an isolated test environment and rollback path.

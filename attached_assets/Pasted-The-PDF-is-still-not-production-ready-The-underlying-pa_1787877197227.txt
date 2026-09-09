@@ -1,0 +1,25 @@
+The PDF is still not production-ready. The underlying package data is correct, but redesign the PDF rendering and information hierarchy.
+Target a professional 4–5 page institutional external-review artifact, not an audit-log export.
+Fix all layout overflow/wrapping bugs. Section headings must span the normal content width and must never collapse into narrow right-side columns. No headings or disclaimer text may be broken character-by-character or word-by-word. Keep sections together across page breaks where practical.
+Normalize display formatting:
+monetary values → $325,000, $280,000, $28,000, $49,817, $5,500, etc.
+percentages → 100%
+dates → consistent human-readable format
+do not expose raw internal formatting where a display formatter exists.
+Reduce the PDF to approximately 4–5 pages:
+Page 1: Package identity, readiness and verified transaction summary
+Page 2: Digital Asset Preparation fields
+Page 3: Verification, approvals, blockers and exception summary
+Page 4: Evidence & Provenance Appendix
+Page 5 if necessary: Technical integrity + provider-neutral disclaimer
+Remove the full Approval & Review Record from the external PDF. Summarize it as Required approvals satisfied — 24 approval events recorded. Preserve the complete approval history in the underlying machine-readable package/audit trail.
+Remove the separate Evidence Reference Register because it duplicates the Evidence & Provenance Appendix.
+Remove the full Confirmation and Extraction History from the external PDF. Preserve it internally and state that the complete immutable audit history is available in the underlying Kontra package.
+Keep ONE human-readable Evidence & Provenance table:
+Field | Frozen Value | Source | Evidence Reference | Verified Date
+Only include Source Document/Page when they actually exist. Do not render empty columns.
+Keep the package hash, preparation revision hash and immutable snapshot hash, but move technical identifiers into a compact Technical Integrity section. Do not allow UUIDs/hashes to dominate the document.
+Deduplicate the exception register. Repair Costs currently appears multiple times for the same resolved source discrepancy. Present one current resolved exception record, while preserving historical resolution events internally.
+Keep the existing provider-neutral legal positioning. Clearly state that Kontra prepares and verifies transaction information but does not issue, sell, recommend, custody, perform KYC/AML, transfer, trade or settle digital assets, and that qualified providers/professionals make their own determinations.
+Do not change the immutable snapshot architecture, provenance model, evidence records, approval history or package payload. This is primarily a PDF presentation-layer redesign. The full machine-readable audit data must remain preserved behind the external artifact.
+After implementing this, regenerate the same Revision 7 package so we can compare the new PDF using exactly the same underlying data.

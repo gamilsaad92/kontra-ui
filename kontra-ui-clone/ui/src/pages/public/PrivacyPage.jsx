@@ -55,7 +55,7 @@ const SECTIONS = [
       "**Retention period**: Deal room data is retained during the applicable active period. Retention after closure or account termination depends on product configuration, applicable law, legal holds, and any written agreement; this page does not make a fixed deletion-time commitment.",
       "**Export options**: Export availability and formats depend on the deal room and current product implementation. Contact support@kontraplatform.com to ask about available exports. Customers are responsible for verifying exported records before relying on them for legal, accounting, regulatory, or archival purposes.",
       "**Longer retention by agreement**: Customers requiring longer retention for legal, contractual, or compliance reasons may contact support@kontraplatform.com — subject to a written agreement.",
-      "**Deletion requests**: Deal room owners may request deletion of documents and data by emailing privacy@kontraplatform.com. An early deletion request may close deal room access and can be irreversible once completed — export any records you need before submitting. Requests are handled subject to the applicable product process, legal holds, and written retention agreements. Deleted data may remain in encrypted backups until those backups are overwritten in the ordinary course.",
+      "**Deletion requests**: Deal room owners may request deletion of documents and data by emailing gamilsaad@kontraplatform.com. An early deletion request may close deal room access and can be irreversible once completed — export any records you need before submitting. Requests are handled subject to the applicable product process, legal holds, and written retention agreements. Deleted data may remain in encrypted backups until those backups are overwritten in the ordinary course.",
     ],
   },
   {
@@ -64,7 +64,7 @@ const SECTIONS = [
       "**What is logged**: Material deal room actions — including AI-generated recommendations, task creation, task status changes, document uploads, AI analysis results, and approvals — are recorded in an application audit log with a timestamp and attributed party.",
       "**Purpose**: Audit logs allow deal room owners to review activity within their deal room and support compliance or legal inquiries.",
       "**Retention**: Audit-log retention depends on the applicable deal room, product configuration, legal requirements, and written agreements.",
-      "**Access**: Deal room owners may request an export of their deal room audit log by emailing privacy@kontraplatform.com.",
+      "**Access**: Deal room owners may request an export of their deal room audit log by emailing gamilsaad@kontraplatform.com.",
     ],
   },
   {
@@ -88,7 +88,7 @@ const SECTIONS = [
       "**Portability**: Request available deal room analysis data. Export availability and formats depend on the deal room and current product implementation.",
       "**Audit log export**: Request an export of all logged actions in your deal room.",
       "**Opt-out**: Unsubscribe from non-transactional emails at any time.",
-      "To exercise any of these rights, email privacy@kontraplatform.com with your deal room ID or deal room name and the email used at checkout.",
+      "To exercise any of these rights, email gamilsaad@kontraplatform.com with your deal room ID or deal room name and the email used at checkout.",
     ],
   },
   {
@@ -108,9 +108,9 @@ const SECTIONS = [
       "**Sale or sharing**: We do not sell personal information. We do not share personal information for cross-context behavioral advertising.",
       "**Sensitive personal information**: Kontra does not intentionally request sensitive personal information (such as Social Security numbers, financial account numbers, or government ID numbers) as a standard deal room field. Sensitive information may nevertheless be contained in documents uploaded by users. Users should avoid uploading unnecessary sensitive information and must have authority and a lawful basis to provide it.",
       "**Your rights**: You have the right to know, access, correct, delete, and opt out of sale or sharing of your personal information. You also have the right to non-discrimination for exercising these rights.",
-      "**Authorized agents**: An authorized agent may submit a request on your behalf by emailing privacy@kontraplatform.com with written authorization from you.",
+      "**Authorized agents**: An authorized agent may submit a request on your behalf by emailing gamilsaad@kontraplatform.com with written authorization from you.",
       "**Identity verification**: We will verify your identity before processing access or deletion requests — typically by confirming the email address associated with the deal room.",
-      "To submit a CCPA request, email privacy@kontraplatform.com.",
+      "To submit a CCPA request, email gamilsaad@kontraplatform.com.",
     ],
   },
   {
@@ -183,8 +183,8 @@ export default function PrivacyPage() {
           <p className="text-sm font-semibold text-gray-900 mb-1">Contact Us</p>
           <p className="text-sm text-gray-600 mb-2">
             Privacy requests and questions:{" "}
-            <a href="mailto:privacy@kontraplatform.com" className="underline hover:text-gray-900">
-              privacy@kontraplatform.com
+            <a href="mailto:gamilsaad@kontraplatform.com" className="underline hover:text-gray-900">
+              gamilsaad@kontraplatform.com
             </a>
           </p>
           <p className="text-sm text-gray-500">

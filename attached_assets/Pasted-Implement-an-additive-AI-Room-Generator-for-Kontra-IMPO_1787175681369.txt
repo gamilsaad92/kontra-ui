@@ -1,0 +1,581 @@
+Implement an additive “AI Room Generator” for Kontra.
+
+IMPORTANT:
+- Do NOT replace or refactor the existing workflow-pack system.
+- Do NOT break existing room creation.
+- Existing template-based room creation must continue to work exactly as it does today.
+- The AI-generated workflow becomes another way to create a room.
+- Reuse the current document, checklist, participant, task, workflow, transaction record, Operations Manager, permissions, and room infrastructure wherever possible.
+
+GOAL
+
+Allow a user to describe a transaction in natural language.
+
+Examples:
+
+“Freddie Mac hazard loss for a multifamily property. Fire damaged 12 units. Insurance proceeds are being held by the servicer. Borrower has already advanced funds and is requesting reimbursement.”
+
+“Sale of a multifamily property in California being marketed by CBRE. Buyer will obtain agency financing.”
+
+“$15M business acquisition. Buyer is acquiring assets rather than stock, financing includes an SBA loan, closing targeted in 45 days.”
+
+Kontra should analyze the description and generate a transaction-specific proposed room rather than loading a generic workflow.
+
+==================================================
+1. NEW ROOM CREATION EXPERIENCE
+==================================================
+
+Update the room creation flow to offer:
+
+[ Describe Transaction ]
+[ Start From Template ]
+
+Do not remove the existing template workflow.
+
+For “Describe Transaction” show:
+
+Title:
+Describe your transaction
+
+Large textarea:
+“Tell Kontra what you are working on. Include the transaction type, parties, jurisdiction, financing, investor/lender, special circumstances, or anything else that may affect the process.”
+
+Example placeholder:
+“Freddie Mac hazard loss involving roof damage, insurance proceeds, borrower-funded repairs and a second draw request.”
+
+Button:
+Generate Room
+
+==================================================
+2. TRANSACTION INTELLIGENCE PIPELINE
+==================================================
+
+Create a central server-side service:
+
+transactionRoomGenerator
+
+Suggested location:
+server/services/transactionRoomGenerator.js
+
+Do not allow the frontend to independently construct the workflow.
+
+Pipeline:
+
+A. Parse transaction description
+B. Classify transaction
+C. Identify relevant entities/context
+D. Retrieve applicable internal Kontra templates
+E. Retrieve relevant authoritative/public sources when research tools are available
+F. Generate structured proposed workflow
+G. Validate output
+H. Return proposal to user
+I. User reviews/modifies
+J. User approves
+K. Existing Kontra infrastructure creates the room
+
+==================================================
+3. STRUCTURED OUTPUT
+==================================================
+
+The AI must return structured JSON, not arbitrary prose.
+
+Create a schema similar to:
+
+{
+  transaction: {
+    title: "",
+    category: "",
+    subtype: "",
+    description: "",
+    jurisdiction: {
+      country: "",
+      state: "",
+      locality: ""
+    },
+    organizations: [],
+    financing_type: null,
+    investor_or_agency: null,
+    confidence: 0
+  },
+
+  summary: "",
+
+  stages: [
+    {
+      key: "",
+      name: "",
+      description: "",
+      position: 1
+    }
+  ],
+
+  requirements: [
+    {
+      key: "",
+      title: "",
+      description: "",
+      stage_key: "",
+      type: "document|data|approval|task|confirmation",
+      required: true,
+      responsible_role: "",
+      source_type: "authoritative|uploaded|template|ai_recommendation",
+      source_title: "",
+      source_url: null,
+      source_excerpt: null,
+      confidence: 0,
+      rationale: ""
+    }
+  ],
+
+  participants: [
+    {
+      role: "",
+      label: "",
+      required: true,
+      rationale: ""
+    }
+  ],
+
+  issues_to_confirm: [
+    {
+      question: "",
+      reason: ""
+    }
+  ],
+
+  transaction_record_fields: [],
+
+  research_sources: []
+}
+
+Validate all generated output before displaying it.
+
+==================================================
+4. SOURCE / PROVENANCE MODEL
+==================================================
+
+Every AI-created requirement must explain where it came from.
+
+Use these classifications:
+
+AUTHORITATIVE
+Requirement supported by regulator, agency, lender, government, investor, or other authoritative source.
+
+UPLOADED
+Requirement derived from a document uploaded by the user.
+
+TEMPLATE
+Requirement inherited from an existing Kontra workflow/template.
+
+AI RECOMMENDATION
+Suggested by Kontra based on transaction context but not represented as a formal external requirement.
+
+Never present an AI recommendation as a legal, regulatory, Freddie Mac, Fannie Mae, lender, CBRE, or other third-party requirement unless a source actually supports it.
+
+Store provenance with the requirement.
+
+==================================================
+5. RESEARCH ARCHITECTURE
+==================================================
+
+Create a provider-neutral interface such as:
+
+researchTransactionContext({
+  description,
+  entities,
+  jurisdiction,
+  transactionType
+})
+
+The room generator should NOT be tightly coupled to one search vendor.
+
+The research layer should support:
+
+- web/public source search
+- authoritative-domain prioritization
+- supplied/uploaded documents
+- existing Kontra templates
+- future private knowledge bases
+
+Source priority:
+
+1. Transaction-specific uploaded documents
+2. Organization-provided requirements
+3. Regulatory / agency / investor authoritative sources
+4. Existing Kontra templates
+5. Other credible public sources
+6. AI recommendations
+
+For V1, if external research is unavailable, generate from templates/context but clearly mark unsupported requirements as AI_RECOMMENDATION.
+
+Never fabricate citations.
+
+==================================================
+6. IMPORTANT ORGANIZATION BEHAVIOR
+==================================================
+
+Entity names must be treated carefully.
+
+Example:
+
+“Sale by CBRE”
+
+Kontra may identify:
+organization = CBRE
+role = broker/advisor
+
+But Kontra must NOT claim something is “required by CBRE” unless Kontra retrieved an actual CBRE source or the user supplied a CBRE document.
+
+Same treatment for Freddie Mac, Fannie Mae, banks, law firms, title companies, brokers, insurers, etc.
+
+==================================================
+7. PROPOSAL REVIEW SCREEN
+==================================================
+
+Do NOT immediately create the room after AI generation.
+
+Show a review screen first.
+
+Header:
+
+AI-Generated Transaction Plan
+
+Show:
+
+Detected Transaction
+- Type
+- Subtype
+- Jurisdiction
+- Agency/investor
+- Organizations
+- Financing
+- AI confidence
+
+Then:
+
+Workflow
+
+Allow user to:
+- rename stages
+- reorder stages
+- add stage
+- delete stage
+
+Requirements
+
+Allow user to:
+- add
+- remove
+- edit
+- mark required / optional
+- change stage
+- change participant owner
+
+Show source badge beside each requirement:
+
+Authoritative
+Uploaded
+Kontra Template
+AI Suggested
+
+Clicking a sourced requirement should show:
+- source name
+- source URL/reference
+- rationale
+- supporting excerpt when available
+
+Participants
+
+Allow:
+- add
+- remove
+- rename role
+- change responsible party assignments
+
+Questions / Assumptions
+
+Show AI uncertainties such as:
+“Is this Freddie Mac or Fannie Mae?”
+“Are insurance proceeds lender-controlled?”
+“Has repair work already commenced?”
+
+The user may answer them before creating the room.
+
+Buttons:
+
+Regenerate
+Save Draft
+Create Room
+
+==================================================
+8. ROOM CREATION
+==================================================
+
+Once the user approves the proposal, convert it into the EXISTING Kontra data structures.
+
+Do not create a parallel room architecture.
+
+Generated stages -> existing stage infrastructure
+Generated requirements -> existing checklist/requirements infrastructure
+Generated participants -> existing participant roles/access infrastructure
+Generated transaction fields -> Transaction Record
+Generated context -> Operations Manager transactionContext
+
+Persist metadata indicating:
+
+generation_method = 'ai'
+generation_version
+original_description
+generated_at
+approved_at
+generated_plan_snapshot
+
+Keep the approved generated plan snapshot for auditability.
+
+==================================================
+9. DATABASE
+==================================================
+
+Add only additive migrations.
+
+Suggested tables:
+
+transaction_generation_sessions
+- id
+- room_id nullable
+- owner_id
+- description
+- detected_context jsonb
+- generated_plan jsonb
+- status
+- model
+- created_at
+- approved_at
+
+transaction_requirement_sources
+- id
+- requirement_id
+- source_type
+- title
+- url
+- source_reference
+- excerpt
+- confidence
+- created_at
+
+Avoid duplicating existing room/checklist/workflow tables.
+
+If appropriate, use JSONB for the pre-room proposal rather than prematurely normalizing every generated object.
+
+==================================================
+10. API
+==================================================
+
+Add:
+
+POST /api/room-generator/analyze
+
+Input:
+{
+  description: "..."
+}
+
+Returns:
+{
+  generationSessionId,
+  proposal
+}
+
+PATCH /api/room-generator/:sessionId
+
+Updates the user-edited proposal.
+
+POST /api/room-generator/:sessionId/regenerate
+
+Allows regeneration while preserving the original description and user-supplied context.
+
+POST /api/room-generator/:sessionId/create-room
+
+Validates proposal and creates room using existing Kontra room creation services.
+
+Do NOT allow create-room to accept unvalidated arbitrary AI output directly.
+
+==================================================
+11. AI SAFETY / RELIABILITY
+==================================================
+
+The AI must never silently invent requirements.
+
+Implement:
+
+- schema validation
+- source classification
+- confidence values
+- unsupported-claim detection
+- URL/reference validation where applicable
+- duplicate requirement detection
+- deterministic normalization of stage/requirement keys
+
+When uncertain, AI should create an “issue_to_confirm” rather than pretending to know.
+
+Example:
+
+Instead of:
+“Freddie Mac approval required.”
+
+Use:
+“Confirm whether Freddie Mac approval is required for this loss scenario.”
+
+unless retrieved evidence supports the first statement.
+
+==================================================
+12. OPERATIONS MANAGER INTEGRATION
+==================================================
+
+After room creation, include the generated transaction context in Operations Manager grounding.
+
+Operations Manager should know:
+
+- why the room was created
+- transaction type/subtype
+- entities
+- jurisdiction
+- source-backed requirements
+- AI recommendations
+- unresolved assumptions
+
+It should be able to answer:
+
+“Why do we need this document?”
+
+“This requirement came from [source].”
+
+“What still needs to be confirmed?”
+
+“Can we remove this requirement?”
+
+But removing requirements must still use existing permission/authorization rules.
+
+==================================================
+13. DO NOT IMPLEMENT YET
+==================================================
+
+Do NOT build:
+
+- drag-and-drop node workflow designer
+- arbitrary executable code generated by AI
+- autonomous external emails
+- autonomous approvals
+- autonomous legally binding actions
+- background agents modifying rooms without user approval
+- complex trigger/action automation system
+- hard-coded Freddie hazard loss application logic
+
+The AI-generated room should remain human-reviewed.
+
+==================================================
+14. BACKWARDS COMPATIBILITY
+==================================================
+
+This is critical.
+
+Existing:
+
+- CRE rooms
+- Business Acquisition rooms
+- Fundraising rooms
+- Lending rooms
+- other workflow packs
+- document processing
+- readiness
+- participant invitations
+- Transaction Record
+- Operations Manager
+- settlement
+- existing room APIs
+
+must continue functioning.
+
+AI room generation is additive.
+
+Add regression tests proving existing template-created rooms generate exactly as before.
+
+==================================================
+15. INITIAL TEST CASES
+==================================================
+
+Add fixtures/tests for at least:
+
+TEST A
+“Freddie Mac multifamily hazard loss. Fire damaged 12 units. Insurance proceeds held by servicer. Borrower advanced repair costs and requests reimbursement.”
+
+Expected:
+hazard/casualty classification
+agency = Freddie Mac
+insurance + repair + draw-related proposed requirements
+appropriate source classifications
+questions where information is unknown
+
+TEST B
+“Multifamily property sale in California marketed by CBRE. Buyer obtaining agency financing.”
+
+Expected:
+CRE sale/disposition
+California jurisdiction
+CBRE identified as broker/advisor, NOT as regulator
+financing diligence included
+no fabricated CBRE requirements
+
+TEST C
+“$12M all-cash business acquisition structured as an asset purchase.”
+
+Expected:
+business acquisition
+asset purchase
+no financing requirements
+appropriate diligence/closing workflow
+
+TEST D
+very vague:
+“I’m selling my company.”
+
+Expected:
+basic proposal
+low confidence
+questions_to_confirm
+no invented transaction details
+
+==================================================
+16. IMPLEMENTATION ORDER
+==================================================
+
+Implement in this order:
+
+1. Database migration
+2. Structured workflow schema
+3. transactionRoomGenerator service
+4. schema validation
+5. template/context retrieval
+6. research provider interface
+7. API endpoints
+8. proposal review UI
+9. conversion into existing room infrastructure
+10. Operations Manager grounding
+11. regression tests
+12. generation-specific tests
+
+Stop and fix regressions before proceeding if existing room creation changes behavior.
+
+At completion provide:
+
+- files added
+- files modified
+- database migrations
+- architecture summary
+- API endpoints
+- how research/source provenance works
+- how hallucinated requirements are prevented
+- test results
+- any known limitations
+
+Do not redesign unrelated Kontra UI while implementing this.

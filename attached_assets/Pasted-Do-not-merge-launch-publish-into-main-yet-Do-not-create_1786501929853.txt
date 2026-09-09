@@ -1,0 +1,63 @@
+Do not merge launch-publish into main yet. Do not create another branch.
+The audit confirms the frontend Preview is valid, but it is still calling the production Render API, so the branch has not been tested as a full stack.
+Perform the following validation only:
+1. Verify production Supabase migration state
+Confirm directly from the database whether:
+migration 017 columns exist
+migration 018 RPC complete_settlement_transaction() exists
+the unique Transaction Seal index exists
+Do not rely on commit notes or memory.
+Return the exact DB verification result.
+2. Validate the launch-publish API code separately
+Run the API from launch-publish in a non-production validation environment using the current Supabase schema.
+Do not point the Preview UI at production Render for this test.
+Use a temporary/staging API endpoint or equivalent isolated runtime so both frontend and API come from launch-publish.
+Do not modify production data beyond clearly disposable test-room records.
+3. Point the existing Vercel Preview to that validation API only
+Do not change Production Vercel.
+Confirm that the Preview frontend and validation API are both running the exact launch-publish commit or equivalent branch state.
+4. Run a full-stack acceptance test on one fresh workspace
+Test:
+Create room
+→ save Transaction Value and Target Closing Date
+→ verify Transaction Record updates with Deal Owner provenance
+→ verify Transaction Readiness changes for an explainable reason
+→ invite Buyer
+→ verify People and Next Actions update
+→ upload NDA
+→ verify Documents updates
+→ verify lifecycle does not falsely treat upload as stage advancement
+→ upload LOI
+→ allow AI extraction
+→ verify proposed/extracted facts appear distinctly from confirmed facts
+→ confirm selected facts
+→ verify Transaction Record and Readiness update
+→ advance lifecycle
+→ verify supporting-evidence semantics
+→ test Settlement Readiness
+→ complete transaction
+→ verify exactly one Transaction Seal
+5. Regression-test core existing functionality
+Verify:
+Overview
+Documents
+People
+custom workflow packs
+role labels
+document responsibility
+Request actions
+invites
+AI analysis
+settlement capability
+post-completion records
+6. Return a merge-readiness report
+Include:
+production DB migration status
+validation API URL/environment
+frontend Preview commit
+API commit
+PASS/FAIL for each acceptance test
+any behavior differences between main Production and launch-publish
+any regressions
+exact files that would materially change on merge
+Do not merge, deploy Production, or alter main yet.

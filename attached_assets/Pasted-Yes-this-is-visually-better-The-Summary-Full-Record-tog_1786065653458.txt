@@ -1,0 +1,70 @@
+Yes — this is visually better. The **Summary / Full Record toggle, Required badges, Request / Enter / N/A actions, and collapsed sections** solve most of the UX problem from the previous version.
+
+But I see one important issue: **the underlying record is still generic.**
+
+You created a **Marriott Hotel Acquisition**, yet the Full Record still says things like:
+
+* Entity / asset name
+* Type
+* Primary party
+* Counterparty
+* Deal value
+* Key financial terms
+* Primary party approval
+
+So Replit improved the **presentation**, but it doesn't look like it implemented the most important part of the prior instruction: **workflow-specific/adaptive record fields.**
+
+For this transaction, I would expect the system to translate generic concepts into transaction-specific concepts. For example, `Primary party` → **Buyer**, `Counterparty` → **Seller**, `Deal value` → **Purchase price**, while adding hotel/CRE-specific fields such as **Property address, Hotel brand, Number of keys, Current owner, Lender, Title company, Franchise agreement, Occupancy, ADR, RevPAR, Environmental status, Title status, Due diligence expiration, and Closing authorization**.
+
+And importantly, I would **not hardcode these into Kontra globally**. A fundraising room should generate fundraising-specific fields. A business acquisition should generate acquisition-specific fields. A debt transaction should generate loan-specific fields. The universal categories remain stable while the fields underneath adapt.
+
+I would send Replit this:
+
+> **The UI changes are correct. Keep them. Do not redesign the Transaction Record again.**
+>
+> The remaining issue is the field-generation architecture.
+>
+> The Transaction Record is still displaying the generic fallback schema even though this workspace was created as a Marriott Hotel Acquisition.
+>
+> Implement the previously requested workflow-pack-driven/adaptive field schema.
+>
+> **Keep the universal categories:**
+> Transaction
+> Asset / Company
+> Parties
+> Ownership
+> Financial
+> Legal
+> Approvals
+>
+> But the fields inside those categories must adapt to the actual transaction.
+>
+> There should be three layers:
+>
+> **1. Universal core fields**
+> A small set applicable to almost every transaction, such as transaction type, current stage, jurisdiction, target closing date, and transaction value.
+>
+> **2. Workflow-pack fields**
+> Fields defined by the selected/generated workflow pack.
+>
+> For a CRE acquisition, for example:
+> Buyer, Seller, Property Address, Purchase Price, Due Diligence Deadline, Current Owner, Title Status, Financing, Lender, Environmental Status, etc.
+>
+> **3. Transaction-specific AI-generated fields**
+> The original transaction description can add fields that are particularly relevant to this transaction.
+>
+> Example: `"acquiring Marriott hotel"` should cause the generated schema to recognize that this is not merely generic CRE. Appropriate hotel-related fields may include Hotel Brand, Number of Keys, Franchise Agreement, Management Agreement, Occupancy, ADR, RevPAR, and required brand/franchise approvals where applicable.
+>
+> Do NOT hardcode Marriott or hotel fields into the universal application. These should come from the workflow pack and transaction-context generation.
+>
+> The generic fields currently displayed — `Primary party`, `Counterparty`, `Deal value`, `Key financial terms`, etc. — should function only as fallback fields when Kontra genuinely cannot determine a more specific schema.
+>
+> When a specific transaction role is known, use the specific terminology. For an acquisition, display `Buyer` and `Seller`, not `Primary party` and `Counterparty`.
+>
+> Preserve the current **Summary / Full Record**, **Required**, **Request**, **Enter**, **N/A**, collapsed-section behavior, extraction provenance, confirmation history, and source-change logic.
+>
+> Do not add brokerage, investment advice, legal determinations, securities eligibility determinations, token issuance, custody, transaction execution, or other regulated functionality. The Transaction Record remains a **coordination, information extraction, participant confirmation, recordkeeping, and preparation layer**.
+>
+> **Do not redesign the UI. Fix the schema-generation layer.**
+
+There's also a subtle product distinction I'd preserve: **Kontra should not decide that a field is legally required.** Your yellow `Required` badge can mean **"required by this workspace/workflow checklist"**, not "required by law." I would actually put that explanation in the little ⓘ beside *Transaction Record*. That keeps the product squarely in the coordination/preparation lane you want.

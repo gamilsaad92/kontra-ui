@@ -1,9 +1,9 @@
 const http = require('http');
 const WebSocket = require('ws');
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('./lib/openaiClient');
 require('dotenv').config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 async function askAssistant(question) {
   const resp = await openai.chat.completions.create({

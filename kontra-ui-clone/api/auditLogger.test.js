@@ -22,16 +22,31 @@ describe('audit logger', () => {
     if (fs.existsSync(AUDIT_PATH)) fs.unlinkSync(AUDIT_PATH);
   });
 
-  it('writes encrypted log lines', () => {
-  it('writes encrypted log lines', async () => {
-    const content = fs.readFileSync(AUDIT_PATH, 'utf8').trim();
+  it('writes encrypted operational metadata without customer payloads', async () => {
+     logAuditEntry({
+       method: 'POST',
+       url: '/test',
+       result: 'accepted',
+       body: { a: 1, prompt: 'customer document text', ssn: '123-45-6789' },
+       query: { text: 'sensitive query' },
+     });
     await new Promise((resolve) => setTimeout(resolve, 10));
-     const line = content.split('\n')[0];
+     const content = fs.readFileSync(AUDIT_PATH, 'utf8').trim();
+     const lines = content.split('\n');
+     const line = lines.find(candidate => {
+       try {
+         return decrypt(candidate).result === 'accepted';
+       } catch {
+         return false;
+       }
+     });
     expect(line).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
     const decoded = decrypt(line);
     expect(decoded.method).toBe('POST');
     expect(decoded.url).toBe('/test');
-    expect(decoded.data.a).toBe(1);
+    expect(decoded.result).toBe('accepted');
+    expect(decoded.body).toBeUndefined();
+    expect(decoded.query).toBeUndefined();
     expect(decoded.timestamp).toBeDefined();
   });
 });

@@ -1,0 +1,27 @@
+Add event-driven participant email notifications to existing Kontra transaction workflows. Do not redesign the UI or change existing stage, Verified Asset, or Digital Asset Readiness logic.
+Email notifications should be triggered from the same canonical transaction events/state changes already used by the room and audit trail—not separate duplicated business logic.
+Implement these high-signal events:
+Stage transition — when the transaction advances to a new stage, email relevant active participants. Include transaction name, previous stage → new stage, and any actions assigned to that recipient.
+New blocking action assigned — email the participant responsible for the action. Deduplicate repeated/recomputed blockers.
+Verified Asset milestone — when the transaction reaches a meaningful completed/verified state, notify the owner and relevant participants.
+Verification/readiness regression — if a previously satisfied/complete state materially regresses because evidence/facts changed, notify the owner and affected participant(s). Do not email for ordinary incremental readiness-score changes.
+Package generated — when a Verified Asset or Digital Asset Readiness Package is successfully generated, notify the owner and authorized relevant participants that the package is ready.
+Major lifecycle completion — closing/funding/completion milestones should notify relevant participants.
+Email behavior
+Role-aware recipients; do not blindly email every participant for every event.
+Do not attach transaction documents or generated packages to emails.
+Email CTA should deep-link securely back to the relevant transaction/stage/action/package.
+Do not expose sensitive transaction details unnecessarily in subject lines or email previews.
+Preserve authorization: receiving an email must never grant access the recipient does not already have.
+Deduplicate notifications and make delivery idempotent so retries cannot send duplicate emails.
+Email failure must never block the underlying transaction event/stage progression.
+Record notification event, recipient, delivery status, timestamps, and associated transaction event for auditability.
+Preserve existing in-app notifications and make email another delivery channel for the same underlying event where appropriate.
+Do NOT email for:
+every field confirmation;
+every readiness percentage increase;
+routine AI recomputation;
+unchanged blockers;
+background processing that produces no meaningful participant action/state change.
+Use the existing Kontra email infrastructure/templates where possible. Do not introduce a new provider unless technically necessary.
+Before changing code, inspect the existing event, notification, participant/role, stage-transition, Verified Asset, readiness-package, and email paths. Then implement the smallest compatible change and report exactly which canonical events trigger which recipients, how deduplication/idempotency works, and the tests added.

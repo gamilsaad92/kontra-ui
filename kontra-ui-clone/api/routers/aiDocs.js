@@ -12,7 +12,10 @@
 
 const express  = require('express');
 const multer   = require('multer');
-const OpenAI   = require('openai');
+const {
+  createInstitutionalOpenAIClient,
+  safeAIErrorMetadata,
+} = require('../lib/openaiClient');
 const authenticate = require('../middlewares/authenticate');
 const { supabase } = require('../db');
 
@@ -20,7 +23,7 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  ? createInstitutionalOpenAIClient()
   : null;
 
 router.use(authenticate);
@@ -108,7 +111,7 @@ Return only valid JSON. No extra text.`;
       raw_filename: req.file?.originalname || 'pasted-text',
     });
   } catch (err) {
-    console.error('[ai/analyze]', err?.message);
+    console.error('[ai/analyze]', safeAIErrorMetadata(err));
     // Return a graceful fallback so the UI still works
     return res.json({
       doc_type: 'Unknown',
@@ -117,7 +120,7 @@ Return only valid JSON. No extra text.`;
       covenants:[],
       risk_flags:[],
       recommendations: ['Re-submit when AI service is available.'],
-      notice:   err?.message || 'AI unavailable',
+      notice:   'AI analysis is temporarily unavailable.',
     });
   }
 });
@@ -173,7 +176,7 @@ Return only valid JSON.`;
 
     return res.json(result);
   } catch (err) {
-    console.error('[ai/portfolio-brief]', err?.message);
+    console.error('[ai/portfolio-brief]', safeAIErrorMetadata(err));
     return res.json({
       brief: 'Portfolio analysis is temporarily unavailable.',
       portfolio_score: null,
@@ -221,7 +224,7 @@ Return only valid JSON.`;
     const result = await callGPT(systemPrompt, prompt);
     return res.json(result);
   } catch (err) {
-    console.error('[ai/loan-brief]', err?.message);
+    console.error('[ai/loan-brief]', safeAIErrorMetadata(err));
     return res.json({
       risk_label: 'Unknown',
       summary: 'AI brief temporarily unavailable.',

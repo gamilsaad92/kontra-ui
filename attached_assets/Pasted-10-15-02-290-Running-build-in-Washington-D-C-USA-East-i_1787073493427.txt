@@ -1,0 +1,42 @@
+10:15:02.290 Running build in Washington, D.C., USA (East) – iad1
+10:15:02.291 Build machine configuration: 2 cores, 8 GB
+10:15:02.412 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 1b2f7fe)
+10:15:03.828 Warning: Failed to fetch one or more git submodules
+10:15:03.828 Cloning completed: 1.416s
+10:15:04.100 Restored build cache from previous deployment (Bu6mznkm29tyrPjK9rXCoVUSUV37)
+10:15:04.355 Running "vercel build"
+10:15:04.366 Vercel CLI 59.0.0
+10:15:04.878 Running "install" command: `npm install --ignore-scripts --no-audit --no-fund`...
+10:16:16.819 
+10:16:16.820 up to date in 1m
+10:16:17.061 
+10:16:17.062 > kontra-ui@1.0.0 build
+10:16:17.062 > vite build
+10:16:17.062 
+10:16:17.295 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+10:16:17.363 vite v5.4.21 building for production...
+10:16:17.425 transforming...
+10:16:20.183 ✓ 783 modules transformed.
+10:16:20.183 x Build failed in 2.79s
+10:16:20.183 error during build:
+10:16:20.183 [vite:esbuild] Transform failed with 1 error:
+10:16:20.183 /vercel/path0/ui/src/pages/public/DealRoomPage.jsx:1:6: ERROR: Expected ";" but found "gap"
+10:16:20.183 file: /vercel/path0/ui/src/pages/public/DealRoomPage.jsx:1:6
+10:16:20.183 
+10:16:20.184 Expected ";" but found "gap"
+10:16:20.184 1  |  enter gap-2 mb-2">
+10:16:20.184    |        ^
+10:16:20.184 2  |                  <span className="text-sm">📋</span>
+10:16:20.184 3  |                  <p className="text-xs font-bold text-amber-700">
+10:16:20.185 
+10:16:20.185     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+10:16:20.185     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+10:16:20.185     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+10:16:20.185     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+10:16:20.185     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+10:16:20.185     at Socket.emit (node:events:519:28)
+10:16:20.185     at addChunk (node:internal/streams/readable:561:12)
+10:16:20.185     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+10:16:20.185     at Readable.push (node:internal/streams/readable:392:5)
+10:16:20.185     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+10:16:20.210 Error: Command "npm run build" exited with 1

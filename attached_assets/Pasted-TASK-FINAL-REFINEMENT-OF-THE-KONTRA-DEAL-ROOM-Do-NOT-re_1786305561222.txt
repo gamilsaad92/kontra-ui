@@ -1,0 +1,1052 @@
+TASK: FINAL REFINEMENT OF THE KONTRA DEAL ROOM
+
+Do NOT redesign the application from scratch.
+
+The current structure is substantially correct:
+- Overview
+- Documents
+- People
+- Kontra AI floating assistant / side drawer
+- Digital Asset Readiness
+- Existing Kontra visual design system
+
+This task is a SURGICAL PRODUCT/UX REFINEMENT.
+
+Do not remove tokenization / digital-asset preparation.
+Do not add an Activities tab.
+Do not add a separate Tokenization tab at this stage.
+Do not add unnecessary dashboard widgets.
+Do not duplicate information between tabs.
+Do not change the global navigation.
+Do not remove the AI assistant.
+Do not fundamentally redesign Documents or People.
+
+The main objective is:
+
+Make the Deal Room feel like an intelligent transaction operating system that progressively organizes a real-world transaction and prepares its verified transaction record for eventual digital-asset/tokenization workflows.
+
+==================================================
+1. PRODUCT MODEL — IMPORTANT
+==================================================
+
+Kontra has TWO connected layers:
+
+LAYER 1 — TRANSACTION EXECUTION
+
+The Deal Room helps users:
+- collect documents
+- coordinate participants
+- identify missing information
+- extract structured facts
+- surface inconsistencies and exceptions
+- understand what is blocking the transaction
+- track progress
+- maintain an auditable transaction record
+
+LAYER 2 — DIGITAL ASSET / TOKENIZATION READINESS
+
+As Layer 1 becomes complete, Kontra progressively organizes the information that may later be needed to prepare the transaction/asset for a digital-asset or tokenization workflow.
+
+DO NOT eliminate this second layer.
+
+However:
+
+Kontra must NOT imply that simply uploading documents automatically makes an asset legally tokenizable.
+
+The product should distinguish between:
+
+"transaction information readiness"
+
+and
+
+"legal/regulatory approval for issuance."
+
+Kontra can organize and prepare information for tokenization.
+
+Kontra should NOT claim that it has legally approved an issuance unless a future regulated workflow explicitly does so.
+
+==================================================
+2. KEEP ONLY THESE DEAL ROOM TABS
+==================================================
+
+Keep:
+
+Overview
+Documents
+People
+
+Do NOT create:
+- Activity
+- Settings
+- Tokenization
+- AI
+- Analytics
+
+as additional primary tabs.
+
+Settings remains accessible through the existing gear icon.
+
+Activity should NOT have its own tab.
+
+Important activity may eventually appear contextually through the AI assistant or relevant transaction sections.
+
+==================================================
+3. OVERVIEW — CHANGE THE INFORMATION ARCHITECTURE
+==================================================
+
+The Overview should answer four questions immediately:
+
+1. What transaction is this?
+2. What requires my attention?
+3. How far has the transaction progressed?
+4. How prepared is the transaction record for future digital-asset/tokenization workflows?
+
+The Overview should NOT be a collection of every piece of information in the room.
+
+It should be an EXECUTIVE CONTROL SURFACE.
+
+==================================================
+4. TRANSACTION SNAPSHOT
+==================================================
+
+Keep the current Transaction Snapshot at the top.
+
+Display:
+
+Transaction name
+Transaction type
+Current stage
+Target close date
+
+Then display only the most important facts:
+
+Transaction Value
+Asset / Company
+Buyer / Primary Party
+
+Do not add dozens of metrics.
+
+When facts have not yet been extracted, "Not recorded" is acceptable.
+
+Once documents are uploaded and AI extracts confirmed information, populate these fields automatically.
+
+Example:
+
+Marriott Hotel Acquisition
+
+Acquisition
+Due Diligence
+Target close Aug 17, 2026
+
+Transaction Value
+$84.5M
+
+Asset
+Marriott Downtown Austin
+
+Buyer
+Example Capital Partners
+
+Stage
+Due Diligence
+
+==================================================
+5. FIX "WHAT NEEDS ATTENTION"
+==================================================
+
+This is the most important change.
+
+The current empty state says:
+
+"Nothing urgent right now"
+
+and
+
+"Nothing needs your attention right now."
+
+THIS IS WRONG when the room contains no documents and no participants.
+
+An empty transaction absolutely requires action.
+
+The system must distinguish between:
+
+A. EMPTY / NOT STARTED
+B. ACTIVE / NO BLOCKERS
+C. ACTIVE / ACTION REQUIRED
+D. BLOCKED / HIGH PRIORITY
+
+--------------------------------
+STATE A — EMPTY ROOM
+--------------------------------
+
+If there are no documents and/or the transaction has not been initialized:
+
+Heading:
+
+"Start this transaction"
+
+Subtext:
+
+"Add the first documents and participants so Kontra can begin building the transaction record."
+
+Show contextual actions:
+
+Upload first document
+Invite participant
+
+Optionally show 2–3 concrete initialization tasks:
+
+• Upload core transaction documents
+• Invite the deal owner / relevant parties
+• Confirm basic transaction information
+
+DO NOT say:
+"Nothing urgent right now."
+
+--------------------------------
+STATE B — ACTIVE, NO BLOCKERS
+--------------------------------
+
+Only after the transaction has actual activity/data should the system be allowed to say:
+
+"Nothing requires your attention right now."
+
+Supporting text:
+
+"Kontra is monitoring the transaction for missing information, inconsistencies, participant requests, and upcoming actions."
+
+--------------------------------
+STATE C — ACTION REQUIRED
+--------------------------------
+
+Display only meaningful items.
+
+Example:
+
+WHAT NEEDS ATTENTION
+
+3 items require action
+
+Financial Statements
+Missing · Waiting on Seller
+[Request]
+
+Purchase Agreement
+Missing · Legal Advisor
+[Request]
+
+Buyer identity
+Needs confirmation
+[Review]
+
+Do NOT duplicate the complete Documents checklist here.
+
+Maximum approximately 3–5 priority items.
+
+Provide:
+
+"View all in Documents →"
+
+when appropriate.
+
+--------------------------------
+STATE D — BLOCKER
+--------------------------------
+
+High-priority blockers should visually rise above routine missing items.
+
+Example:
+
+BLOCKING TRANSACTION
+
+Title report contains inconsistent ownership information.
+
+Kontra found different owner names across:
+- Purchase Agreement
+- Title Report
+
+[Review finding]
+
+Use restrained visual emphasis.
+
+Do NOT make the entire dashboard red.
+
+==================================================
+6. DIGITAL ASSET READINESS — KEEP IT
+==================================================
+
+DO NOT REMOVE DIGITAL ASSET READINESS.
+
+This is strategically important to Kontra.
+
+However, improve the language and behavior.
+
+The current concept:
+
+"Building from your transaction activity"
+
+is directionally correct.
+
+Keep the section directly underneath What Needs Attention.
+
+The section should communicate:
+
+"Kontra is progressively organizing the transaction information that may later support digital-asset preparation and tokenization."
+
+Do NOT make this sound like a legal approval checklist.
+
+==================================================
+7. DIGITAL ASSET READINESS STRUCTURE
+==================================================
+
+Use these readiness categories:
+
+Identity & Parties
+Asset / Company
+Transaction Terms
+Financial Information
+Legal & Diligence
+
+Each category can have one of:
+
+Not started
+Building
+Needs information
+Ready for review
+
+Avoid saying simply "Tokenization Ready."
+
+The entire section should evolve automatically based on the transaction record.
+
+Example:
+
+DIGITAL ASSET READINESS
+
+Building from your transaction activity
+
+"Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed."
+
+[Early]
+
+Identity & Parties
+Building
+
+Asset / Company
+Needs information
+
+Transaction Terms
+Building
+
+Financial Information
+Not started
+
+Legal & Diligence
+Needs information
+
+At the bottom:
+
+"Readiness reflects the completeness and organization of transaction information. It does not represent legal or regulatory approval for issuance or tokenization."
+
+Keep that disclaimer.
+
+==================================================
+8. MAKE READINESS EXPLAINABLE
+==================================================
+
+Each Digital Asset Readiness row should be clickable or expandable.
+
+Example:
+
+Asset / Company
+Needs information
+
+Expanded:
+
+Confirmed:
+✓ Asset name
+✓ Property address
+
+Missing:
+○ Ownership confirmation
+○ Current valuation
+○ Title information
+
+Sources:
+Purchase Agreement
+Property Condition Report
+
+This is critical.
+
+Users must understand WHY something is or is not ready.
+
+Do not show arbitrary percentages without explaining their source.
+
+==================================================
+9. FUTURE TOKENIZATION HANDOFF
+==================================================
+
+The product architecture must preserve the future transition from:
+
+Deal Room
+→ Verified Transaction Record
+→ Digital Asset Preparation
+→ Tokenization / Issuance Workflow
+
+Do NOT implement a full token issuance system in this task.
+
+But structure the data model so Digital Asset Readiness can later feed a dedicated issuance/tokenization workflow.
+
+When sufficient transaction information exists, the readiness card may eventually display:
+
+"Prepare digital asset"
+
+or
+
+"Begin digital-asset preparation"
+
+BUT this CTA should NOT appear for a brand-new empty transaction.
+
+It should appear only when meaningful prerequisites have been satisfied.
+
+Do NOT use:
+
+"Tokenize Now"
+
+because that implies that tokenization is a single-button action.
+
+==================================================
+10. DOCUMENTS TAB
+==================================================
+
+The current Documents direction is good.
+
+Do NOT redesign it.
+
+Keep:
+
+Due Diligence Checklist
+Core Documents
+Additional Documents
+Required / Optional
+Missing status
+Responsible party
+Upload
+Request
+Cross-document checks
+
+Important:
+
+Keep responsible-party badges.
+
+Examples:
+
+Buyer
+Seller
+Legal Advisor
+Deal Coordinator
+
+These are useful because the user can immediately understand who owes what.
+
+Do NOT turn Documents into a generic file repository.
+
+It is a transaction checklist.
+
+==================================================
+11. DOCUMENT CHECKLIST LOGIC
+==================================================
+
+Core documents should be limited to documents actually important for the selected transaction type.
+
+For an acquisition example, this could include:
+
+Letter of Intent
+Non-Disclosure Agreement
+Financial Statements
+Property Condition Report
+Title Report
+Purchase Agreement
+
+Do not arbitrarily change the required-document count every time the page renders.
+
+The checklist should come from a stable transaction template.
+
+Additional optional documents should remain collapsed by default.
+
+Users can:
+
+Add a document
+Browse suggested items
+Restore template items
+
+==================================================
+12. CROSS-DOCUMENT CHECKS
+==================================================
+
+Keep the Cross-document checks section.
+
+This is an important AI capability.
+
+Once multiple documents exist, Kontra should check for inconsistencies such as:
+
+Different purchase prices
+Different buyer/seller names
+Conflicting dates
+Different asset addresses
+Different ownership information
+Different closing dates
+Missing signatures
+Contradictory financial values
+
+Example:
+
+CROSS-DOCUMENT CHECK
+
+Purchase price mismatch
+
+Purchase Agreement:
+$84,500,000
+
+Financing Terms:
+$82,000,000
+
+[Review sources]
+
+Never silently resolve conflicts.
+
+The user must be able to inspect the underlying sources.
+
+==================================================
+13. PEOPLE TAB
+==================================================
+
+Do not substantially redesign People.
+
+Keep the role-oriented structure.
+
+Possible roles:
+
+Deal Coordinator
+Buyer
+Seller
+Legal Advisor
+Financial Advisor / Financier
+Property Manager
+
+Do not randomly rename roles between renders.
+
+Use one stable role model determined by transaction type.
+
+Each participant should eventually show:
+
+Role
+Participant
+Status
+Last Activity
+
+For an uninvited role:
+
+Role
+Not invited yet
+[Invite]
+
+Once invited:
+
+Role
+Person Name
+email
+Invited / Active
+Last activity
+
+==================================================
+14. KONTRA AI — KEEP THE FLOATING ASSISTANT
+==================================================
+
+Keep the floating:
+
+"✦ Kontra AI"
+
+button in the bottom-right.
+
+Clicking it should open the current right-side drawer.
+
+Do NOT put a giant AI panel inside Overview.
+
+The drawer architecture is better.
+
+The AI should be transaction-aware.
+
+It should understand:
+
+- transaction metadata
+- uploaded documents
+- extracted facts
+- missing documents
+- participant status
+- requests
+- AI findings
+- exceptions
+- Digital Asset Readiness
+- recent room activity
+
+==================================================
+15. KONTRA AI SUGGESTED QUESTIONS
+==================================================
+
+Keep suggested questions, but prioritize the most useful ones.
+
+Use:
+
+What's happening with this transaction?
+
+What should I do next?
+
+What's blocking the transaction?
+
+What's missing?
+
+Who are we waiting on?
+
+What changed recently?
+
+Summarize this deal.
+
+How close is this to digital-asset preparation?
+
+Do not overwhelm the drawer with dozens of suggestions.
+
+Show approximately 4 initially and allow the rest contextually.
+
+==================================================
+16. AI RESPONSE QUALITY
+==================================================
+
+The AI must NOT answer with generic canned responses.
+
+Its answers must reference actual room data.
+
+Example:
+
+USER:
+"What should I do next?"
+
+GOOD ANSWER:
+
+"The transaction has not started yet. I recommend uploading the Letter of Intent first because it can establish the parties, asset, transaction structure, and preliminary terms. The Seller and Legal Advisor have also not been invited."
+
+Then provide actions:
+
+[Upload Letter of Intent]
+[Invite Seller]
+[Invite Legal Advisor]
+
+BAD ANSWER:
+
+"You should upload documents and invite participants."
+
+The assistant must explain WHY.
+
+==================================================
+17. AI MUST BE SOURCE-AWARE
+==================================================
+
+When answering factual transaction questions, the assistant should identify the source.
+
+Example:
+
+USER:
+"What is the purchase price?"
+
+KONTRA AI:
+
+"The Purchase Agreement lists the purchase price as $84.5M."
+
+Source:
+Purchase Agreement · Page 12
+
+[Open source]
+
+If two sources disagree:
+
+"I found conflicting purchase prices."
+
+Purchase Agreement
+$84.5M
+
+Financing Terms
+$82M
+
+[Review discrepancy]
+
+Never choose one silently.
+
+==================================================
+18. AI + DIGITAL ASSET READINESS
+==================================================
+
+The assistant should also explain readiness.
+
+Example:
+
+USER:
+"How close is this to digital-asset preparation?"
+
+ANSWER:
+
+"Kontra has enough information to identify the asset and transaction parties, but financial information and title verification are still incomplete."
+
+Then:
+
+Ready / substantially populated:
+✓ Identity & Parties
+✓ Asset / Company
+
+Needs information:
+○ Financial Information
+○ Legal & Diligence
+
+Recommended next actions:
+1. Upload Financial Statements
+2. Upload Title Report
+3. Confirm Seller information
+
+Do NOT say:
+
+"This asset is legally approved for tokenization."
+
+==================================================
+19. REMOVE DUPLICATION
+==================================================
+
+This is extremely important.
+
+Overview should summarize.
+
+Documents should manage documents.
+
+People should manage participants.
+
+Kontra AI should explain and guide.
+
+Do not repeat the full Documents checklist in Overview.
+
+Do not repeat the People table in Overview.
+
+Do not add Recent Activity as a giant Overview section.
+
+Do not add AI Findings as a huge permanent Overview section.
+
+Findings belong in "What Needs Attention" when actionable and inside the AI/contextual review system.
+
+The interface should become QUIETER as it becomes smarter.
+
+==================================================
+20. OVERVIEW FINAL ORDER
+==================================================
+
+The Overview page should now be approximately:
+
+--------------------------------
+
+TRANSACTION SNAPSHOT
+
+Marriott Hotel Acquisition
+Acquisition · Due Diligence
+Target close Aug 17, 2026
+
+Transaction Value
+Not recorded
+
+Asset / Company
+Not recorded
+
+Buyer
+Not recorded
+
+Stage 1 of 5
+
+--------------------------------
+
+WHAT NEEDS ATTENTION
+
+If empty:
+Start this transaction
+
+Upload the first documents and invite participants so Kontra can begin building the transaction record.
+
+[Upload document]
+[Invite participant]
+
+If active:
+show maximum 3–5 priority actions / blockers.
+
+--------------------------------
+
+DIGITAL ASSET READINESS
+
+Building from your transaction activity
+
+Identity & Parties        Not started
+Asset / Company           Not started
+Transaction Terms         Not started
+Financial Information     Not started
+Legal & Diligence         Not started
+
+Each row expandable.
+
+--------------------------------
+
+Do not add more major sections unless real transaction activity creates something genuinely important.
+
+==================================================
+21. EMPTY STATE SHOULD FEEL INTENTIONAL
+==================================================
+
+Right now the interface can look extremely empty because the transaction contains no information.
+
+That is okay.
+
+DO NOT fill empty space with fake dashboard widgets.
+
+Instead make the empty state useful.
+
+The empty Overview should essentially communicate:
+
+"Here's the transaction.
+Here's how to start.
+Here's what Kontra will build as information arrives.
+Ask Kontra AI if you need guidance."
+
+That's enough.
+
+==================================================
+22. BEHAVIOR AFTER FIRST DOCUMENT UPLOAD
+==================================================
+
+This is critical.
+
+The Overview must dynamically change after activity.
+
+Example:
+
+User uploads Letter of Intent.
+
+Kontra extracts:
+
+Buyer
+Seller
+Asset
+Indicative purchase price
+Important dates
+
+Then Overview should automatically change.
+
+Transaction Snapshot becomes populated.
+
+"What Needs Attention" might say:
+
+2 items need attention
+
+Seller has not been invited.
+Financial Statements are missing.
+
+Digital Asset Readiness might change:
+
+Identity & Parties — Building
+Asset / Company — Building
+Transaction Terms — Building
+Financial Information — Not started
+Legal & Diligence — Building
+
+The product should feel alive.
+
+==================================================
+23. DO NOT CREATE FAKE PROGRESS
+==================================================
+
+Never create readiness percentages simply because a user uploaded a document.
+
+Readiness must be based on confirmed structured information.
+
+Document uploaded ≠ fact confirmed.
+
+For example:
+
+Uploading a Purchase Agreement may create candidate facts.
+
+Those facts can be:
+
+Extracted
+Confirmed
+Conflicting
+Missing
+
+Readiness should derive from that underlying state.
+
+==================================================
+24. DATA MODEL
+==================================================
+
+If needed, refactor the internal data model so these concepts are separate:
+
+Transaction
+TransactionStage
+Participant
+Role
+DocumentRequirement
+Document
+ExtractedFact
+FactSource
+AIFinding
+Exception
+ActionItem
+ReadinessCategory
+ReadinessRequirement
+ActivityEvent
+
+Digital Asset Readiness should derive from structured facts and requirements.
+
+Do NOT hardcode visual readiness values directly into components.
+
+==================================================
+25. UX PRINCIPLE
+==================================================
+
+The user should never have to manually inspect every page to understand:
+
+"What is happening?"
+
+"What is missing?"
+
+"Who are we waiting for?"
+
+"What should happen next?"
+
+"Is something inconsistent?"
+
+"How prepared is this transaction record for digital-asset preparation?"
+
+That is the purpose of Overview + Kontra AI.
+
+==================================================
+26. VISUAL DESIGN
+==================================================
+
+Keep the existing restrained visual language:
+
+white background
+thin borders
+subtle gray surfaces
+Kontra burgundy as primary action color
+minimal shadows
+generous whitespace
+
+Do not make it look like:
+- crypto software
+- a blockchain dashboard
+- a trading terminal
+- a colorful SaaS analytics dashboard
+
+Tokenization is an underlying capability, not a visual theme.
+
+Do not add:
+coins
+blockchain icons
+crypto gradients
+wallet imagery
+token graphics
+
+This is institutional transaction infrastructure.
+
+==================================================
+27. IMPORTANT — DO NOT BREAK WORKING FEATURES
+==================================================
+
+Preserve all existing working functionality.
+
+Before changing components:
+
+1. Inspect the existing implementation.
+2. Reuse existing components where possible.
+3. Do not replace working flows merely for visual consistency.
+4. Do not remove existing persistence/state management.
+5. Do not hardcode demo states into production components.
+6. Do not randomly change document templates or participant roles on reload.
+7. Ensure Overview, Documents, People and Kontra AI all use the SAME transaction state.
+
+==================================================
+28. IMPLEMENTATION PRIORITY
+==================================================
+
+Implement in this order:
+
+1. Fix Overview empty-state logic.
+2. Fix What Needs Attention state logic.
+3. Refine Digital Asset Readiness.
+4. Make readiness categories expandable/explainable.
+5. Ensure readiness derives from structured transaction data.
+6. Connect Kontra AI to transaction context.
+7. Make AI responses source-aware.
+8. Preserve Documents behavior.
+9. Preserve People behavior.
+10. Test dynamic Overview changes after transaction activity.
+
+Do not perform unrelated redesign work.
+
+==================================================
+29. ACCEPTANCE TEST
+==================================================
+
+After implementation, test this exact scenario:
+
+START:
+New Marriott Hotel Acquisition room.
+
+Expected:
+- Snapshot mostly empty.
+- Overview says "Start this transaction."
+- Upload + Invite CTAs visible.
+- Digital Asset Readiness says Early / Not started.
+- Kontra AI explains how to begin.
+
+THEN:
+Upload a Letter of Intent.
+
+Expected:
+- Kontra analyzes it.
+- Extracted transaction facts populate where appropriate.
+- Readiness changes only for information actually extracted/confirmed.
+- Overview identifies the next missing information.
+- AI can explain what was learned from the document.
+
+THEN:
+Upload a Purchase Agreement with a deliberately different purchase price.
+
+Expected:
+- Kontra detects the discrepancy.
+- What Needs Attention surfaces it.
+- Cross-document checks surfaces it.
+- Kontra AI can explain both values and their sources.
+- Kontra does NOT silently decide which value is correct.
+
+THEN:
+Invite Seller and Legal Advisor.
+
+Expected:
+- People updates.
+- Overview stops treating those invitations as missing actions.
+- AI understands they have been invited.
+
+FINAL EXPECTATION:
+
+The Deal Room should feel less like a checklist application and more like an intelligent transaction workspace.
+
+Documents = evidence.
+People = participants.
+Overview = decisions and priorities.
+Kontra AI = explanation and guidance.
+Digital Asset Readiness = progressive preparation of structured transaction information for a future digital-asset/tokenization workflow.
+
+Do not remove or minimize the tokenization thesis.
+Do not overstate regulatory/legal readiness.
+Do not add more navigation.
+Do not redesign unrelated areas.

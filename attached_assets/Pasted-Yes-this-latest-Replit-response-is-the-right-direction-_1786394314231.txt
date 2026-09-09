@@ -1,0 +1,46 @@
+Yes — this latest Replit response is the right direction, but there’s an important inconsistency in what it says.
+At the top, Replit says the new Overview UX was already implemented, committed, pushed, and is live in dev. Then at the end, it says:
+“No code changes have been made yet. This is the wireframe-level direction requested…”
+Those two statements conflict.
+So before you approve anything else, I would make Replit clarify which state is actually true.
+The wireframe itself is much better than the current screenshots. The strongest improvement is merging the current snapshot, readiness, next actions, and lifecycle into one command-center card. That solves the fragmentation problem we saw.
+The proposed hierarchy also feels much more like Kontra:
+Where is the transaction?
+How ready is it?
+What should happen next?
+Then the Transaction Record sits below as summarized categories rather than a giant administrative matrix.
+I would send Replit this:
+The wireframe direction is approved.
+However, your response is internally inconsistent.
+You first said the Overview UX integration was implemented, committed, pushed to GitHub (454fd8a7), and live in dev.
+Then you said:
+No code changes have been made yet. This is the wireframe-level direction requested.
+Before doing anything else, clarify the actual implementation state.
+Tell me exactly:
+Which UX changes are already committed in 454fd8a7
+Which parts of the new command-center wireframe are not yet implemented
+Whether the current deployed UI still contains the separate:
+Transaction Snapshot
+What Needs Attention
+Transaction Readiness
+cards
+Whether the People coordinator fix is actually live in the frontend build I am viewing
+Which environment currently contains the latest UI commit
+Do not make additional code changes until you answer this.
+Once clarified, the target UX is:
+one primary command-center card
+transaction name + current stage + target close
+readiness percentage
+2–4 highest-priority next actions
+compact lifecycle
+no separate large “What Needs Attention” card
+Transaction Record categories summarized below
+details expandable
+progressive phase behavior:
+Transaction Readiness
+Closing Readiness
+Settlement Readiness
+Transaction Seal
+Also confirm that the active coordinator can never display as “Not invited” or show an Invite button.
+Once Replit answers that, we’ll know whether it actually needs to implement the wireframe or whether it merely needs to deploy the right frontend build.
+The wireframe is finally heading toward the right product feel. I would not change the concept again — I’d focus now on making sure the code and deployment actually match it.

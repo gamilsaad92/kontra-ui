@@ -1,0 +1,61 @@
+Final release blockers only — no new product work
+The coordinator brief, AI extraction, conflict handling, participant boundaries, and coordinator-approved stage advancement are accepted.
+Do not redesign, refactor, add features, change workflow semantics, or create a new branch.
+Resolve only these two remaining blockers on the current main.
+1. Fix participant-status reconciliation
+The database contains four accepted participant invites for:
+Buyer
+Seller
+Legal Advisor
+Financial Advisor
+But the coordinator Participants card still reports these roles as Not invited.
+There must be one canonical participant-state resolver used by:
+Coordinator Transaction Brief
+People tab
+Next Actions
+Participant completion counts
+Resolution order should be based on durable state, not UI assumptions:
+accepted/joined invite → Joined/Active
+valid pending invite → Invited
+no invite → Not invited
+Do not infer status only from participant submission/activity rows.
+Verify that after the fix:
+Coordinator brief shows 4 of 4 required participants complete or the correct accepted/joined equivalent.
+People tab shows the same four participant states.
+No Invite Buyer, Invite Seller, etc. Next Action remains for already accepted participants.
+Participant-facing access continues working.
+Deal Coordinator remains owner/coordinator and is never treated as an invitee.
+2. Establish development/Production schema parity
+Do not add ad-hoc columns manually.
+Audit the migration history and identify exactly which existing migration creates the settlement columns required by /advance.
+Confirm that:
+the migration exists in source control,
+development Supabase has it applied,
+Production Supabase has the same required objects,
+no development-only schema dependency remains.
+Produce a schema-parity report for all objects required by:
+Transaction Record
+invitations
+task engine
+lifecycle advancement
+settlement readiness
+Transaction Seal
+post-completion records
+If Production already contains the required schema, make no Production database change.
+After both fixes, rerun only the focused acceptance flow:
+Open the existing coordinator room.
+Confirm all four accepted participants render consistently.
+Confirm stale invite Next Actions disappear.
+Confirm source_changed still preserves the $14M authoritative value against the $13.5M source.
+Confirm readiness remains explainable.
+Confirm coordinator-approved lifecycle advancement still works.
+Confirm Buyer participant view contains no coordinator controls.
+Run settlement readiness/Transaction Seal regression checks.
+If all checks pass, return:
+current main SHA
+participant-state results
+schema parity result
+build/test results
+exact Production changes required, if any
+READY TO DEPLOY or NOT READY
+Do not deploy Production until I explicitly approve it.

@@ -1,0 +1,621 @@
+Below is a developer instruction draft you can send.
+
+⸻
+
+Developer Instructions: Convert Current Kontra Into Public CRE Marketplace + Operating System
+
+We need to reposition Kontra from a closed lender-only servicing platform into a public commercial real estate marketplace and asset operating system.
+
+The goal is to make the public marketplace, property pages, service provider directory, AI tools, and logged-in workspace feel like one unified product — not two separate interfaces.
+
+1. Core Product Direction
+
+Kontra should become:
+
+A public marketplace and operating system for commercial real estate assets, data, inspections, service providers, and investors.
+
+The platform should support:
+
+1. Public property discovery.
+2. Public service provider marketplace.
+3. Property intelligence pages.
+4. AI document review tools.
+5. Property workspaces after login.
+6. Future investor/watchlist functionality.
+7. Future tokenization module, but not the primary focus now.
+
+Do not position the product as “loan servicing only.” It should be broader: CRE asset intelligence, compliance, inspections, and marketplace.
+
+⸻
+
+2. Current Problem to Fix
+
+Right now, the issue is that the public website/marketplace and the old logged-in Kontra platform feel disconnected.
+
+When users click Login or Sign Up, they are sent into the old platform experience, which feels separate from the new marketplace concept.
+
+This needs to be fixed.
+
+The public marketplace and logged-in app should use the same design system, navigation logic, and product structure.
+
+⸻
+
+3. New Top-Level Navigation
+
+Replace the current structure with this:
+
+Public Navigation
+
+* Home
+* Properties
+* Service Providers
+* AI Tools
+* Pricing
+* About
+* Login
+* Sign Up
+
+Logged-In Navigation
+
+After login, users should land in the unified Kontra workspace.
+
+Sidebar should include:
+
+* Dashboard
+* My Properties
+* Marketplace
+* Service Providers
+* Documents
+* Inspections
+* Compliance
+* Tasks
+* AI Review
+* Watchlist
+* Settings
+
+The user should still be able to access the public marketplace pages while logged in.
+
+⸻
+
+4. Homepage Redesign
+
+The homepage should no longer feel like a lender-only product.
+
+Use this headline:
+
+The CRE marketplace and operating system for smarter asset decisions.
+
+Subheadline:
+
+Discover commercial real estate assets, manage property data, review inspections, track compliance, and connect with service providers — all in one AI-powered workspace.
+
+Primary CTA:
+
+Explore Properties
+
+Secondary CTA:
+
+Launch Workspace
+
+Homepage sections:
+
+1. Hero section.
+2. Search bar for properties.
+3. Featured properties.
+4. Service provider marketplace preview.
+5. AI document review preview.
+6. Property workspace preview.
+7. Compliance/risk monitoring section.
+8. Investor watchlist section.
+9. Final CTA.
+
+⸻
+
+5. Public Properties Marketplace
+
+Create a public /properties page.
+
+It should include:
+
+* Search bar
+* Filters:
+    * Property type
+    * Location
+    * Units
+    * Occupancy
+    * Risk score
+    * Market
+* Property cards
+
+Each property card should show:
+
+* Property name
+* Location
+* Property type
+* Unit count
+* Occupancy
+* Latest inspection status
+* Risk score
+* “View Property” button
+
+⸻
+
+6. Public Property Detail Page
+
+Create /properties/:id.
+
+Each property page should have:
+
+Public View
+
+* Property overview
+* Location
+* Property type
+* Units/SF
+* Occupancy
+* Market summary
+* Property condition score
+* Inspection status
+* Risk score
+* Service provider history, if available
+* Public documents, if any
+* “Add to Watchlist” CTA
+* “Claim Property” CTA
+* “Request Inspection” CTA
+
+Locked Sections
+
+Show locked cards for:
+
+* Full financials
+* Full rent roll
+* Loan data
+* Private documents
+* AI compliance analysis
+* Investor analytics
+
+CTA:
+
+Sign in to access workspace tools.
+
+⸻
+
+7. Service Provider Marketplace
+
+Create /service-providers.
+
+Categories:
+
+* Inspectors
+* Engineers
+* Roofing contractors
+* Property managers
+* Insurance brokers
+* Appraisers
+* Environmental consultants
+* General contractors
+
+Each provider card should include:
+
+* Company name
+* Category
+* Location
+* Service area
+* Rating/reviews placeholder
+* Verified badge
+* Request quote button
+
+Provider profile page should include:
+
+* Overview
+* Services
+* Markets served
+* Past projects
+* Certifications
+* Contact/request quote form
+
+This creates a marketplace model that is not lender-specific.
+
+⸻
+
+8. AI Tools Page
+
+Create /ai-tools.
+
+Tools to include:
+
+1. AI Document Review
+2. Inspection Report Analyzer
+3. Insurance Policy Review
+4. Rent Roll Analyzer
+5. Financial Statement Analyzer
+6. Deferred Maintenance Tracker
+7. Compliance Checklist Generator
+8. Property Risk Score Generator
+
+Each tool should have:
+
+* Short description
+* Upload button
+* Sample output preview
+* CTA to sign in
+
+⸻
+
+9. Logged-In Dashboard
+
+After login, users should land at /dashboard.
+
+Dashboard should show:
+
+* My Properties
+* Watchlist
+* Open tasks
+* Pending document reviews
+* Recent inspections
+* Compliance alerts
+* Marketplace activity
+* AI review activity
+
+The dashboard should feel like the control center for CRE assets.
+
+⸻
+
+10. My Properties Workspace
+
+Create /app/properties.
+
+Users should be able to:
+
+* Add a property
+* Claim a public property
+* Upload documents
+* Track inspections
+* Invite team members later
+* View AI summaries
+* Track compliance items
+
+Each logged-in property workspace should include tabs:
+
+* Overview
+* Documents
+* Financials
+* Rent Roll
+* Inspections
+* Compliance
+* Tasks
+* Service Providers
+* AI Analysis
+* Notes
+
+⸻
+
+11. Documents Module
+
+Create a document center.
+
+Users can upload:
+
+* Rent rolls
+* Financials
+* Insurance policies
+* Inspection reports
+* Appraisals
+* Environmental reports
+* Service contracts
+* Photos
+* Correspondence
+
+For each document:
+
+* File name
+* Type
+* Property
+* Upload date
+* Status
+* AI extracted summary
+* Action items
+
+⸻
+
+12. Inspection Module
+
+Create inspection tracking.
+
+Fields:
+
+* Property
+* Inspection type
+* Inspector/service provider
+* Inspection date
+* Status
+* Findings
+* Life safety items
+* Deferred maintenance items
+* Photos
+* Due dates
+* Completion status
+
+The inspection module should support both public marketplace requests and private workspace tracking.
+
+⸻
+
+13. Compliance Module
+
+Rename lender-specific “servicing” language to broader “compliance.”
+
+Compliance items:
+
+* Insurance expiration
+* Tax due dates
+* Deferred maintenance
+* Occupancy threshold
+* Financial reporting
+* Open violations
+* Inspection deficiencies
+* Lawsuits/incidents
+* Property management changes
+
+Each item should include:
+
+* Status
+* Due date
+* Risk level
+* Assigned party
+* Notes
+* Documents
+* AI summary
+
+⸻
+
+14. Watchlist / Investor Layer
+
+Create /watchlist.
+
+Users can follow public properties.
+
+Watchlist should show:
+
+* Property name
+* Market
+* Occupancy
+* Risk score
+* Latest update
+* Saved date
+
+This is not tokenization yet. It is only property tracking and market intelligence.
+
+Use language like:
+
+Track assets before investing, lending, buying, or servicing.
+
+⸻
+
+15. Database / Supabase Tables Needed
+
+Add or update tables:
+
+properties
+
+* id
+* name
+* address
+* city
+* state
+* zip
+* property_type
+* units
+* square_feet
+* year_built
+* occupancy
+* public_status
+* risk_score
+* condition_score
+* created_at
+* updated_at
+
+service_providers
+
+* id
+* company_name
+* category
+* contact_email
+* phone
+* website
+* city
+* state
+* service_area
+* verified
+* rating
+* created_at
+
+property_documents
+
+* id
+* property_id
+* user_id
+* file_name
+* file_url
+* document_type
+* ai_summary
+* status
+* created_at
+
+inspections
+
+* id
+* property_id
+* provider_id
+* inspection_type
+* inspection_date
+* status
+* findings
+* risk_level
+* created_at
+
+compliance_items
+
+* id
+* property_id
+* title
+* category
+* status
+* due_date
+* risk_level
+* notes
+* created_at
+
+watchlist
+
+* id
+* user_id
+* property_id
+* created_at
+
+tasks
+
+* id
+* property_id
+* user_id
+* title
+* status
+* due_date
+* priority
+* created_at
+
+⸻
+
+16. Authentication Flow
+
+Important:
+
+Login should not send users into the old lender-only interface.
+
+After login:
+
+* Redirect to /dashboard.
+* Maintain same branding and layout.
+* Keep public marketplace accessible.
+* Do not create a separate “old platform” feel.
+
+Sign-up should ask:
+
+* Name
+* Email
+* Password
+* User type:
+    * Property owner
+    * Investor
+    * Service provider
+    * Asset manager
+    * Lender
+    * Other
+
+User type should customize the dashboard later, but do not overcomplicate now.
+
+⸻
+
+17. Language Changes
+
+Replace:
+
+* “Loan servicing platform”
+    with
+* “CRE asset operating system”
+
+Replace:
+
+* “Lender portal”
+    with
+* “Workspace”
+
+Replace:
+
+* “Borrower portal”
+    with
+* “Owner workspace”
+
+Replace:
+
+* “Servicing compliance”
+    with
+* “Asset compliance”
+
+Replace:
+
+* “Loan monitoring”
+    with
+* “Property risk monitoring”
+
+Keep lender functionality available later, but do not make it the public identity.
+
+⸻
+
+18. MVP Priority Order
+
+Build in this order:
+
+Phase 1
+
+* New homepage
+* Unified navigation
+* Public properties page
+* Property detail page
+* Login redirects to new dashboard
+
+Phase 2
+
+* Service provider marketplace
+* AI tools page
+* My Properties workspace
+* Document upload module
+
+Phase 3
+
+* Inspection module
+* Compliance module
+* Watchlist
+* Risk scoring
+
+Phase 4
+
+* Investor tools
+* Lender tools
+* Tokenization module
+
+⸻
+
+19. Design Requirement
+
+Use one consistent theme across public and logged-in app.
+
+No split personality.
+
+Same:
+
+* Font
+* Colors
+* Buttons
+* Cards
+* Sidebar
+* Header
+* Layout system
+
+Use the existing Kontra dark red / institutional finance feel, but make it more public-marketplace friendly.
+
+⸻
+
+20. Final Goal
+
+When a user visits Kontra, the experience should feel like:
+
+1. Discover CRE assets.
+2. Analyze property risk.
+3. Connect with service providers.
+4. Upload documents.
+5. Manage inspections.
+6. Track compliance.
+7. Save assets to watchlist.
+8. Eventually invest or tokenize.
+
+The platform should no longer feel like a private lender servicing portal only.

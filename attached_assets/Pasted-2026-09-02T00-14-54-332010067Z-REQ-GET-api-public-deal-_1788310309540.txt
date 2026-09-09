@@ -1,0 +1,50 @@
+2026-09-02T00:14:54.332010067Z [REQ] GET /api/public/deal-room/kontra-demo/transaction-record
+2026-09-02T00:14:54.33885197Z [REQ] GET /api/public/deal-room/kontra-demo/verified-asset/snapshots
+2026-09-02T00:14:54.341540977Z [REQ] GET /api/public/deal-room/kontra-demo/stages
+2026-09-02T00:14:54.344185852Z [REQ] GET /api/public/deal-room/kontra-demo
+2026-09-02T00:14:54.396104654Z [REQ] GET /api/public/deal-room/kontra-demo/readiness
+2026-09-02T00:14:54.399689026Z [REQ] GET /api/public/deal-room/kontra-demo/verified-asset/readiness
+2026-09-02T00:14:54.403897385Z [REQ] POST /api/track
+2026-09-02T00:14:54.406228611Z [REQ] GET /api/public/deal-room/kontra-demo/analyses
+2026-09-02T00:14:54.408181916Z [REQ] GET /api/public/deal-room/kontra-demo/events
+2026-09-02T00:14:54.409979757Z [REQ] GET /api/public/deal-room/kontra-demo/checklist
+2026-09-02T00:15:08.871358369Z [REQ] POST /api/track
+2026-09-02T00:15:15.930398118Z [REQ] POST /api/track
+2026-09-02T00:15:21.90307338Z [REQ] POST /api/track
+2026-09-02T00:15:21.954112507Z [REQ] POST /api/track
+2026-09-02T00:15:26.368430335Z [REQ] POST /api/track
+2026-09-02T00:15:26.392815629Z [REQ] POST /api/track
+2026-09-02T00:15:30.49684071Z [REQ] POST /api/track
+2026-09-02T00:15:39.993367654Z [REQ] POST /api/track
+2026-09-02T00:15:58.771925974Z [REQ] POST /api/track
+2026-09-02T00:16:21.101883911Z [REQ] POST /api/track
+2026-09-02T00:16:25.118560053Z [REQ] POST /api/track
+2026-09-02T00:20:06.512751703Z [REQ] POST /api/track
+2026-09-02T00:20:18.113778174Z [REQ] POST /api/track
+2026-09-02T00:20:31.922797876Z [REQ] POST /api/track
+2026-09-02T00:20:41.340107572Z [REQ] POST /api/track
+2026-09-02T00:20:45.330033546Z [REQ] POST /api/track
+2026-09-02T00:20:49.18888271Z [REQ] POST /api/track
+2026-09-02T00:48:17.037917292Z ==> Running 'node index.js'
+2026-09-02T00:48:22.931293438Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-09-02T00:48:23.947669744Z REDIS_URL not set, using in-memory cache only
+2026-09-02T00:48:25.843189351Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-09-02T00:48:25.843256553Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-09-02T00:48:25.843275553Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-09-02T00:48:30.756822116Z [localAuth] JWT_SECRET is not set — auth will fail. Set JWT_SECRET in environment.
+2026-09-02T00:48:33.042682291Z [tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. Routes that depend on this module will return 503. Use POST /api/tokenization/assess for production tokenization readiness.
+2026-09-02T00:48:33.633546884Z Kontra API listening on port 10000
+2026-09-02T00:48:35.037909377Z [score-assets] analyzed 0 records
+2026-09-02T00:48:35.231366384Z [startup] workflow_pack_id column ensure skipped: password authentication failed for user "postgres"
+2026-09-02T00:48:36.230399561Z [REQ] POST /api/track
+2026-09-02T00:48:36.429766522Z [REQ] POST /api/track
+2026-09-02T00:48:36.435581043Z [REQ] POST /api/track
+2026-09-02T00:48:36.43796378Z [REQ] POST /api/track
+2026-09-02T00:48:36.439594265Z [score-loans] analyzed 0 records
+2026-09-02T00:48:36.53024314Z [REQ] POST /api/track
+2026-09-02T00:48:36.532955625Z [REQ] POST /api/track
+2026-09-02T00:48:36.535705911Z [REQ] POST /api/track
+2026-09-02T00:48:36.537428939Z [REQ] POST /api/track
+2026-09-02T00:48:36.747788155Z [score-troubled] analyzed 0 records
+2026-09-02T00:48:41.963841899Z [REQ] POST /api/track
+2026-09-02T00:48:41.970650198Z [REQ] POST /api/track

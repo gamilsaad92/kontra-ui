@@ -1,0 +1,62 @@
+Revision 12 is not acceptable visually. Please revise the PDF design. Do NOT recreate the Kontra logo or wordmark manually using text.
+1. Use the existing Kontra platform branding
+Find and reuse the actual Kontra logo/brand asset already used by the application UI — the burgundy square containing the white K, together with the Kontra wordmark/text exactly as it appears in the platform header.
+Do not create a new “Kon tra” logo. Do not approximate the logo with PDF fonts. Reuse the existing application asset/component or derive the PDF header from the same source.
+Header should look approximately like the platform:
+[ K ] Kontra
+Digital Asset Preparation
+Keep it compact and professional. The logo/header must never collide with the document title.
+2. Reorganize the document into a real institutional report
+The PDF currently feels like tables placed sequentially onto pages. Create a clear information hierarchy.
+Page 1 — Executive Cover / Package Summary
+Kontra branding
+DIGITAL ASSET PREPARATION PACKAGE
+Property / transaction name
+Package status: Ready for Provider Review
+Snapshot: v9
+Eligibility: Eligible
+Verified fields: 21 / 21
+Provenance: Intact
+Open blockers: 0
+Revision and generated date
+Short provider-neutral description
+Make these primary readiness metrics visually prominent rather than burying everything immediately inside tables.
+Page 2 — Verified Transaction Record
+Present the 21 frozen canonical values in a clean table. Maintain the existing frozen values and confirmation states.
+Page 3 — Digital Asset Preparation
+Present Issuer, Jurisdiction, Legal Entity, Underlying Asset, Settlement Method, Ownership Evidence, Governing Documents, Investor Restrictions and Security Offering Structure.
+Page 4 — Verification & Exceptions
+Show readiness, approvals, blockers and exception/resolution history. Make the successful verification state visually obvious.
+Pages 5–6 — Evidence & Provenance Appendix
+Keep detailed provenance here. This is supporting audit information and should visually feel like an appendix rather than the primary report.
+Final page — Technical Integrity
+Package hash, revision hash, immutable snapshot hash, PDF artifact hash, IDs and provider-neutral disclaimer.
+3. Improve visual hierarchy
+Use the existing Kontra platform design language:
+Burgundy = Kontra primary brand/accent
+Dark navy/charcoal = primary text and table headers
+Green = verified/eligible/success states
+Light neutral backgrounds = cards/secondary rows
+Red only = blockers/errors/exceptions
+Do not introduce teal as a competing primary brand color unless it already exists in the application's actual design tokens.
+Use more whitespace. Reduce the number of heavy table borders. Use cards for the executive summary and tables only where tabular information is actually appropriate.
+4. Fix the header on EVERY page
+Use a consistent small running header:
+[actual K logo] Kontra | DIGITAL ASSET PREPARATION
+Right side:
+External Review Artifact · Page X
+It should be subordinate to page content, not compete with it.
+5. Do not change the data or architecture
+This is a PDF presentation redesign only.
+Do not modify:
+immutable snapshot logic
+package generation logic
+package/revision IDs
+hashes
+provenance
+verified values
+eligibility
+audit history
+provider-neutral architecture
+Use the current Revision 12 data, but redesign its presentation.
+Before implementing, inspect the existing Kontra application header/logo assets and design tokens and reuse them. Do not invent new Kontra branding.

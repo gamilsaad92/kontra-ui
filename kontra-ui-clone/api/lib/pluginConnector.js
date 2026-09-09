@@ -243,7 +243,7 @@ const BUILT_IN_CONNECTORS = [
     async execute(action, payload, creds) {
       if (!creds.api_key || creds.api_key === 'demo') return { messageId: `MSG-${uuidv4().slice(0,8)}`, demo: true, status: 'queued' };
       const fetch = (await import('node-fetch')).default;
-      const body  = { personalizations: [{ to: [{ email: payload.to }] }], from: { email: payload.from || 'noreply@kontraplatform.com' }, subject: payload.subject || 'Kontra Notification', content: [{ type: 'text/plain', value: payload.text || payload.body || '' }] };
+      const body  = { personalizations: [{ to: [{ email: payload.to }] }], from: { email: payload.from || 'support@kontraplatform.com' }, subject: payload.subject || 'Kontra Notification', content: [{ type: 'text/plain', value: payload.text || payload.body || '' }] };
       const res   = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.api_key}` },

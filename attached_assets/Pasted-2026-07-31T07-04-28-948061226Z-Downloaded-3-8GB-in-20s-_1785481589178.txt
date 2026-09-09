@@ -1,0 +1,59 @@
+2026-07-31T07:04:28.948061226Z ==> Downloaded 3.8GB in 20s. Extraction took 109s.
+2026-07-31T07:04:29.511321884Z ==> Using Node.js version 22.16.0 (default)
+2026-07-31T07:04:29.511332716Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+2026-07-31T07:04:29.512302329Z ==> Installing Node.js version 22.16.0...
+2026-07-31T07:04:29.919044996Z ==> Running build command 'npm install'...
+2026-07-31T07:04:34.838100567Z 
+2026-07-31T07:04:34.838118496Z added 425 packages, and audited 426 packages in 5s
+2026-07-31T07:04:34.838120518Z 
+2026-07-31T07:04:34.838122232Z 66 packages are looking for funding
+2026-07-31T07:04:34.838123528Z   run `npm fund` for details
+2026-07-31T07:04:34.882709519Z 
+2026-07-31T07:04:34.882721278Z 42 vulnerabilities (3 low, 22 moderate, 15 high, 2 critical)
+2026-07-31T07:04:34.882722245Z 
+2026-07-31T07:04:34.882723116Z To address issues that do not require attention, run:
+2026-07-31T07:04:34.882723963Z   npm audit fix
+2026-07-31T07:04:34.882724701Z 
+2026-07-31T07:04:34.882725971Z To address all issues possible (including breaking changes), run:
+2026-07-31T07:04:34.882727108Z   npm audit fix --force
+2026-07-31T07:04:34.882727852Z 
+2026-07-31T07:04:34.882728629Z Some issues need review, and may require choosing
+2026-07-31T07:04:34.882729905Z a different dependency.
+2026-07-31T07:04:34.882730635Z 
+2026-07-31T07:04:34.882731981Z Run `npm audit` for details.
+2026-07-31T07:04:35.558742069Z ==> Uploading build...
+2026-07-31T07:04:49.601075Z ==> Uploaded in 8.1s. Compression took 6.0s
+2026-07-31T07:04:49.607208555Z ==> Build successful 🎉
+2026-07-31T07:04:50.355700103Z ==> Deploying...
+2026-07-31T07:05:45.256161509Z ==> Running 'npm run start'
+2026-07-31T07:05:46.861657359Z 
+2026-07-31T07:05:46.86169054Z > kontra-api@1.0.0 start
+2026-07-31T07:05:46.86169641Z > node index.js
+2026-07-31T07:05:46.86170055Z 
+2026-07-31T07:05:50.766003856Z [db] No DATABASE_URL or SUPABASE_URL configured — using in-memory stub. Set DATABASE_URL for persistent storage.
+2026-07-31T07:05:51.366572149Z /opt/render/project/src/api/node_modules/openai/index.js:74
+2026-07-31T07:05:51.366601319Z             throw new Errors.OpenAIError("The OPENAI_API_KEY environment variable is missing or empty; either provide it, or instantiate the OpenAI client with an apiKey option, like new OpenAI({ apiKey: 'My API Key' }).");
+2026-07-31T07:05:51.366609689Z             ^
+2026-07-31T07:05:51.366612269Z 
+2026-07-31T07:05:51.366615799Z OpenAIError: The OPENAI_API_KEY environment variable is missing or empty; either provide it, or instantiate the OpenAI client with an apiKey option, like new OpenAI({ apiKey: 'My API Key' }).
+2026-07-31T07:05:51.366619099Z     at new OpenAI (/opt/render/project/src/api/node_modules/openai/index.js:74:19)
+2026-07-31T07:05:51.366621719Z     at Object.<anonymous> (/opt/render/project/src/api/routers/aiDealReview.js:42:16)
+2026-07-31T07:05:51.36662491Z     at Module._compile (node:internal/modules/cjs/loader:1730:14)
+2026-07-31T07:05:51.36662793Z     at Object..js (node:internal/modules/cjs/loader:1895:10)
+2026-07-31T07:05:51.36663059Z     at Module.load (node:internal/modules/cjs/loader:1465:32)
+2026-07-31T07:05:51.36663317Z     at Function._load (node:internal/modules/cjs/loader:1282:12)
+2026-07-31T07:05:51.36663578Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-07-31T07:05:51.36663836Z     at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+2026-07-31T07:05:51.36664123Z     at Module.require (node:internal/modules/cjs/loader:1487:12)
+2026-07-31T07:05:51.36664403Z     at require (node:internal/modules/helpers:135:16)
+2026-07-31T07:05:51.36664663Z 
+2026-07-31T07:05:51.36664966Z Node.js v22.16.0
+2026-07-31T07:05:55.040953554Z ==> Exited with status 1
+2026-07-31T07:05:55.043554997Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-07-31T07:05:55.401109674Z ==> No open ports detected, continuing to scan...
+2026-07-31T07:05:55.518991206Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-07-31T07:06:03.933023263Z ==> Running 'npm run start'
+2026-07-31T07:06:04.926110725Z 
+2026-07-31T07:06:04.926136085Z > kontra-api@1.0.0 start
+2026-07-31T07:06:04.926141285Z > node index.js
+2026-07-31T07:06:04.926143995Z 

@@ -1,0 +1,185 @@
+You're right. Looking at these screenshots, **the backend changed much more than the actual room experience did**.
+
+What Replit built is mostly infrastructure. The room still visually feels like the same Kontra: Overview, Documents, People, the existing Digital Asset Readiness panel, and the same early-stage workflow. The new Settlement system is essentially invisible because this room is at **Stage 1 of 5**, and `SettlementReadinessPanel` only appears when the transaction reaches Settlement/Funded/Complete.
+
+There are also two things in these screenshots that concern me.
+
+First, **People still looks wrong**. Your screenshot shows “Deal Coordinator — Not invited yet,” a `Not invited` badge, and an Invite button. That is precisely what #248 was supposed to remove. So either the frontend fix wasn't deployed to the Vercel instance you're viewing, or this workflow pack uses a coordinator role that wasn't included in their owner-role logic.
+
+Second, the **Digital Asset Readiness** section still doesn't communicate the architecture we just built. It says “Building from your transaction activity,” with Identity & Parties, Asset/Company, Transaction Terms, etc. That's useful, but a user has no indication that Kontra can now take a transaction all the way through settlement and create a Transaction Seal.
+
+So I wouldn't build anything else. **I would make the architecture we already built visible.**
+
+### What I think the room should show
+
+At the top of Overview, underneath Transaction Snapshot, I'd introduce one compact lifecycle:
+
+**Review → Approval → Closing → Settlement → Complete**
+
+The current stage gets highlighted. Future stages remain visible but muted.
+
+Then the Overview becomes progressive rather than dumping future functionality into Stage 1.
+
+At the beginning:
+
+> **Transaction Readiness**
+>
+> 18% ready
+> Building the verified transaction record
+>
+> ✓ Workspace created
+> ○ Parties
+> ○ Core documents
+> ○ Transaction terms
+> ○ Approvals
+> ○ Closing
+> ○ Settlement
+
+As documents come in, that same area becomes more intelligent.
+
+Near Closing:
+
+> **Closing Readiness — 84%**
+>
+> 7 of 9 conditions satisfied
+> 2 items need attention
+
+And eventually:
+
+> **Settlement Readiness — 89%**
+>
+> Settlement: Traditional
+> 8 of 9 conditions verified
+> ⚠ Funding confirmation pending
+
+Then:
+
+> **Transaction Complete ✓**
+>
+> Transaction Seal
+> Completed Aug 19, 2026
+> 9/9 conditions verified
+>
+> View Transaction Seal
+
+That creates **one story from beginning to end** instead of having separate pieces suddenly appear depending on the stage.
+
+### I would also reconsider the label “Digital Asset Readiness”
+
+This screenshot reinforces something I've been thinking.
+
+For this Marriott acquisition, you're showing **Digital Asset Readiness** prominently even though this may be a completely ordinary acquisition.
+
+That makes Kontra look more like a tokenization product than the universal transaction platform we've been designing.
+
+I'd rename the default panel:
+
+**TRANSACTION READINESS**
+
+> **Building the verified transaction record**
+
+Then, if tokenization is enabled, introduce a secondary capability:
+
+**Digital Asset Readiness**
+42% ready
+
+So:
+
+**Transaction Readiness = universal**
+
+**Digital Asset Readiness = optional**
+
+**Settlement Readiness = later lifecycle**
+
+That hierarchy is much clearer.
+
+### Send Replit this
+
+> **Do not build any additional backend features. The Settlement architecture is built, but the current room does not visually communicate it. We now need a UX integration pass using the existing functionality only.**
+>
+> **1. Fix the People regression first.**
+>
+> In the current deployed Marriott Hotel Acquisition room, `Deal Coordinator` still displays:
+>
+> * “Not invited yet”
+> * `Not invited`
+> * an Invite button
+>
+> This contradicts task #248.
+>
+> Determine whether:
+>
+> * the frontend deployment is stale, or
+> * `Deal Coordinator` is missing from the coordinator/owner-role detection.
+>
+> The current workspace coordinator must appear as an active owner/coordinator and must never be inviteable.
+>
+> Do not merely hide the row.
+>
+> **2. Add a visible transaction lifecycle to Overview.**
+>
+> Directly below Transaction Snapshot, display the effective workflow stages for the current workspace.
+>
+> Example for a settlement-enabled transaction:
+>
+> `Review → Approval → Closing → Settlement → Complete`
+>
+> Highlight the current stage. Future stages should remain visible but muted.
+>
+> Use the existing effective-stage architecture. Do not create a second lifecycle system.
+>
+> **3. Rename the universal `Digital Asset Readiness` panel to `Transaction Readiness`.**
+>
+> The existing Identity & Parties, Asset/Company, Transaction Terms, etc. are fundamentally transaction-readiness categories.
+>
+> Default workspace:
+>
+> `TRANSACTION READINESS`
+>
+> `Building your verified transaction record`
+>
+> Digital Asset Readiness must only appear as a separate capability when tokenization/digital-assets are actually enabled for that transaction.
+>
+> Do not remove the underlying tokenization functionality.
+>
+> **4. Make readiness evolve with the transaction lifecycle.**
+>
+> Do not create three unrelated dashboards.
+>
+> Use one progressive Overview experience:
+>
+> Early stages:
+> `Transaction Readiness`
+>
+> Closing:
+> `Closing Readiness`
+>
+> Settlement:
+> `Settlement Readiness`
+>
+> Complete:
+> `Transaction Complete / Transaction Seal`
+>
+> Reuse the existing transaction record, readiness data, SettlementReadinessPanel and Transaction Seal APIs.
+>
+> **5. Do not expose Settlement controls prematurely.**
+>
+> At Stage 1, the user should be able to see that Settlement is part of the lifecycle, but should not see settlement provider/mode/locking/completion controls yet.
+>
+> Those controls appear when contextually appropriate.
+>
+> **6. Do not add Circle, Arc, wallets, stablecoins, blockchain execution, new APIs or new database architecture during this UX pass.**
+>
+> This task is about making the architecture we already built understandable.
+>
+> Before implementing, show me the proposed revised Overview structure and exactly which existing components will be renamed, moved, conditionally displayed or reused. Do not code until I approve the UX plan.
+
+I think this is the missing piece.
+
+We've spent a lot of effort making Kontra's **engine** more sophisticated, but the customer still sees roughly the same car.
+
+Now the interface needs to communicate the new concept:
+
+**Kontra doesn't just store documents. It progressively turns an incomplete transaction into a verified, settlement-ready, completed transaction record.**
+
+That should become obvious within about **five seconds of opening the Overview**.

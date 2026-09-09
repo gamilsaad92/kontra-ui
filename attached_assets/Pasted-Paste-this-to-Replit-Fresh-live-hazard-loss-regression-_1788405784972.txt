@@ -1,0 +1,27 @@
+Paste this to Replit:
+
+> **Fresh live hazard-loss regression findings after the DOCX fix:**
+>
+> 1. **Fix false Loss Type conflict.** Kontra is treating `Hazard loss` and `Hazard loss - fire` as conflicting values. These are semantically compatible; the latter is simply a more specific fire subtype. Normalize compatible parent/subtype values instead of creating a blocking conflict. Do not broadly suppress legitimate Loss Type conflicts.
+>
+> 2. **Fix conflict-action deep linking.** `Resolve Loss Type → Review record` currently navigates to Transaction Terms but does not expose, scroll to, or highlight the conflicting Loss Type field. Even after expanding all awaiting fields, Loss Type is not available to resolve. Any conflict action must take the coordinator directly to the actual resolvable canonical field and highlight it.
+>
+> 3. **Check cross-document structured-value hydration.** The live DOCX uploads now correctly populate the Transaction Record with:
+>
+>    * Property Damage Limit = **$2,500,000**
+>    * Claim Amount = **$96,480**
+>    * Repair Costs = **$96,480**
+>
+>    But Cross-document checks still says: `Multiple documents are uploaded, but they do not yet contain a shared structured amount to compare.` Trace why reconciliation is not recognizing the shared $96,480 values already extracted from the documents.
+>
+> **Do not change the working DOCX extraction or existing PDF ingestion behavior.**
+>
+> After fixing, retest this same hazard-loss room and verify:
+>
+> * `Hazard loss` + `Hazard loss - fire` do not create a false conflict.
+> * A genuine Loss Type conflict still creates a blocker.
+> * Conflict actions deep-link to and highlight the exact resolvable field.
+> * Cross-document checks recognize the shared **$96,480** repair/claim amount.
+> * **$2,500,000 policy limit is not compared as though it were the repair/claim amount.**
+>
+> Current live passes to preserve: DOCX summaries are readable/content-grounded, DOCX → Transaction Record extraction works, and Kontra AI correctly recognizes the uploaded documents rather than reporting them missing.

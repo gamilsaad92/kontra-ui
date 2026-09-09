@@ -1,0 +1,46 @@
+Proceed with the authorization hardening now. This is a production security fix, not a UI redesign.
+Implement the smallest safe changes based on the confirmed root cause:
+Participant-first credential precedence
+In the shared room access resolver, if x-kontra-session is valid for the requested room, resolve and enforce that stored participant role first.
+Ignore any simultaneously supplied same-room owner token for that request.
+Fall back to owner authorization only when there is no valid participant session for the room.
+Preserve owner re-entry when participant session is absent, expired, revoked, or invalid.
+Client defense in depth
+getRoomAuthHeaders() should not send x-owner-write-token when a valid participant session exists for that room.
+Do not rely on this client change for security; server-side enforcement remains authoritative.
+Immediately gate sensitive reads
+Until explicit participant-safe projections are designed, make coordinator-sensitive reads owner-only:
+full Transaction Record + field history
+asset passport / room metadata / readiness responses
+Verified Asset snapshot list/detail/readiness/export
+Digital Asset package/snapshot/revision/artifact reads/downloads
+verification read/run endpoints
+Preserve participant-safe behavior
+Buyer/other participants may continue to access only documents, submissions, tasks, People data, and other information already explicitly allowed for their stored role/assignment.
+Do not expose hidden coordinator data merely because the frontend omits it.
+Authorization must be server-side
+?role= remains presentation metadata only.
+UI visibility must follow the server response.
+Do not fix this by only hiding components.
+Add regression coverage
+Test at minimum:
+Buyer session only
+Buyer session + same-room valid owner token
+Buyer session + different-room owner token
+Owner token only
+expired/revoked participant session + valid owner token
+anonymous access to Verified Asset / verification endpoints
+each restricted endpoint returns 403 or participant-safe projection as intended
+Do not change existing production room data, resend invitations, or alter stages while implementing.
+Return:
+participant-first resolver: PASS/FAIL
+client owner-header suppression: PASS/FAIL
+Transaction Record gate: PASS/FAIL
+metadata/readiness gate: PASS/FAIL
+Verified Asset gate: PASS/FAIL
+Digital Asset package gate: PASS/FAIL
+verification endpoint gate: PASS/FAIL
+anonymous access blocked: PASS/FAIL
+automated authorization tests: PASS/FAIL
+production deployed: YES/NO
+ready for controlled Buyer retest: YES/NO

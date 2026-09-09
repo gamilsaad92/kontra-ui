@@ -1,0 +1,33 @@
+o not proceed with Task G yet. The verification is strong, but four final items must be resolved/confirmed before production.
+1. Make Transaction completion truly atomic.
+The current /settlement/complete implementation can insert the Transaction Seal successfully and then fail updating deal_rooms, creating an orphaned/duplicate seal on retry.
+This is not acceptable for the permanent Transaction Seal.
+Implement completion using a PostgreSQL/Supabase RPC transaction so the following occur in one database transaction:
+revalidate deterministic settlement conditions
+create exactly one transaction_seal
+set sealed_at
+set completed_at
+set deal_stage = 'complete'
+If any operation fails, everything must roll back.
+Add an idempotency/uniqueness safeguard so a transaction can have only one active final Transaction Seal.
+2. Verify and correct the new-room stage lifecycle.
+The approved architecture for a new settlement-enabled workspace is:
+Closing → Settlement → Complete
+Funded is a settlement milestone/condition, not a stage.
+Legacy existing rooms already in funded must remain backward compatible.
+Show me the actual resolved stage arrays for:
+new CRE + Settlement OFF
+new CRE + Settlement ON
+new Business Acquisition + Settlement ON
+new Fundraising + Settlement ON
+legacy room already in funded + Settlement subsequently enabled
+Do not deploy if a new settlement-enabled room resolves to Closing → Funded → Settlement → Complete.
+3. Block /assess/demo in production.
+/api/tokenization/assess/demo is demo/fixture functionality and must return 503 MOCK_DISABLED or otherwise be explicitly unavailable in production.
+Production-safe tokenization readiness endpoints such as the real /assess may remain available.
+4. Verify approval immutability after sealing.
+Enumerate every API endpoint capable of creating, modifying, approving, rejecting, revoking, or deleting transaction_record_approvals.
+Confirm every such write path returns WORKSPACE_SEALED when deal_rooms.sealed_at IS NOT NULL.
+Because approvals are captured in the Transaction Seal, no approval state included in the seal may change afterward.
+Run the relevant tests again and return PASS/FAIL plus the exact resolved stage arrays and atomic-completion test result.
+Do not apply Migration 017, push to GitHub, or deploy to Render yet.

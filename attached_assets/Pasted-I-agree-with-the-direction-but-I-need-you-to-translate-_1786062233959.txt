@@ -1,0 +1,60 @@
+I agree with the direction, but I need you to translate it into a concrete implementation plan for the existing codebase.
+Do not rebuild the application and do not remove the current creation flow, document checklist, participants, stages, Operations Manager, AI analysis, or activity timeline.
+Before writing code, inspect the existing architecture and provide:
+The exact pages, components, database tables, and API routes that need to change.
+The proposed data model for the persistent Verified Transaction Record and Verified Asset Record.
+How information will be extracted from uploaded documents and mapped into structured fields.
+How every verified field will retain its source document, page reference, confidence level, verification status, and approval history.
+How Digital Asset Preparation will be removed from Settings and introduced as a downstream workspace capability.
+How the interface will behave for transactions where tokenization is irrelevant, optional, or required.
+Which parts can be implemented using the existing database and components versus which require new tables or services.
+A phased implementation plan that avoids breaking the current room.
+The intended workspace architecture is:
+Transaction → Verification → Verified Record → Optional Digital Asset Preparation
+The room should progressively build a structured and traceable record of the transaction. It should not simply display document-upload progress.
+The initial navigation should remain simple:
+Overview | Documents | Asset Record | Activity | Settings
+The Asset Record tab should show the structured information Kontra has extracted and verified, including:
+Asset or company identity
+Transaction type and value
+Buyer, seller, issuer, and ownership entities
+Beneficial ownership
+Financial information
+Legal information
+Approvals
+Verification status
+Source documents
+Missing or conflicting information
+Every field must support these states:
+Missing
+Extracted
+Needs review
+Verified
+Conflicting
+Not applicable
+Digital Asset Preparation should become available only when relevant. It should not begin with token name, ticker, or supply. It should begin with a readiness assessment covering:
+Asset verification
+Ownership and cap table
+Legal structure
+Jurisdiction
+KYC/AML requirements
+Investor eligibility
+Transfer restrictions
+Offering documents
+Issuance provider
+Custody and settlement
+Token economics should appear only after the foundational readiness requirements are completed.
+Do not implement yet. First return:
+Current architecture assessment
+Proposed architecture
+Schema changes
+Component changes
+Migration risks
+Step-by-step implementation phases
+Estimated complexity for each phase
+The important part is “do not implement yet.” Replit can otherwise make broad changes before clearly understanding the architecture.
+You need to see whether it understands the distinction between:
+a document checklist with token fields
+and
+a verified transaction-data system that can later support digital issuance.
+That distinction is the entire point of the next iteration.

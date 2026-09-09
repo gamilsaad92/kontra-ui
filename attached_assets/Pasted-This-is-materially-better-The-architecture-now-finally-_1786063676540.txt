@@ -1,0 +1,355 @@
+This is **materially better**. The architecture now finally reflects the direction we discussed:
+
+> **Transaction coordination → structured record → participant review → optional digital-asset preparation**
+
+The new **Asset Record** tab is the most important improvement. Kontra is no longer just counting uploaded documents; it is becoming a system that converts those documents into structured transaction information.
+
+However, I would not consider this finished yet. There are several important corrections I would send back to Replit before continuing.
+
+## What is now right
+
+Keep these changes:
+
+* **Asset Record** as a primary workspace tab
+* Structured extraction after document analysis
+* Source document, page, excerpt, confidence, and status
+* Human review before a field becomes verified
+* Verified fields protected from automatic overwriting
+* Approval and change-history logging
+* Digital Asset Readiness removed from Settings
+* Export and external-provider handoff instead of issuance
+* Readiness based on workflow completion, not legal eligibility
+* No minting, custody, settlement, marketplace, or token-sale actions
+
+This is now much closer to Kontra’s actual product.
+
+## What still needs correction
+
+### 1. Resolve the naming inconsistency
+
+The navigation says **Asset Record**, but the page says **Transaction Record**.
+
+These are related but not identical.
+
+For a hotel acquisition, the record contains:
+
+* Transaction information
+* Asset information
+* Parties
+* Ownership
+* Financial terms
+* Legal provisions
+* Approvals
+
+I recommend naming the tab:
+
+### **Transaction Record**
+
+Inside it, use sections such as:
+
+* Transaction
+* Asset or Company
+* Parties
+* Ownership
+* Financial
+* Legal
+* Approvals
+
+“Asset Record” may not fit fundraising, licensing, debt financing, or transactions where there is no traditional asset.
+
+The universal architecture should be based on a **Transaction Record**, with an asset or company section when relevant.
+
+---
+
+### 2. Do not let Kontra itself claim that information is legally “verified”
+
+The current status system is useful, but the product must make clear who performed the verification.
+
+Instead of displaying only:
+
+> Verified
+
+display:
+
+> Verified by Deal Coordinator
+> Verified by Legal Advisor
+> Confirmed by Workspace Owner
+> Extracted by Kontra — Review required
+
+Kontra can extract, compare, flag, and record approvals. The participant or adviser should be the one confirming the information.
+
+The audit trail should always store:
+
+* Who confirmed it
+* Their role
+* Date and time
+* Previous value
+* New value
+* Supporting source
+* Whether the confirmation was manual or provider-supplied
+
+---
+
+### 3. Change “AI verification summary”
+
+The Overview still says the package includes an:
+
+> AI verification summary
+
+That wording may suggest Kontra is independently certifying the transaction.
+
+Use:
+
+> **AI-assisted review summary**
+
+or:
+
+> **Transaction review summary**
+
+Similarly, consider changing:
+
+> Verified Transaction Package
+
+to:
+
+### **Reviewed Transaction Package**
+
+or:
+
+### **Transaction Record Package**
+
+You can still use “verified” at the field level when an authorized participant has verified it. But the entire package should not imply legal certification by Kontra.
+
+A safe description would be:
+
+> A structured transaction record containing collected documents, extracted information, participant confirmations, unresolved exceptions, source references, and audit history.
+
+---
+
+### 4. Reconsider “Transaction Risk”
+
+The Overview currently has a **Transaction Risk** panel.
+
+That may sound like Kontra is giving a financial, legal, or investment-risk judgment. Keep the functionality, but rename it:
+
+### **Issues & Exceptions**
+
+Possible statuses:
+
+* Not yet assessed
+* No open exceptions identified
+* Review required
+* Conflicting information
+* Missing required information
+* Awaiting participant response
+
+Kontra should identify observable issues, not determine whether a transaction is a good or bad investment.
+
+Avoid outputs such as:
+
+* High-risk investment
+* Poor acquisition
+* Recommended not to proceed
+* Safe transaction
+* Attractive return
+
+Use factual language:
+
+* Purchase price differs across two documents
+* Ownership entity has not been confirmed
+* Environmental report is missing
+* Closing date conflicts with the purchase agreement
+
+---
+
+### 5. Do not lock Digital Asset Readiness sections sequentially
+
+The proposed five sections being locked until the prior section is completed may be too restrictive.
+
+Real transaction preparation is not always sequential. Legal, ownership, KYC-provider selection, and technology-provider selection may happen at the same time.
+
+Instead:
+
+* Allow every section to be opened
+* Show dependencies
+* Prevent only the final export status from being marked complete when prerequisites remain unresolved
+
+For example:
+
+> Issuance Preparation can be reviewed now, but external handoff readiness requires ownership and legal-preparation items to be completed.
+
+This keeps the system useful without suggesting Kontra controls the legal sequence.
+
+---
+
+### 6. Keep token economics secondary and clearly user-provided
+
+Token name, ticker, supply, token price, and raise target should not be the central output of the readiness workflow.
+
+They should appear under:
+
+### **Draft Commercial Terms**
+
+with this label:
+
+> Optional draft information entered by the workspace owner or their advisers. Kontra does not recommend, structure, approve, issue, price, or sell digital assets.
+
+I would also avoid automatically calculating:
+
+* Recommended token price
+* Recommended token supply
+* Investor return
+* Yield
+* Expected appreciation
+* Offering valuation
+* Percentage that should be tokenized
+
+Kontra may store user-entered terms and check whether documents contain conflicting terms. It should not recommend them.
+
+---
+
+### 7. Add the Digital Asset Readiness choice earlier—but neutrally
+
+At the moment, it sounds like the Digital Asset tab appears only for “tokenization-relevant workspaces.” The system must not silently decide that a transaction should be tokenized.
+
+During creation or after activation, show:
+
+### Optional preparation capabilities
+
+**Digital Asset Readiness**
+Organize information for potential review by external legal, compliance, issuance, custody, or settlement providers.
+
+Buttons:
+
+* **Not needed**
+* **Add preparation workflow**
+
+For a transaction explicitly described as token issuance, it can be recommended, but the owner should still confirm it.
+
+The AI may say:
+
+> This transaction may benefit from a Digital Asset Readiness workflow.
+
+It should not say:
+
+> This asset is eligible for tokenization.
+
+---
+
+### 8. The database migration approach needs correction
+
+This part concerns me:
+
+> Both tables created at startup via `ensureWorkflowPackIdColumn`, so they exist on Render without a manual Supabase migration step.
+
+Startup-time schema modification is not a good production foundation.
+
+Tell Replit:
+
+* Use the committed Supabase migration as the authoritative schema change
+* Apply migrations through a controlled deployment process
+* Do not rely on the application server to create or alter production tables during startup
+* Keep startup checks read-only, or limit them to detecting missing migrations
+* Add indexes and foreign keys
+* Add row-level security policies
+* Confirm that participants can only access records for rooms they are authorized to enter
+
+At minimum, indexes should cover:
+
+* `deal_room_id`
+* `source_doc_id`
+* `field_category`
+* `status`
+* `field_key`
+* approval history by `field_id`
+
+Also confirm what happens when a source document is deleted, replaced, or versioned.
+
+---
+
+### 9. Preserve document version provenance
+
+A verified field should not only reference a document ID. It should reference the specific **document version** used.
+
+Otherwise:
+
+1. A user uploads Purchase Agreement v1.
+2. A field is confirmed from v1.
+3. Purchase Agreement v2 replaces it.
+4. The verified field still looks current even though its source changed.
+
+Each field should track:
+
+* Source document ID
+* Source document version ID
+* Page
+* Excerpt
+* File hash
+* Extraction timestamp
+
+When a newer version conflicts with a verified field, do not overwrite the field. Change it to:
+
+> **Previously confirmed — newer source requires review**
+
+That is a strong and valuable feature for Kontra.
+
+---
+
+### 10. Improve the empty Asset/Transaction Record screen
+
+The empty state is currently too empty. It makes the new tab feel unfinished.
+
+Before documents are uploaded, display the expected categories and their statuses:
+
+### Transaction Record
+
+**Transaction**
+
+* Transaction type: Commercial Real Estate Acquisition
+* Current stage: NDA
+* Target closing date: August 18, 2026
+* Transaction value: Missing
+
+**Asset**
+
+* Property name: Marriott Hotel
+* Address: Missing
+* Ownership entity: Missing
+* Asset type: Hotel
+
+**Parties**
+
+* Buyer: Missing
+* Seller: Missing
+* Legal adviser: Not invited
+
+**Record status**
+
+* 3 fields supplied by workspace setup
+* 0 fields extracted from documents
+* 0 fields confirmed by participants
+
+The initial description and workflow pack already contain useful information. The record should begin forming immediately rather than remaining entirely blank until upload.
+
+## Direction I would send Replit
+
+> The implementation is moving in the right direction. Keep the new structured-record architecture, source provenance, human confirmation, audit history, and separate Digital Asset Readiness workflow.
+>
+> Before continuing, make the following corrections:
+>
+> 1. Rename the universal tab to **Transaction Record** and place Asset/Company Identity inside it as a category.
+> 2. Every confirmed field must show who verified or confirmed it. Kontra itself must not imply legal certification.
+> 3. Replace “AI verification summary” with “AI-assisted review summary.”
+> 4. Rename “Transaction Risk” to **Issues & Exceptions** and limit it to factual document and workflow observations.
+> 5. Do not hard-lock Digital Asset Readiness sections sequentially. Allow parallel preparation while showing dependencies.
+> 6. Keep token economics optional, owner-supplied, and clearly labeled as draft information that Kontra does not recommend or structure.
+> 7. Require the workspace owner to enable Digital Asset Readiness. AI may suggest it but must not determine eligibility.
+> 8. Use controlled Supabase migrations rather than production schema creation during application startup.
+> 9. Bind every extracted field to the exact document version and file hash. New conflicting versions must trigger review without overwriting confirmed information.
+> 10. Populate the Transaction Record immediately using setup information, even before documents are uploaded.
+>
+> Maintain the product boundary:
+>
+> **Kontra coordinates the transaction, structures information, identifies missing or conflicting data, records participant confirmations, prepares exportable packages, and hands them to external providers. Kontra does not issue, broker, advise, price, custody, transmit, settle, or certify digital assets.**
+
+My overall assessment: **the concept is now in the right place.** The next work should focus less on adding screens and more on making the Transaction Record credible, traceable, version-aware, and clearly participant-confirmed. That is the layer that can make Kontra meaningfully different from an ordinary deal room.

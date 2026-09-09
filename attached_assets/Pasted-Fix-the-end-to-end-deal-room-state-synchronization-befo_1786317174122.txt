@@ -1,0 +1,17 @@
+Fix the end-to-end deal-room state synchronization before doing any additional UI or feature work.
+1. Document upload → Overview synchronization
+When a document is successfully uploaded and AI analysis completes, persist the extracted structured fields to the deal/transaction record. The Overview must immediately re-fetch or reactively update from that persisted transaction state without requiring a page reload.
+Test specifically with the uploaded Letter of Intent and Financial Statements. If the LOI contains transaction value, asset/company, buyer/primary party, seller, dates, or transaction terms, populate those Overview fields from the extraction. Do not fabricate fields that were not actually extracted.
+Once at least one core document has been successfully uploaded, Overview must no longer display the empty-state “Start this transaction” as though nothing has happened. Replace it with the appropriate next action based on the actual room state.
+2. Invitation → People synchronization
+When an invitation is successfully created/sent, persist that invitation against the correct deal ID and participant role. Immediately update People so the role changes from “Not invited” to “Invited” or the appropriate pending status, including the participant email/name where available. The “0 of 5 roles invited” counter must update from the same persisted data.
+Verify this survives a full page refresh. Do not solve this with client-only state.
+3. Fix the access-PIN flow
+The current invitation sends the buyer to a page requiring a 6-digit PIN, but the deal owner has no visible PIN to give them. Make this flow complete end-to-end.
+If PIN authentication is intentional, generate a secure PIN when the invitation is created and provide the deal owner a clear way to view/copy it. Preferably include the necessary access instructions in the invitation itself. Store only what is appropriate for secure PIN verification and implement expiration/attempt protection.
+If the invitation link itself is intended to authenticate the participant, remove the redundant PIN requirement and use a secure, expiring, single-purpose invitation token instead. Do not leave both mechanisms half-implemented.
+4. End-to-end regression test
+Create a fresh deal room and verify this exact sequence:
+create room → upload LOI → AI analysis completes → document becomes Uploaded → extracted transaction data appears on Overview → Overview next action changes → invite Buyer → People immediately shows Buyer as Invited → open the actual invitation as the Buyer → Buyer can authenticate → Buyer reaches only the deal room they were invited to.
+Refresh the owner and buyer pages during the test and confirm all state persists.
+Do not mark this task complete based only on API responses or unit tests. Verify the visible UI at every step and report the root cause of each of the three bugs and what was changed to fix it.

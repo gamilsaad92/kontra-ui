@@ -1,6 +1,6 @@
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('../../lib/openaiClient');
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const openai = process.env.OPENAI_API_KEY ? createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 function formatNumber(value, digits = 2) {
   if (value === null || value === undefined) return null;

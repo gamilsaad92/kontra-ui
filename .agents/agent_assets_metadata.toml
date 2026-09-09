@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "yfQHnbRW4rRXcy3_moXeL"
+uri = "file://artifacts/kontra-transaction-operations-manager-demo.mp4"
+type = "video"
+title = "Kontra transaction operations manager demo"
+description = "Updated 34-second vertical social demo using the live synthetic Meridian Software Group room, including the requested opening, blocker state, Kontra AI answer, canonical source-of-truth callout, and homepage ending."
+logical_id = "a54a9ee3-2eca-47db-8a7c-df94a312310f"
+content_hash = "sha256:965a669bdeca5a98e23ca6668e695ca59121c1a23ec1cb5ce346651c66c6611d"
+size = 807504
+mtime_ms = 1788646451940
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:43b2d839-9258-4985-bc9b-23e6ed0a3cc7/a54a9ee3-2eca-47db-8a7c-df94a312310f/17792403-0246-418f-94c8-ad903e2ae41e"
+storage_version_token = "1788646477932000"
+content_type = "video/mp4"

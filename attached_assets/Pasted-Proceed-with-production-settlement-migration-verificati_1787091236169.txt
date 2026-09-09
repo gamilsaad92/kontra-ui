@@ -1,0 +1,73 @@
+Proceed with production settlement migration verification only. Do not make additional application-code changes.
+
+1. Read-only production preflight
+
+Against the actual Production Supabase database, verify whether migrations 017 and 018 are already represented in the schema.
+
+Confirm specifically:
+
+settlement capability/readiness columns required by migration 017
+Transaction Seal structures
+unique active-seal index
+complete_settlement_transaction() RPC/function
+any other objects explicitly required by 017/018
+
+Report what is present/missing before making changes.
+
+2. Migration review
+
+Before applying anything, confirm migrations 017 and 018 are replay-safe/additive against the current Production schema and will not:
+
+drop or overwrite existing data
+recreate existing seals
+reset settlement state
+modify Transaction Record values
+alter participant/invite state
+change existing room lifecycle stages
+
+If there is any conflicting Production data that prevents the migration, STOP and report the exact rows/constraint conflict. Do not automatically delete or modify Production data.
+
+3. Apply only what is missing
+
+If the preflight is clean, apply the committed 017/018 migrations through the authorized Production Supabase migration process.
+
+Do not manually reproduce pieces of the migrations unless absolutely necessary. Production should match the committed migration source.
+
+4. Production parity verification
+
+After migration, verify:
+
+required settlement columns exist
+atomic completion RPC exists
+unique active-seal protection exists
+migration objects match the committed definitions
+5. Safe production regression
+
+Do not alter an active customer transaction merely to test this.
+
+Using an approved disposable validation transaction if necessary, verify:
+
+normal settlement readiness read
+successful atomic completion
+exactly one Transaction Seal is created
+second completion attempt is rejected/idempotently handled
+seal count remains exactly one
+post-seal protected state cannot be improperly changed
+normal Transaction Record state remains intact
+
+Clean up only disposable validation data that was explicitly created for this test.
+
+STOP after verification
+
+Do not deploy Vercel or Render yet.
+Do not change tokenization, workflow packs, UI, Ask Kontra, authorization, participants, or Transaction Record logic.
+
+Report:
+
+Production 017 status — PASS/FAIL
+Production 018 status — PASS/FAIL
+Atomic RPC — PRESENT/MISSING
+Unique seal protection — PRESENT/MISSING
+Production settlement regression — PASS/FAIL
+Any Production data modified during validation
+Final recommendation — READY TO DEPLOY / NOT READY

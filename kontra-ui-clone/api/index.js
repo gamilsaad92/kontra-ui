@@ -13,6 +13,8 @@ const REQUIRED_PRODUCTION_ENV = [
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
   'OPENAI_API_KEY',
+  'ENCRYPTION_KEY',
+  'PII_ENCRYPTION_KEY',
 ];
 const PLACEHOLDER_ENV_VALUES = new Set(['placeholder', 'placeholder-key', 'sk-not-configured']);
 
@@ -268,11 +270,16 @@ When in doubt between CRE and business, default to cre_acquisition.`,
       return result.pack;
     }
   } catch (e) {
-    console.warn('[pack-classify] AI unavailable, using CRE default:', e.message);
+    console.warn('[pack-classify] AI unavailable, using CRE default:', safeAIErrorMetadata(e));
   }
   return 'cre_acquisition';
 }
-const OpenAI = require('openai');          // ← v4+ default export
+const {
+  createOpenAIClient,
+  createInstitutionalOpenAIClient,
+  safeAIErrorMetadata,
+  safeAIErrorMessage,
+} = require('./lib/openaiClient');
 const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
@@ -448,7 +455,7 @@ async function savedPackMatchesApproval(packId, approvalHash) {
   return workflowConfigHash(data.config) === approvalHash;
 }
 // Optional — warn but stay running; features degrade gracefully
-["SENTRY_DSN","STRIPE_SECRET_KEY","ENCRYPTION_KEY","PII_ENCRYPTION_KEY"].forEach(k => {
+["SENTRY_DSN","STRIPE_SECRET_KEY"].forEach(k => {
   if (!process.env[k]) {
     console.warn(`[WARN] Optional env var not set: ${k} — related features disabled`);
   }
@@ -560,10 +567,39 @@ app.use((req, _res, next) => {
   next();
 });
 
+function scrubSentryEvent(event) {
+  if (event.request) {
+    delete event.request.data;
+    delete event.request.query_string;
+    if (event.request.headers) {
+      event.request.headers = Object.fromEntries(
+        Object.entries(event.request.headers)
+          .filter(([key]) => !['authorization', 'cookie', 'set-cookie'].includes(key.toLowerCase())),
+      );
+    }
+  }
+  delete event.extra;
+  delete event.contexts;
+  delete event.breadcrumbs;
+  delete event.user;
+  delete event.tags;
+  if (event.message) event.message = 'Application error';
+  if (event.exception?.values) {
+    event.exception.values = event.exception.values.map(value => ({
+      ...value,
+      value: 'Application error',
+    }));
+  }
+  return event;
+}
+
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   environment: process.env.NODE_ENV,
   tracesSampleRate: 1.0,
+  sendDefaultPii: false,
+  beforeSend: scrubSentryEvent,
+  beforeSendTransaction: scrubSentryEvent,
 });
 // ✅ Use middleware only if available
 if (Sentry.Handlers?.requestHandler) {
@@ -600,9 +636,7 @@ const upload = multer({
 });
 
 // ── OpenAI Client (v4+ SDK) ────────────────────────────────────────────────
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured',
-});
+const openai = createInstitutionalOpenAIClient();
 const {
   parseDocumentBuffer,
   summarizeDocumentBuffer,
@@ -612,6 +646,7 @@ const {
   detectFraud,
 } = require('./services/underwriting');
 const { extractDocxText } = require('./lib/docxText');
+const { renderPdfPagesForVision } = require('./lib/pdfVision');
 const { deleteDealRoomData } = require('./lib/dealRoomDeletion');
 const { loadOriginalDocument } = require('./lib/originalDocumentAccess');
 
@@ -1215,7 +1250,7 @@ FORMATTING RULES:
 - Today's date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
 
 // Copilot uses Replit AI Integration (auto-provisioned, no quota issues)
-const copilotAI = new OpenAI({
+const copilotAI = createOpenAIClient({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 });
@@ -1257,8 +1292,8 @@ app.post('/api/copilot/chat', async (req, res) => {
     const msg = response.choices[0].message;
     return res.json({ content: msg.content, model: response.model, confidence: 0.96 });
   } catch (err) {
-    console.error('[Copilot] OpenAI error:', err?.message || err);
-    return res.status(500).json({ message: 'Copilot error', error: err?.message });
+    console.error('[Copilot] OpenAI error:', safeAIErrorMetadata(err));
+    return res.status(500).json({ message: 'Copilot error' });
   }
 });
 
@@ -2716,7 +2751,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
         const firstName = pilotName.split(' ')[0] || pilotName;
         const packLabel = PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId;
         await sendResendEmail(RESEND_KEY, {
-          from: 'Kontra <notifications@kontraplatform.com>',
+          from: 'Kontra <support@kontraplatform.com>',
           to: pilotEmail,
           subject: `Your Kontra workspace is ready: ${workspaceName}`,
           html: `
@@ -2780,7 +2815,7 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
   try {
     const firstName = (pilotName || pilotEmail).split(' ')[0];
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
+      from: 'Kontra <support@kontraplatform.com>',
       to: pilotEmail,
       subject: `Your Kontra workspace is ready: ${workspaceName || 'your workspace'}`,
       html: `
@@ -3083,7 +3118,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoData');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+  const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const DEMO_ID = 'kontra-demo';
   const fixture = getDemoFixture('cre_acquisition', PROPERTY);
 
@@ -3190,7 +3225,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataBiz');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+  const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const BIZ_ID = 'kontra-demo-biz';
   const fixture = getDemoFixture('business_acquisition', PROPERTY);
 
@@ -3277,7 +3312,7 @@ app.post('/api/webhook/stripe',
 ;(() => {
   const { PROPERTY, TASKS, BRIEFING, ANALYSES, DEMO_QA_CONTEXT } = require('./lib/demoDataFundraising');
   const { getDemoFixture } = require('./lib/demoRoomFixtures');
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+  const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
   const FUND_ID = 'kontra-demo-fundraising';
   const fixture = getDemoFixture('fundraising', PROPERTY);
 
@@ -3452,7 +3487,7 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from: 'Kontra <support@kontraplatform.com>',
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
@@ -5919,18 +5954,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           // page-separator noise (e.g. "-- 1 of 62 --") with no real body content.
           // Strip that noise before judging whether we actually got usable text.
           const meaningfulText = (text || '').replace(/--\s*\d+\s*of\s*\d+\s*--/gi, '').trim();
-          // No usable text layer (scanned/image-only PDF) — fall back to sending the
-          // PDF directly to a vision-capable model so it can read the page images.
-          // Only viable for PDFs within a sane size (larger files risk request-size
-          // limits and slow/expensive vision calls).
+          // No usable text layer (scanned/image-only PDF) — render every page
+          // within a controlled budget. The renderer rejects oversized or
+          // overlong PDFs rather than silently analyzing a partial document.
           const needsVision = isPdf && meaningfulText.length < 30;
-          if (needsVision && buf.length > 15 * 1024 * 1024) {
-            throw new Error('no extractable text — this PDF appears to be scanned (image-only) or encrypted, and is too large for image analysis');
-          }
-
           let completion;
           if (needsVision) {
             console.log(`[track-document] no text layer for ${filename} — falling back to vision analysis`);
+            const vision = renderPdfPagesForVision(buf);
             completion = await openai.chat.completions.create({
               model: 'gpt-4o-mini',
               messages: [
@@ -5938,8 +5969,8 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
                 {
                   role: 'user',
                   content: [
-                    { type: 'file', file: { filename, file_data: `data:application/pdf;base64,${buf.toString('base64')}` } },
                     { type: 'text', text: prompt.user('(This PDF has no selectable text layer — it is a scanned document. Read the page images directly.)') },
+                    ...vision.images,
                   ],
                 },
               ],
@@ -5969,8 +6000,9 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
-          console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
-          const scanned = /scanned|encrypted/i.test(aiErr.message);
+          console.warn(`[track-document] AI failed for ${section}:`, safeAIErrorMetadata(aiErr));
+           const scanned = ['ENCRYPTED_PDF', 'PDF_PAGE_LIMIT_EXCEEDED', 'PDF_TOO_LARGE_FOR_VISION', 'PDF_RENDER_TOO_LARGE', 'PDF_PAGE_RENDER_INCOMPLETE'].includes(aiErr.code)
+             || aiErr.code === 'PDF_VISION_FAILED';
           const summary = scanned
             ? `${SECTION_LABELS[section]} uploaded. This file appears to be a scanned image or password-protected PDF, so the AI couldn't read its text. Try uploading a version with selectable text (e.g. the original digital file before signing/scanning).`
             : `${SECTION_LABELS[section]} uploaded. AI could not analyze this file — it may be scanned or password-protected.`;
@@ -5983,13 +6015,13 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
              processing_status: 'failed',
              extraction_version: DOCUMENT_EXTRACTION_VERSION,
              correlation_id: correlationId,
-             failure_reason: aiErr.message,
+              failure_reason: safeAIErrorMessage(aiErr, 'AI analysis failed'),
              processing_completed_at: new Date().toISOString(),
            }, { analysis: { summary, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath });
            clearBriefingCache(propertyId);
            emitInternalEvent('document.failed', {
-             propertyId, documentId: recordId, section, filename,
-             failureReason: aiErr.message, correlationId,
+              propertyId, documentId: recordId, section, filename,
+              failureReason: safeAIErrorMessage(aiErr, 'AI analysis failed'), correlationId,
            }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
             getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
         }
@@ -5997,7 +6029,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       // Hard 50-second timeout so the record never stays "pending" forever
       Promise.race([bgJob(), new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 50000))])
         .catch(async (err) => {
-          console.warn(`[track-document] bg job timed out or failed for ${section}:`, err.message);
+           console.warn(`[track-document] bg job timed out or failed for ${section}:`, safeAIErrorMetadata(err));
           if (recordId) {
             await updateDocumentProcessing(recordId, {
               analysis: {
@@ -6132,7 +6164,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleAction = roleConfig?.inviteAction || 'access the deal room';
     const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
+      from: 'Kontra <support@kontraplatform.com>',
       to: email,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to a deal room — ${propName}`,
@@ -6202,7 +6234,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
         const roleLabel = roleConf?.label || roleKey;
         const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
         await sendResendEmail(process.env.RESEND_API_KEY, {
-          from: 'Kontra <notifications@kontraplatform.com>',
+          from: 'Kontra <support@kontraplatform.com>',
           to: invitedEmail,
           reply_to: 'support@kontraplatform.com',
           subject: `You've been invited to a deal room — ${propName}`,
@@ -6383,7 +6415,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     const to         = invite.invited_email;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
+      from: 'Kontra <support@kontraplatform.com>',
       to,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to ${propName} — Kontra Deal Room`,
@@ -7652,7 +7684,7 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
     const workspaceUrl = `${req.headers.origin || 'https://kontraplatform.com'}/deal-room/${propertyId}`;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
+      from: 'Kontra <support@kontraplatform.com>',
       to: notif.to_email,
       subject: `[Resent] ${notif.subject}`,
       html: `
@@ -7737,7 +7769,7 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
     // Send an email to each found participant
     await Promise.all(recipients.map(({ email, roleKey }) =>
       sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from: 'Kontra <support@kontraplatform.com>',
         to: email,
         subject: `Action needed: please upload "${docLabel}" — ${propName}`,
         text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your deal room to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,
@@ -11630,7 +11662,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
     if (access.mode === 'anonymous') return accessDenied(res);
     return res.json(await askQuestion(propertyId, String(question).slice(0, 2000)));
   } catch (err) {
-    console.error('[brain/ask]', err.message);
+    console.error('[brain/ask]', safeAIErrorMetadata(err));
     return res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
   }
 
@@ -11697,7 +11729,7 @@ RULES:
 - Do not provide legal, regulatory, or financial advice.
 - Kontra organizes and prepares transaction information — it does not issue, sell, recommend, custody, or settle digital assets.`;
 
-    const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const aiClient = createInstitutionalOpenAIClient();
     const completion = await aiClient.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -11710,7 +11742,7 @@ RULES:
 
     res.json({ answer: completion.choices[0]?.message?.content || 'I could not answer from the current transaction record.' });
   } catch (err) {
-    console.error('[brain/ask]', err.message);
+    console.error('[brain/ask]', safeAIErrorMetadata(err));
     res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
   }
 });
@@ -11789,7 +11821,7 @@ app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
       ),
     });
   } catch (err) {
-    console.error('[brain/facts]', err.message);
+  console.error('[brain/facts]', safeAIErrorMetadata(err));
     res.json(null);
   }
 });

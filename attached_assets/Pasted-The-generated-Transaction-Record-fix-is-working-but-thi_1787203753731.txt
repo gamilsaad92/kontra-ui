@@ -1,0 +1,46 @@
+The generated Transaction Record fix is working, but this test exposed remaining generated-room state/provenance issues.
+
+Test input states: “$12 million acquisition of an operating business structured as an asset purchase. The buyer is paying all cash with no financing. The company operates in California and has 85 employees. The parties have signed an LOI and are beginning financial, legal, tax and operational due diligence. Closing is targeted in 45 days.”
+
+Current correct behavior:
+
+* Business Acquisition / Asset Purchase classification
+* $12M transaction value
+* All Cash
+* California
+* 85 employees
+* 45-day closing target
+* Generated Transaction Record fields now appear correctly
+
+Remaining defects:
+
+1. Stage inference is wrong. The room activates at NDA / Stage 1 and shows “Blockers to LOI,” even though the description explicitly states the LOI has already been signed and due diligence is beginning. Generated rooms must infer current lifecycle state from approved proposal/context, not default to the first stage because supporting documents have not yet been uploaded.
+2. Separate transaction state from document verification. An executed LOI stated by the coordinator should allow lifecycle state to be LOI completed / Due Diligence current, while the LOI document can independently remain “not uploaded / evidence requested.” Missing supporting evidence must not automatically regress the lifecycle.
+3. Generate a Transaction Record fact for LOI Status = Executed/Signed, with provenance from the transaction description and awaiting confirmation.
+4. Capture Due Diligence Status = Beginning/In Progress from the description. Do not represent the entire diligence state as unknown merely because an exact start date was not supplied.
+5. Convert “closing targeted in 45 days” into appropriate transaction terminology. Prefer Target Closing Date, calculated relative to room creation when safe, while retaining the original “45 days” statement/provenance. Do not lose the source wording.
+6. Verify proposal-to-room requirement fidelity. Proposal showed 10 documents while activated room reports 7 missing. Confirm this is solely required-vs-optional behavior and that no approved AI requirements were silently dropped or inherited from base_pack.
+7. Improve provenance visibility. Generic repeated “AI recommendation” badges are not sufficient. Every generated participant, requirement, stage and Transaction Record fact should retain inspectable provenance/reasoning such as transaction_description, AI inferred, user edited, uploaded document, or research source.
+8. Generated-room next actions/blockers must use effective generated state. Do not show “Request Letter of Intent” or “Blockers to LOI” as though the LOI has not occurred when the approved transaction context says it was signed. It may instead say Upload/verify executed LOI.
+9. Preserve template-created room behavior unchanged.
+
+Add regression coverage using this exact business-acquisition scenario. Assert:
+
+* type = Business Acquisition
+* structure = Asset Purchase
+* financing/payment = All Cash
+* value = $12M
+* location = California
+* employees = 85
+* LOI status = executed
+* current stage = Due Diligence
+* missing LOI file does NOT regress stage
+* next action may request executed LOI evidence but does NOT claim LOI is a future milestone
+* no financing/lender requirements are inherited
+* generated Transaction Record uses approved proposal fields
+* provenance survives activation and rendering
+* template-room regression tests remain unchanged.
+
+Also make a small mobile pass: ensure the floating Kontra AI control does not obscure Transaction Record cards/actions and lifecycle labels remain readable on narrow screens.
+
+Do not redesign unrelated UI or change template-room behavior.

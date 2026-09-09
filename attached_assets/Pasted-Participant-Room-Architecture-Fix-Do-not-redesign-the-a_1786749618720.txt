@@ -1,0 +1,41 @@
+Participant Room Architecture Fix — Do not redesign the application
+We have identified two production issues while testing the new transaction architecture.
+1. Deal Coordinator document uploads
+The Deal Coordinator/room owner must be allowed to upload any transaction document, including documents assigned to another responsible party.
+Role assignment represents responsibility for supplying the document; it must not prevent the Deal Coordinator from uploading a document they already possess.
+Example:
+LOI responsible party = Buyer
+Deal Coordinator uploads LOI
+Upload must succeed
+Requirement becomes satisfied
+Preserve uploaded_by / actor provenance as Deal Coordinator
+Do not incorrectly attribute the upload to Buyer
+Participants should continue to be limited according to their permissions. This change is specifically to ensure the workspace coordinator can administer the complete transaction.
+2. Participant invitation opens legacy room
+The invited Buyer is currently routed into what appears to be the legacy participant-room interface containing Evening Standup, Activity Timeline, Your Documents, Transaction Progress, Party Status, and Signal Ready.
+This should not remain as a separate legacy experience.
+Participants should enter the same current transaction workspace architecture as the Deal Coordinator:
+Overview | Documents | People
+The experience should then be filtered according to role and permissions rather than rendering an entirely different application.
+For example, Buyer Overview should show the same transaction identity/lifecycle and current architecture, but prioritize:
+What Kontra needs from the Buyer
+Buyer's assigned actions
+Documents Buyer is responsible for
+Transaction status relevant to Buyer
+Information the Buyer has permission to see
+Do not expose Deal Coordinator-only controls.
+Reuse the current Transaction Record, lifecycle, Documents, actions, provenance, and agent-state architecture rather than maintaining parallel legacy participant components.
+3. Fix invitation-entry crash
+Opening the Buyer invitation initially produces Minified React error #310. Reloading then opens the legacy participant room.
+Trace and fix the initial render/hydration/hooks issue. A valid invitation URL must open directly without requiring reload.
+Test:
+Owner creates fresh room
+Owner invites Buyer
+Buyer opens invitation in clean/incognito session
+No React error
+Current workspace architecture renders immediately
+Buyer sees Buyer-scoped information/actions
+Buyer uploads assigned LOI successfully
+Owner sees that upload without refresh/reconciliation problems
+Owner can also upload a Buyer-responsible LOI and provenance correctly identifies Owner/Deal Coordinator as uploader
+Do not modify transaction requirements, extraction, readiness calculations, settlement, sealing, canonicalization, or workflow-pack behavior as part of this fix unless directly required to correct these two defects.

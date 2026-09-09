@@ -113,6 +113,7 @@ async function callOpenAI(messages, options, apiKey, baseUrl, model) {
     messages,
     temperature: options.temperature ?? 0.1,
     max_tokens:  options.maxTokens  ?? 1024,
+    store: false,
   };
 
   if (options.responseFormat === 'json') {
@@ -304,14 +305,14 @@ async function route({ task = 'default', messages, prompt, orgId, options = {}, 
         requestId, orgId, task, provider, model,
         latencyMs: Date.now() - t0,
         success: false,
-        error: err.message,
+        error: 'Provider request failed',
         timestamp: new Date().toISOString(),
       });
       // Try next provider in chain
     }
   }
 
-  throw new Error(`All providers failed for task "${task}". Last error: ${lastError?.message}`);
+  throw new Error(`All providers failed for task "${task}"`);
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────

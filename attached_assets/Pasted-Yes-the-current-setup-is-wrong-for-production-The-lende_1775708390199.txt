@@ -1,0 +1,53 @@
+Yes — **the current setup is wrong for production**.
+
+The lender dashboard should **not** be the place where someone switches into investor or borrower portals. That makes it feel like the lender “owns” the other roles, and it creates permission and security confusion.
+
+What you want instead is this:
+
+**1. One login screen**
+User signs in once with email/password or SSO.
+
+**2. Role and access resolved immediately after login**
+After authentication, the system checks:
+
+* who the user is
+* which organizations they belong to
+* which roles they have
+* which portal(s) they are allowed to enter
+
+**3. Then route them properly**
+
+* If user has only one role, send them directly to that portal
+* If user has multiple roles, show a **portal selection screen right after login**
+* That screen should say something like:
+
+  * Enter Lender / Servicer Workspace
+  * Enter Investor Portal
+  * Enter Borrower Portal
+
+Not from inside the lender dashboard.
+
+The lender dashboard should only contain lender functions. The investor portal should only contain investor functions. The borrower portal should only contain borrower functions. They should feel like separate products sharing the same backend.
+
+Tell the developer this in one block:
+
+“Remove portal switching from inside the lender dashboard. After login, the app must resolve the user’s memberships and roles from Supabase and route them before any dashboard loads. If the user has one role, send them directly to the correct portal. If the user has multiple roles, show a neutral portal selection screen immediately after login, not inside any dashboard. The lender, investor, and borrower layouts must be peer portals, not nested under the lender experience. Each portal should have its own route group, permissions, navigation, landing page, and session context. A lender should never appear to ‘enter’ the investor or borrower experience from within lender navigation. Portal selection must happen at the authentication/workspace layer, and Supabase role checks must enforce access before rendering routes.”
+
+A cleaner structure is:
+
+* `/login`
+* `/select-portal`
+* `/lender/*`
+* `/investor/*`
+* `/borrower/*`
+
+Also tell him to separate these two concepts clearly:
+
+* **authentication** = who are you
+* **authorization** = what portal can you enter
+
+That is probably the main thing mixed up right now.
+
+One exception: if the same human is both lender and investor, they can have access to both, but they should still switch through a neutral workspace selector, not through lender-side navigation.
+
+So yes, your instinct is right. **Portal selection should happen after login, before dashboard load, not from inside the lender dashboard.**

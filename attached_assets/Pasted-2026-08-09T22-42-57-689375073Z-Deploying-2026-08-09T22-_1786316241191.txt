@@ -1,0 +1,30 @@
+2026-08-09T22:42:57.689375073Z ==> Deploying...
+2026-08-09T22:43:52.399954649Z ==> Running 'npm run start'
+2026-08-09T22:43:54.098404791Z 
+2026-08-09T22:43:54.098435183Z > kontra-api@1.0.0 start
+2026-08-09T22:43:54.098442284Z > node index.js
+2026-08-09T22:43:54.098444484Z 
+2026-08-09T22:43:58.293917986Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-08-09T22:43:59.092642752Z Redis package not installed, falling back to memory cache
+2026-08-09T22:43:59.194146561Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-08-09T22:43:59.194187064Z [WARN] Optional env var not set: STRIPE_SECRET_KEY — related features disabled
+2026-08-09T22:43:59.194308811Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-08-09T22:43:59.194314851Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-08-09T22:44:02.385057578Z ==> No open ports detected, continuing to scan...
+2026-08-09T22:44:02.465941022Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-09T22:44:07.793603105Z Kontra API listening on port 10000
+2026-08-09T22:44:08.195427148Z [startup] workflow_pack_id column ensure skipped: 
+2026-08-09T22:44:08.804995968Z [REQ] HEAD /
+2026-08-09T22:44:09.095240083Z ==> Your service is live 🎉
+2026-08-09T22:44:09.192960495Z [score-assets] analyzed 0 records
+2026-08-09T22:44:09.29067025Z [REQ] GET /
+2026-08-09T22:44:09.360637638Z ==> 
+2026-08-09T22:44:09.390094592Z ==> ///////////////////////////////////////////////////////////
+2026-08-09T22:44:09.393889373Z ==> 
+2026-08-09T22:44:09.399061758Z ==> Available at your primary URL https://kontra-ui.onrender.com
+2026-08-09T22:44:09.404874217Z ==> 
+2026-08-09T22:44:09.41003355Z ==> ///////////////////////////////////////////////////////////
+2026-08-09T22:44:09.491894639Z [score-loans] analyzed 0 records
+2026-08-09T22:44:09.735235263Z [score-troubled] analyzed 0 records
+2026-08-09T22:49:13.690175987Z ==> Detected service running on port 10000
+2026-08-09T22:49:13.773344057Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding

@@ -1,0 +1,267 @@
+Yes — the screenshots make the two bugs pretty clear. **Do not redesign anything else right now. Fix these two data-flow problems first.**
+
+The invitation error is a backend/database mismatch. Replit removed the PIN flow in the UI, but the database still has a check constraint on `deal_room_invites.verification_method`. The new invite is being inserted with a value the database does not allow. And separately, your Documents tab is correctly showing **2 uploads**, while Overview still behaves as if the room is empty. That means Overview is not consuming the same persisted document/analysis state.
+
+Copy-paste this into Replit exactly:
+
+> **STOP FEATURE WORK. FIX THESE TWO PRODUCTION-BLOCKING DATA CONSISTENCY BUGS ONLY. DO NOT REDESIGN THE UI. DO NOT ADD NEW FEATURES.**
+>
+> I have confirmed two broken end-to-end flows:
+>
+> **BUG 1 — Participant invitations fail because the frontend/backend invite flow no longer matches the database schema.**
+>
+> Current visible database error:
+>
+> `new row for relation "deal_room_invites" violates check constraint "deal_room_invites_verification_method_check"`
+>
+> We intentionally removed the unusable PIN requirement from participant access. The new secure-link invitation flow must now be made consistent from frontend → API → database → email link → participant access.
+>
+> ### Fix invitation architecture
+>
+> 1. Inspect the actual production schema for `deal_room_invites`, especially:
+>
+>    * `verification_method`
+>    * its CHECK constraint
+>    * token/access fields
+>    * invitation status fields
+>    * expiration fields
+>
+> 2. Find every place in the application that writes `verification_method`.
+>
+> 3. Choose **one canonical secure-link method** for the current product. For example `secure_link` or whatever existing allowed canonical enum/value is appropriate.
+>
+> 4. Do **not** simply hard-code a random new value that violates the existing schema.
+>
+> 5. If the database CHECK constraint currently allows only obsolete PIN values, create a proper committed migration that updates the constraint so it reflects the new secure-link invitation architecture.
+>
+> 6. Remove orphaned PIN generation, PIN verification, PIN UI, and any server code that still assumes a participant must know a PIN.
+>
+> 7. The invitation itself must contain a cryptographically strong, expiring, single-purpose access token tied to:
+>
+>    * `deal_room_id`
+>    * invite record
+>    * participant email
+>    * participant role
+>
+> 8. The emailed link must open the correct production domain and the correct deal room.
+>
+> 9. The participant should not need to create an account or enter an unexplained PIN unless we deliberately add authentication later.
+>
+> 10. Do not expose raw database IDs or create a generic public room URL that bypasses invitation authorization.
+>
+> ### Required persisted participant states
+>
+> Use a single authoritative persisted invitation/access state. At minimum:
+>
+> * `not_invited`
+> * `invited`
+> * `accessed` or `joined`
+> * `revoked`
+> * `expired`
+>
+> Do not use frontend-only state.
+>
+> Immediately after the owner sends an invitation successfully:
+>
+> * the People tab must change from **Not invited** to **Invited**
+> * the participant counter must change
+> * this state must survive refresh
+>
+> After the participant opens the valid secure link:
+>
+> * persist the access event
+> * owner-side People status must update to **Accessed** or **Joined**
+> * last activity must update
+> * refresh must preserve the state
+>
+> ### Mandatory invite regression test
+>
+> Run a real end-to-end test:
+>
+> 1. Create/open a deal room.
+> 2. Invite Buyer using a real test email.
+> 3. Confirm API returns success.
+> 4. Confirm the DB invite record was created.
+> 5. Confirm owner UI changes to Invited.
+> 6. Open the received email in a separate browser/incognito session.
+> 7. Click the invitation.
+> 8. Confirm it opens the correct deal room on the correct domain.
+> 9. Confirm there is **no unexplained PIN screen**.
+> 10. Confirm participant has access only to the invited room/role.
+> 11. Confirm owner UI updates to Accessed/Joined.
+> 12. Refresh both sessions and verify state persists.
+>
+> Do not mark this bug fixed until the entire test passes.
+>
+> ---
+>
+> **BUG 2 — Uploaded/analyzed documents do not update Overview.**
+>
+> Current reproduced state:
+>
+> Documents tab correctly shows:
+>
+> * `2 of 10 uploaded`
+> * Letter of Intent = Uploaded
+> * Financial Statements = Uploaded
+> * AI analysis available
+>
+> But Overview still shows:
+>
+> * Transaction value = `Not recorded`
+> * Asset/company = `Not recorded`
+> * Buyer/primary party = `Not recorded`
+> * “Start this transaction”
+>
+> This is incorrect. Overview must be a projection of the same persisted room data used by Documents, People, and AI analysis.
+>
+> ### Fix Overview data architecture
+>
+> Do not create a second fake Overview state.
+>
+> Overview must derive from authoritative persisted data:
+>
+> **A. Document state**
+>
+> Read uploaded document count and document statuses from the same backend data source used by the Documents tab.
+>
+> If 2 documents are uploaded, Overview must know that 2 documents exist.
+>
+> Once at least one document exists, remove empty-room messaging such as:
+>
+> `Start this transaction`
+>
+> Instead show the actual next action based on what remains.
+>
+> Example:
+>
+> `2 documents added`
+>
+> `Next: invite the Buyer and upload the Purchase Agreement`
+>
+> depending on the real room state.
+>
+> **B. Extracted transaction facts**
+>
+> When a document finishes AI analysis, persist structured extracted facts into the room's transaction-record/data layer.
+>
+> At minimum extract and persist when supported by the uploaded document:
+>
+> * transaction value / purchase price
+> * asset or company name
+> * property/entity name
+> * buyer / primary party
+> * seller / counterparty
+> * transaction type
+> * jurisdiction
+> * key transaction dates
+>
+> Do not make Overview parse narrative AI text.
+>
+> Overview should query the persisted structured fact layer.
+>
+> If a fact has not actually been extracted, it can remain `Not recorded`.
+>
+> **Never fabricate a fact merely because a document was uploaded.**
+>
+> **C. Analysis completion must trigger room refresh**
+>
+> When upload finishes:
+>
+> 1. document record persists
+> 2. AI analysis runs
+> 3. structured facts persist
+> 4. room/Overview data is invalidated/refetched
+> 5. Overview visibly updates
+>
+> The user must not need a full browser refresh.
+>
+> Use the application's existing query/cache architecture correctly. If using React Query/TanStack Query, invalidate/refetch the relevant room, documents, findings and transaction-fact queries after upload/analysis completion. If the app uses another state library, implement the equivalent.
+>
+> Do not solve this using arbitrary local counters.
+>
+> If AI analysis is asynchronous, Overview may temporarily show:
+>
+> `2 documents uploaded · analysis in progress`
+>
+> Then update automatically when analysis finishes.
+>
+> ### Digital Asset Readiness must use the same data
+>
+> The Digital Asset Readiness panel must not maintain an independent parallel record.
+>
+> Its categories:
+>
+> * Identity & Parties
+> * Asset / Company
+> * Transaction Terms
+> * Financial Information
+> * Legal & Diligence
+>
+> must calculate their state from the same structured transaction facts and source documents.
+>
+> Example:
+>
+> If the LOI identifies the buyer and transaction price, relevant readiness categories should begin progressing automatically.
+>
+> This remains **preparation/readiness only**. Do not represent Kontra as providing legal verification, regulatory approval, securities issuance, brokerage, custody, transfer agency, or token minting.
+>
+> ---
+>
+> ### REQUIRED TEST WITH THE EXISTING TWO UPLOADED DOCUMENTS
+>
+> Use the current Marriott Hotel Acquisition room where the LOI and Financial Statements are already uploaded.
+>
+> Verify:
+>
+> 1. Documents tab reports the correct uploaded count.
+> 2. Overview recognizes that documents exist.
+> 3. “Start this transaction” disappears.
+> 4. Any facts actually extracted from the LOI/Financial Statements appear in the Overview snapshot.
+> 5. Unsupported facts remain `Not recorded`; do not invent them.
+> 6. Digital Asset Readiness updates based on the same extracted facts.
+> 7. Kontra AI can accurately answer:
+>
+>    * “What documents have been uploaded?”
+>    * “What did Kontra extract?”
+>    * “What is still missing?”
+>    * “How close is this to digital-asset preparation?”
+> 8. Uploading another document updates Documents, Overview, readiness and Kontra AI without a page reload.
+>
+> ### IMPORTANT IMPLEMENTATION RULE
+>
+> There should be **one room state**, not separate realities for Overview, Documents, People, AI, and Digital Asset Readiness.
+>
+> Architect the flow as:
+>
+> `documents + participant activity`
+> → `AI analysis / structured extraction`
+> → `persisted transaction facts`
+> → `Overview + Digital Asset Readiness + Kontra AI`
+>
+> People/invitation state comes from persisted invite/access records.
+>
+> Do not add another tab.
+> Do not bring back the giant Transaction Record UI.
+> Do not bring back PIN access.
+> Do not redesign the Overview.
+> Do not change tokenization positioning.
+>
+> **Fix the underlying data flow and prove it end-to-end.**
+>
+> When complete, report back with:
+>
+> * root cause of invite constraint failure
+> * exact migration/schema change made
+> * canonical `verification_method`
+> * root cause of Overview stale state
+> * which backend endpoint/query now powers Overview
+> * which persisted table/model stores extracted facts
+> * how cache/refetch synchronization works
+> * results of the invitation E2E test
+> * results of the document → extraction → Overview E2E test
+> * any remaining failure, without hiding it
+
+And one important thing: **do not let Replit respond by cosmetically changing “Start this transaction” to something else.** Your screenshot proves the Documents side works enough to know two documents exist. The problem is that the room currently has multiple disconnected sources of truth. Fixing that is much more important than another UI iteration.
+
+The invite constraint error is actually useful because it exposed the same deeper issue: you changed the product behavior, but some old backend assumptions survived. Now is the time to make the whole room run off one consistent state before you add anything else.

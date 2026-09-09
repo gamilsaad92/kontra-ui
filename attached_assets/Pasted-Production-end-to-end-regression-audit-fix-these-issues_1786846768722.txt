@@ -1,0 +1,77 @@
+Production end-to-end regression audit — fix these issues without redesigning the room or changing the established transaction architecture.
+I tested a fresh CRE room from creation through document upload, Buyer invitation, participant access, and owner re-entry. Three regressions are confirmed.
+1. Coordinator state reconciliation
+The Coordinator Overview must derive its metrics from the same canonical durable state used by the Transaction Record, checklist, invitations, and analyses.
+In the tested room, Overview shows 0 of 29 confirmed, while the Transaction Record visibly contains confirmed fields, including Transaction Terms 4 of 4 confirmed and Identity & Parties 2 of 6 confirmed.
+Audit all Overview metrics and ensure there is one authoritative state-resolution path. Do not introduce another derived state model.
+Specifically reconcile:
+documents received/review state
+confirmed Transaction Record fields
+required vs optional awaiting confirmation
+conflicts
+participant activity
+blockers
+Next Actions
+Recent Changes
+A change made anywhere in the room must be reflected consistently on Overview after refresh/re-entry.
+2. Restore strict participant document scoping
+The Buyer currently sees documents assigned to other roles. The UI then allows an upload attempt and authorization rejects it.
+This is incorrect.
+Participants must receive/render only checklist items assigned to their role, as they did previously.
+Do not expose the complete room checklist in participant UI and rely on upload authorization to reject inappropriate items.
+Required behavior:
+Buyer sees only Buyer-assigned documents.
+Seller sees only Seller-assigned documents.
+Legal Advisor sees only Legal Advisor-assigned documents.
+Financial Advisor sees only Financial Advisor-assigned documents.
+Participant progress denominator is calculated only from that role's assigned documents.
+Participant Overview uses the same role-scoped set.
+Participant Documents uses the same role-scoped set.
+Upload controls appear only for documents the participant is authorized to submit.
+Coordinator continues seeing the complete room checklist.
+Keep backend authorization as defense in depth; do not weaken it.
+3. Fix owner/coordinator identity on room re-entry
+This is the highest-priority issue.
+When the authenticated room owner opens the room from My Deal Rooms → Open Room, the application currently renders:
+You've been invited · Deal Coordinator
+and displays a participant workspace with 0 of 0 uploaded.
+The authenticated owner must NEVER be downgraded into an invited participant context merely because of the entry path.
+Establish this invariant:
+If the authenticated account owns the room, resolve access as owner/coordinator before evaluating invite/session participant context.
+Opening the same room through:
+checkout/create success,
+My Deal Rooms,
+direct owner room URL,
+browser refresh,
+subsequent owner login
+must produce the same coordinator identity, controls, Overview, documents, people, and durable transaction state.
+Do not create or depend on a synthetic “Deal Coordinator” participant invitation to represent ownership.
+Existing participant invite/session resolution must remain unchanged for actual invited participants.
+Important constraints
+Preserve:
+existing Production data
+backward compatibility
+canonical Transaction Record fields
+lifecycle/stage behavior
+authorization boundaries
+participant isolation
+settlement behavior
+Transaction Seal behavior
+existing invite/session security
+Do not solve these issues by recreating rooms, reseeding checklists, replacing historical records, or changing Production data.
+Acceptance test
+Create one disposable CRE acquisition room through the normal flow.
+Upload at least 3 documents as coordinator.
+Confirm/extract several Transaction Record fields.
+Invite Buyer and Seller.
+Verify coordinator Overview reconciles exactly with the underlying room state.
+Open Buyer invitation and verify Buyer sees ONLY Buyer-assigned documents.
+Verify Buyer cannot see or receive upload controls for Seller/Legal/Financial Advisor documents.
+Repeat role-isolation check for Seller.
+Return to My Deal Rooms as owner and click Open Room.
+Verify the room opens as the full Coordinator workspace—not You've been invited · Deal Coordinator.
+Verify the same uploaded documents, Transaction Record state, participant state, Overview metrics, stage, and recent changes remain visible.
+Refresh the coordinator URL and verify state remains identical.
+Verify an existing pre-fix Production room still resolves correctly.
+Please identify the root cause of each regression before modifying code. Reuse the existing centralized transaction/dashboard/access-state architecture rather than adding compatibility branches in individual UI components.
+Do not deploy after implementation. Report the root causes, changed files, tests, and acceptance results first.

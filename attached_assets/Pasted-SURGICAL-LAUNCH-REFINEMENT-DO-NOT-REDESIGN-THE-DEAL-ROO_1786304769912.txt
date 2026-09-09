@@ -1,0 +1,87 @@
+SURGICAL LAUNCH REFINEMENT — DO NOT REDESIGN THE DEAL ROOM
+The current structure is now correct:
+Overview / Documents / People
+Keep the settings gear.
+Keep Kontra AI as a floating room-level assistant.
+Keep Digital Asset Readiness on Overview.
+Do not add tabs. Do not restore Activity, Transaction Record, or Settings as primary tabs. Do not rebuild the page architecture.
+This pass is only to refine three things:
+1. OVERVIEW EMPTY STATE
+The current “What Needs Attention” card is too large when the room is empty, and “Nothing urgent right now” is misleading.
+Replace the empty-state wording with:
+Start with the transaction essentials
+“Upload the first meaningful document or invite a participant. Kontra will organize the transaction as information enters the room.”
+Keep two actions:
+Upload document
+Invite participant
+Reduce the vertical height of this card significantly. It should not dominate the Overview.
+Once the room contains information and there are genuinely no blockers or pending actions, then the section may say:
+Nothing needs your attention right now
+Do not use that message for a completely empty room.
+2. DIGITAL ASSET READINESS
+Keep this concept. Do not remove it.
+The current five-row structure is logically correct:
+Identity & Parties
+Asset / Company
+Transaction Terms
+Financial Information
+Legal & Diligence
+However, it currently looks like a plain database checklist.
+Make this section visually communicate progressive preparation toward digital-asset use.
+Keep the same categories and the same underlying logic, but improve the presentation:
+Show a clear overall state such as Early, Building, Substantial, or Preparation available
+Do not use a percentage unless the percentage has a real defined calculation
+Each category may continue to show Not started / In progress / Sufficient
+Add a small visual progress treatment so the user understands that normal deal activity is building readiness automatically
+Keep the explanatory copy short
+Suggested copy:
+Digital Asset Readiness
+Building from your transaction activity
+“As documents are uploaded, participants respond, and facts are confirmed, Kontra organizes the information needed for future digital-asset preparation.”
+When enough information exists, the section should change to:
+Digital Asset Preparation Available
+“Your transaction record contains enough organized information to begin preparing a handoff package for external legal, compliance, or issuance providers.”
+Button:
+Review readiness
+Do not show minting, blockchain selection, token economics, investor onboarding, securities offering workflows, or legal approval.
+3. DOCUMENTS TAB
+Keep Documents as the core operational workspace, but reduce the feeling of a static compliance checklist.
+The current 12-item list is too rigid for a new user.
+Preserve the underlying recommended-document logic, but change the presentation so it feels adaptive.
+Requirements:
+Clearly separate Core documents from Additional / recommended documents
+Show only the most important missing documents by default
+Collapse secondary/optional documents behind Show more
+Do not present all optional documents with equal visual weight
+Keep Upload
+Keep Request if that functionality exists
+Keep Missing / Received states
+Keep document ownership / responsible role if available
+Suggested structure:
+Core documents
+Show the 3–5 most important current items.
+Additional documents
+Collapsed by default.
+Kontra should become useful after the first meaningful upload. Do not visually imply that the user must complete all 12 documents before the room has value.
+If document relevance can already be determined from transaction type and stage, prioritize the list using that data.
+DO NOT CHANGE ANYTHING ELSE
+Specifically preserve:
+Overview / Documents / People navigation
+settings gear
+floating Kontra AI
+current participant architecture
+document upload behavior
+role-based access
+transaction record backend/data model
+extraction/provenance/history functionality
+Digital Asset Readiness backend logic
+Do not add new features in this pass.
+Do not redesign the visual system.
+Do not rename the product.
+Do not create another tokenization workflow.
+When complete, report only:
+What changed in Overview
+What changed in Digital Asset Readiness
+What changed in Documents
+Whether any behavior is mocked rather than data-backed
+Confirmation that no other architecture was changed

@@ -1,11 +1,11 @@
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('./lib/openaiClient');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 const { createClient } = require('@supabase/supabase-js');
 const { supabase: fallbackSupabase } = require('./db');
 require('dotenv').config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : fallbackSupabase;

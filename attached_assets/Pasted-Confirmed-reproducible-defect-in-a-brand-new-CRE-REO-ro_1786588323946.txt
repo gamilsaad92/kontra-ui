@@ -1,0 +1,35 @@
+Confirmed reproducible defect in a brand-new CRE/REO room. Diagnose and fix on main only.
+I created a completely new room, “REO Commercial Property Disposition.”
+I entered:
+Transaction Value: $4,200,000
+Target Closing Date: 08/30/2026
+The rendered Transaction Record shows:
+Purchase price — $4,200,000 CONFIRMED
+Closing date — 2026-08-30 CONFIRMED
+Transaction value — MISSING
+Financial Information summary — “Purchase price missing”
+Readiness — 2 of 29
+This proves the issue is reproducible in a fresh room and is not legacy room data.
+Trace the actual source of all three rendered states before changing code:
+Identify the exact schema entry producing the confirmed “Purchase price.”
+Identify the exact schema entry producing the missing “Transaction value.”
+Identify the exact schema entry/query producing Financial Information → “Purchase price missing.”
+Identify whether each resolves to transaction.purchase_price, transaction.value, financial.purchase_price, or another key.
+Identify why canonicalization/deduplication isn't collapsing these representations before rendering and readiness scoring.
+Then fix the source so this economic fact has one canonical identity: transaction.purchase_price for an acquisition/disposition transaction.
+Aliases such as transaction.value and financial.purchase_price may be accepted as incoming/extraction aliases, but they must resolve to the canonical fact and must never become independent required fields or independent missing states.
+The Transaction Record UI, section summaries, and readiness calculation must all operate on the same canonical field identity.
+Fresh-room acceptance test after the fix:
+Enter only:
+Transaction Value = $4,200,000
+Closing Date = 08/30/2026
+Expected:
+Purchase price $4,200,000 → confirmed
+Closing date → confirmed
+No separate “Transaction value missing”
+No “Purchase price missing” in Financial Information
+No duplicate purchase-price/value requirement anywhere
+Readiness denominator equals the number of unique canonical required fields
+Report the denominator before and after the fix and explain exactly which duplicate requirement(s) were removed.
+Do not modify Documents, People, lifecycle, Next Actions, settlement, sealing, or AI extraction behavior.
+Do not create another branch. Do not deploy until the fresh-room rendered acceptance test passes.

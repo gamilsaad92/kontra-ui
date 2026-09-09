@@ -1,12 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('../lib/openaiClient');
 require('dotenv').config();
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 module.exports = async function summarizeInspection(event) {
   const { asset_id, file_url } = JSON.parse(event.body || '{}');

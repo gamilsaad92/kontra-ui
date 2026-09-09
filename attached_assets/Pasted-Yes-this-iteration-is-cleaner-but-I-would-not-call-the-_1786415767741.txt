@@ -1,0 +1,111 @@
+Yes — this iteration is cleaner, but I **would not call the polish complete yet**. The Overview structure is now good; the main thing that still has not been implemented is the part that makes Kontra feel intelligent rather than merely organized.
+
+The biggest miss is **Next Actions**. It still says:
+
+> Start this transaction
+> Upload a document or invite a participant to begin organizing the transaction.
+
+But the interface already knows much more than that. On this same screen it knows the Buyer and Seller are unidentified, Asset Name is missing, Transaction Value is missing, Purchase Price is missing, and the Documents tab knows exactly which required documents are outstanding. Yet none of that intelligence reaches Next Actions.
+
+So the page currently has a slight contradiction:
+
+**Transaction Record:** “Here are the exact things missing.”
+**Documents:** “Here are the exact documents missing and who's responsible.”
+**Next Actions:** “Upload a document or invite a participant.”
+
+That is the next thing I would fix.
+
+### What I would send Replit
+
+> **The architecture is approved. Do not redesign the Overview or change its hierarchy.**
+>
+> One requested item is still not implemented correctly: **Next Actions**.
+>
+> The Transaction Record summaries are now good. Keep them exactly in this general form:
+>
+> * Identity & Parties — Buyer and seller not identified
+> * Asset / Company — Asset name missing
+> * Transaction Terms — Transaction value missing
+> * Financial Information — Purchase price missing
+> * Legal & Diligence — Cap table / ownership missing
+>
+> However, Next Actions is still generic. It currently says “Start this transaction — Upload a document or invite a participant…”
+>
+> Replace that generic empty-state message with **2–4 specific prioritized actions derived from data Kontra already has.**
+>
+> For this Marriott workspace, an appropriate early-state result might look like:
+>
+> **NEXT ACTIONS**
+>
+> **1. Upload Letter of Intent**
+> Required · Buyer
+> `Upload →`
+>
+> **2. Invite Buyer**
+> Needed to complete Identity & Parties
+> `Invite →`
+>
+> **3. Upload Financial Statements**
+> Required · Seller
+> `Request →`
+>
+> Do not hardcode these Marriott actions. Use the existing document checklist, participant/invite state, Transaction Record missing fields, and existing attention logic.
+>
+> **Priority order should be:**
+>
+> 1. Missing required document that blocks the current workflow stage
+> 2. Missing required participant
+> 3. Missing critical Transaction Record information
+> 4. Other outstanding required documents
+>
+> Limit the Overview to the **top 3 actions by default**. If additional actions exist, show a subtle “View all” link rather than filling the command center with tasks.
+>
+> Each action must go somewhere useful:
+>
+> * Upload document → Documents tab and relevant document
+> * Request document → existing Request flow
+> * Invite participant → People tab / existing invite flow
+> * Missing record field → expand the appropriate Transaction Record category
+>
+> Do not create a new task API, database table, AI endpoint, workflow engine, or action system. This is a presentation/prioritization layer over existing state.
+>
+> **Also make one small semantic correction to Transaction Readiness.**
+>
+> The Overview currently shows:
+>
+> `8%`
+>
+> `0 of 8 readiness areas substantially complete`
+>
+> That denominator is difficult to reconcile with the five Transaction Record categories visible directly below it.
+>
+> Readiness should communicate the completeness/confirmation of the structured Transaction Record. Prefer a metric users can reconcile with what they see, such as:
+>
+> `8%`
+>
+> `3 of 38 required fields confirmed`
+>
+> or whatever the actual underlying confirmed/required field counts are.
+>
+> Do **not** invent a second concept called “readiness areas” unless those eight areas are intentionally exposed elsewhere in the UI.
+>
+> **Keep everything else as-is for this pass:**
+>
+> * Current Overview architecture
+> * Compact lifecycle
+> * Transaction Record accordion
+> * Missing-field summaries
+> * Documents layout
+> * People layout
+> * Coordinator shown as Owner/Active and excluded from invite count
+> * Kontra AI
+>
+> After implementing these two changes, stop modifying the UI and test the transaction from empty state through document upload, participant invitation, field extraction/confirmation, stage progression, settlement, and seal.
+
+One other detail: **“8%” with “0 of 8 readiness areas substantially complete” is now the weakest conceptual element on the page.** The percentage itself can be valuable, but users need to understand exactly what moves it. If uploading and confirming information makes the percentage increase, it becomes a very strong product mechanic.
+
+Everything else in these screenshots is finally settling into the right hierarchy:
+
+**Overview = decision layer → Documents = evidence → People = responsibility/access → Transaction Record = structured truth.**
+
+I would now stop doing broad visual redesigns. Fix **Next Actions + readiness math/wording**, then move to testing whether the system actually updates correctly when real documents and participants are added.

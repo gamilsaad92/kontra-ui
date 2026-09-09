@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('./lib/openaiClient');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  ? createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
 async function runStep(step) {

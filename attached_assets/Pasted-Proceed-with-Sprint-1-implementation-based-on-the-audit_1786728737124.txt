@@ -1,0 +1,378 @@
+Proceed with Sprint 1 implementation based on the audit findings.
+
+Do not create a parallel agent architecture. Extend the existing Kontra systems and preserve current public API compatibility.
+
+The canonical architecture for this work is:
+
+Verified Room Access → Normalized Transaction Context → Existing Document Extraction → Canonical Transaction Record → Central Transaction-State Recalculation → deal_room_tasks → Human Approval Gateway → Durable Audit → Overview/Operations Manager
+
+Implement in the following order.
+
+1. Establish canonical boundaries
+
+Treat these as architectural rules:
+
+* transaction_record_fields remains the canonical structured transaction data layer.
+* Workflow packs remain authoritative for roles, requirements, stages, documents, and readiness expectations.
+* deal_room_tasks becomes the canonical operational issue/action layer.
+* Operations Manager becomes the foundation for the future Kontra Transaction Agent.
+* Transaction Record approvals remain separate from operational task/action approvals.
+* Settlement remains deterministic, provider-neutral readiness logic.
+* Legacy loan-servicing agents remain isolated from deal-room agent behavior.
+
+Do not introduce agent_findings, issues, agent_tasks, transaction_record_conflicts, or another approval system during Sprint 1 unless implementation proves that the existing models cannot support the requirement.
+
+2. Fix room/org/actor authorization first
+
+Before enabling agent actions, create one verified room access context carrying:
+
+orgId
+propertyId
+roomId
+actorId
+actorType
+role
+accessSource
+packId
+stageKey
+
+Validate organization membership, room/property relationship, participant role, invite/token access, and operation permissions.
+
+Specifically address the audit findings around:
+
+* email-based room discovery
+* /api/public/* organization-context bypass
+* caller-selected X-Org-Id
+* participant mutation authorization
+* cross-room/cross-org access
+
+Do not break legitimate invite-link participant access while fixing this.
+
+3. Normalize document processing state
+
+Preserve the existing upload and extractTransactionFields() implementation.
+
+Add durable document-processing states such as:
+
+uploaded
+processing
+extracted
+failed
+retrying
+
+Persist:
+
+* file/source hash
+* extraction version
+* processing attempt
+* correlation ID
+* failure reason
+* completion timestamp
+
+Reprocessing the same file must be idempotent.
+
+Do not create duplicate Transaction Record fields, tasks, or activity events.
+
+4. Introduce normalized correlated event semantics
+
+Standardize new internal event names around:
+
+document.uploaded
+document.extracted
+document.processing_failed
+transaction_record.updated
+transaction_record.confirmed
+transaction_state.recalculated
+task.created
+agent.recommendation.created
+action.approved
+action.rejected
+action.executed
+action.failed
+
+Existing activity names may remain for backward compatibility, but new code should use one normalized event vocabulary internally.
+
+Every related event should carry the same correlation ID.
+
+5. Create recalculateTransactionState(roomId)
+
+This is the highest-priority architectural addition.
+
+It should:
+
+* resolve the workflow pack
+* resolve current stage
+* read canonical Transaction Record fields
+* read confirmation/not-applicable states
+* evaluate required documents
+* evaluate participant requirements
+* compute deterministic readiness
+* evaluate task/exception conditions through the existing Task Engine
+* update derived room state where appropriate
+* emit one correlated recalculation activity event
+
+Invoke it after:
+
+* successful document extraction
+* Transaction Record PATCH
+* field confirmation
+* field not-applicable changes
+* metadata synchronization
+* checklist changes
+* participant changes
+* relevant stage changes
+* settlement-mode changes where applicable
+
+Do not create another readiness algorithm.
+
+6. Adapt existing extraction into the first Document Agent
+
+Do not replace extractTransactionFields().
+
+Wrap it with a thin transaction-room adapter that returns normalized information:
+
+* canonical extracted field
+* value
+* confidence
+* source document
+* page
+* excerpt
+* extraction version
+* source hash
+* correlation ID
+* whether the field changed
+* whether an existing confirmed field conflicts
+* whether human review is required
+
+AI must never overwrite a confirmed field.
+
+Existing field history/conflict/source-change functionality should be used before introducing a new conflict table.
+
+If human action is required, create or update a deal_room_task.
+
+7. Extend deal_room_tasks instead of creating another issue system
+
+Add only the fields genuinely needed for agent-driven work, preferably as additive nullable columns:
+
+* severity
+* blocking
+* category
+* source_document_id
+* source_page
+* source_excerpt where appropriate
+* source_agent/run reference
+* correlation_id
+* draft_action
+* required_approver_role
+* rejection_reason
+* send_back_reason
+* execution_status
+* execution_result
+* executed_at
+* resolved_at
+
+Add database-level deduplication/idempotency for automatically generated tasks.
+
+Two concurrent recalculations must not create duplicate tasks.
+
+8. Harden the existing approval gateway
+
+approveTask() should become the only operational deal-room action gateway.
+
+It must support:
+
+* approve
+* reject
+* send back
+
+Validate:
+
+* actor identity
+* organization
+* room/property
+* participant role
+* required approval role
+* current task state
+
+Add:
+
+* compare-and-set transition
+* idempotency key
+* actor
+* role
+* reason
+* timestamp
+* execution status
+* execution result
+* failure state
+* correlation ID
+
+Approval must never silently execute twice.
+
+For Sprint 1, AI-generated actions remain proposal-only.
+
+Do not allow legacy agent tools to directly send emails, publish anything, change stages, alter settlement mode, or perform material mutations.
+
+9. Create one normalized Transaction Context
+
+Extend the existing Operations Manager grounding instead of creating a second context engine.
+
+The normalized context should expose:
+
+* room
+* workflow pack
+* stage
+* participants
+* documents
+* canonical Transaction Record
+* field confirmations
+* source evidence
+* tasks/issues
+* readiness
+* settlement capability/readiness
+* recent activity
+
+Existing /brain/briefing and /brain/ask response contracts must remain backward compatible.
+
+This context becomes the foundation for the future Kontra Transaction Agent.
+
+10. Fix Overview propagation
+
+This must be demonstrably fixed in Sprint 1.
+
+Current problem:
+
+Upload → Analysis can complete while Overview remains stale.
+
+Required pipeline:
+
+Upload
+
+→ Processing
+
+→ Extraction
+
+→ Transaction Record update
+
+→ recalculateTransactionState()
+
+→ Task/readiness update
+
+→ Overview refresh
+
+Implement a frontend invalidation mechanism.
+
+Polling while processing is acceptable for Sprint 1 if it is simpler and more reliable than SSE/WebSockets.
+
+The UI should stop polling once processing reaches extracted or failed.
+
+No manual browser refresh should be required.
+
+11. Add useful document-analysis impact feedback
+
+Once propagation works, expose a compact result such as:
+
+Purchase Agreement analyzed
+
+14 transaction fields identified
+8 requirements satisfied
+2 items require confirmation
+1 conflict detected
+
+Readiness: 42% → 57%
+
+These numbers must come from actual before/after state.
+
+If there was no impact, explicitly say no transaction-state changes were identified.
+
+12. Durable audit
+
+Reuse the existing activity/audit infrastructure where possible.
+
+Product audit history must durably preserve:
+
+* room
+* org
+* actor
+* actor role
+* event type
+* correlation ID
+* source
+* before/after where applicable
+* recommendation
+* approval/rejection
+* execution outcome
+* timestamp
+
+Local HTTP/file logs are telemetry only and must not be treated as the product audit record.
+
+Do not implement Financial Agent, Legal Agent, Settlement Agent orchestration, generalized Agent Router, autonomous actions, or major Transaction Agent UI yet.
+
+Sprint 1 is complete only when the underlying transaction-state pipeline is reliable.
+
+Run the acceptance tests from the audit, with special emphasis on:
+
+1. Uploaded document updates Transaction Record and Overview without refresh.
+2. Verified fields cannot be overwritten.
+3. Reprocessing is idempotent.
+4. Duplicate tasks cannot be produced by concurrent recalculation.
+5. Failed extraction is durable and retryable.
+6. not_applicable fields are excluded correctly from readiness.
+7. Cross-room/cross-org access is rejected.
+8. Participant approval respects assigned roles.
+9. Operational approval executes at most once.
+10. Existing /brain/briefing and /brain/ask continue working.
+11. Existing Transaction Record confirmation continues working.
+12. Existing settlement readiness behavior remains intact.
+
+Before implementation, identify the exact files and migrations you intend to modify. Then implement Sprint 1. After implementation, provide:
+
+* files changed
+* migrations added
+* architecture changes
+* security fixes
+* acceptance-test results
+* anything intentionally deferred
+* remaining risks
+
+Do not expand scope beyond Sprint 1.
+
+Why this is the right next move
+
+There are really two different things happening here.
+
+The original idea was:
+
+“Let’s add AI agents to Kontra.”
+
+The audit discovered that Kontra already contains the beginnings of that architecture. The real problem is that they aren’t connected consistently:
+
+Document Analysis
+↕
+Transaction Record
+↕
+Task Engine
+↕
+Readiness
+↕
+Operations Manager
+↕
+Overview
+
+Sprint 1 makes those into one system.
+
+Once that works, adding the actual specialized agents becomes much easier.
+
+Then Sprint 2 can be:
+
+Document Agent → Diligence Agent → Financial Agent → Legal Agent
+
+And Sprint 3:
+
+Kontra Transaction Agent → recommended actions → approval → execution
+
+That sequence is much safer than creating six new AI agents now.
+
+There’s also one audit finding I would not treat as a minor cleanup item: the authorization findings. Before Kontra starts letting AI recommend or eventually execute transaction actions, the room/org/participant authorization layer needs to be dependable. Otherwise agentic functionality magnifies an existing access-control weakness.
+
+So I would authorize Replit to implement this Sprint 1 now, and hold off on the flashy Transaction Agent UI until the underlying pipeline passes the acceptance t

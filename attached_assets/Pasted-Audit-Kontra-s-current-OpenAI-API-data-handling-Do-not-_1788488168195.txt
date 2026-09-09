@@ -1,0 +1,68 @@
+Audit Kontra’s current OpenAI/API data handling. Do not change code or configuration yet.
+I need a source-level and current-configuration audit of exactly what Kontra sends to OpenAI during normal Deal Room document processing and Kontra AI/Ask usage.
+Trace the actual code paths and report:
+OpenAI endpoints/models used
+exact SDK methods/endpoints
+exact model names
+which flows use each model
+document analysis
+scanned-PDF/vision fallback
+Kontra AI / Ask grounding
+Data sent to OpenAI
+For each flow, state whether OpenAI receives:
+original document bytes
+base64 file/PDF/image content
+extracted full text
+bounded excerpts
+structured facts
+source quotes
+filenames
+room/property IDs
+participant names/emails
+transaction metadata
+prior AI outputs
+canonical Transaction Record values
+Data minimization
+identify any truncation, chunking, redaction, or field filtering before data is sent
+identify any unnecessary metadata currently included
+distinguish what is technically required from what is merely convenient
+Provider-side retention/training controls
+Check the current official OpenAI API documentation and compare it with Kontra’s implementation.
+Specifically determine:
+whether API data is used for model training by default
+what abuse-monitoring/log retention applies
+whether Zero Data Retention or Modified Abuse Monitoring is available and under what eligibility/approval conditions
+whether the endpoints/models Kontra uses are compatible with those controls
+whether any request-level parameters such as store are relevant to Kontra’s current endpoints
+whether regional/data-residency options exist for the API path Kontra uses
+Do not guess. Cite the current official OpenAI documentation or API policy source for each conclusion.
+Current Kontra configuration
+identify every OpenAI-related environment variable/configuration setting used
+state whether Kontra currently enables/disables any provider storage or retention option
+state whether any organization/project-level OpenAI setting would need to be configured outside code
+do not print or expose secret API keys
+Scanned documents
+The prior audit found scanned PDFs may send raw PDF/base64 vision input. Verify the exact current implementation and whether that can be reduced to rendered pages/images or extracted text without breaking functionality.
+Kontra AI / Ask
+Trace what room context is assembled for a user question and what portion is sent to OpenAI.
+Confirm whether unrelated room data or data from other rooms can enter the prompt.
+Logging/error exposure
+Check whether OpenAI request payloads, extracted text, model responses, or sensitive transaction data can be written to:
+application logs
+Sentry
+audit logs
+debug logs
+Recommended minimum pre-institutional configuration
+Without implementing anything, give the smallest practical hardening plan before real institutional/customer documents are used.
+Separate recommendations into:
+required before real customer data
+recommended later
+No product changes
+Do not change models, prompts, extraction, AI behavior, document processing, or environment settings during this audit.
+At the end, give me:
+A. Current-state summary
+B. Confirmed OpenAI retention/training posture
+C. Exact gaps
+D. Minimum safe changes, if any
+E. Whether any of those changes would affect current Kontra functionality
+Clearly separate confirmed implementation/configuration from assumptions or things that cannot be verified from the repository/environment.

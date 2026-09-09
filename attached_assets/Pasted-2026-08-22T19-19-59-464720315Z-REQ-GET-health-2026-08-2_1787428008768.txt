@@ -1,0 +1,50 @@
+2026-08-22T19:19:59.464720315Z [REQ] GET /health
+2026-08-22T19:19:59.73505308Z [REQ] GET /api/health
+2026-08-22T19:21:25.504846494Z [REQ] GET /
+2026-08-22T19:23:42.933984642Z ==> Port scan timeout reached, no open ports detected. Bind your service to at least one port. If you don't need to receive traffic on any port, create a background worker instead.
+2026-08-22T19:23:43.044018028Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-22T19:27:17.629868746Z ==> Deploying...
+2026-08-22T19:28:18.021875173Z Redis package not installed, falling back to memory cache
+2026-08-22T19:28:18.124611356Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-08-22T19:28:18.124638846Z [WARN] Optional env var not set: STRIPE_SECRET_KEY — related features disabled
+2026-08-22T19:28:18.124653477Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-08-22T19:28:18.124826622Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-08-22T19:28:22.496048217Z ==> No open ports detected, continuing to scan...
+2026-08-22T19:28:22.597947713Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-22T19:28:26.815361616Z [tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. Routes that depend on this module will return 503. Use POST /api/tokenization/assess for production tokenization readiness.
+2026-08-22T19:28:27.31694345Z Kontra API listening on port 10000
+2026-08-22T19:28:27.625382955Z [startup] workflow_pack_id column ensure skipped: 
+2026-08-22T19:28:27.920868867Z [REQ] HEAD /
+2026-08-22T19:28:28.51637398Z [score-assets] analyzed 0 records
+2026-08-22T19:28:28.746085714Z ==> Your service is live 🎉
+2026-08-22T19:28:28.815981791Z [score-loans] analyzed 0 records
+2026-08-22T19:28:28.856139562Z ==> 
+2026-08-22T19:28:28.859190179Z ==> ///////////////////////////////////////////////////////////
+2026-08-22T19:28:28.86384202Z ==> 
+2026-08-22T19:28:28.866576768Z ==> Available at your primary URL https://kontra-ui.onrender.com
+2026-08-22T19:28:28.870154496Z ==> 
+2026-08-22T19:28:28.875576822Z ==> ///////////////////////////////////////////////////////////
+2026-08-22T19:28:28.917147102Z [REQ] GET /
+2026-08-22T19:28:29.025000671Z [score-troubled] analyzed 0 records
+2026-08-22T19:33:36.238317644Z ==> Detected service running on port 10000
+2026-08-22T19:33:36.330948261Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-08-22T19:45:16.058304791Z ==> Deploying...
+2026-08-22T19:45:18.901499498Z ==> Cause of failure could not be determined
+2026-08-22T19:45:18.904908336Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-08-22T19:45:31.234205759Z ==> Running 'npm run start'
+2026-08-22T19:45:32.830210242Z 
+2026-08-22T19:45:32.830233642Z > kontra-api@1.0.0 start
+2026-08-22T19:45:32.830242913Z > node index.js
+2026-08-22T19:45:32.830246803Z 
+2026-08-22T19:45:37.041377699Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-08-22T19:45:37.942597341Z Redis package not installed, falling back to memory cache
+2026-08-22T19:45:38.035389217Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-08-22T19:45:38.035415188Z [WARN] Optional env var not set: STRIPE_SECRET_KEY — related features disabled
+2026-08-22T19:45:38.035419848Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-08-22T19:45:38.035567412Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-08-22T19:45:46.533614325Z [tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. Routes that depend on this module will return 503. Use POST /api/tokenization/assess for production tokenization readiness.
+2026-08-22T19:45:47.026460705Z Kontra API listening on port 10000
+2026-08-22T19:45:47.330530109Z [startup] workflow_pack_id column ensure skipped: 
+2026-08-22T19:45:48.026115312Z [score-assets] analyzed 0 records
+2026-08-22T19:45:48.22446355Z [score-loans] analyzed 0 records
+2026-08-22T19:45:48.738010695Z [score-troubled] analyzed 0 records

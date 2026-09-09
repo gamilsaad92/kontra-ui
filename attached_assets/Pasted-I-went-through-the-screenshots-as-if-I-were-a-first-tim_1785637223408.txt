@@ -1,0 +1,330 @@
+I went through the screenshots as if I were a first-time customer evaluating whether I'd trust the platform. Overall, this is a **substantial improvement** over the earlier versions. The product now feels like a cohesive application instead of a collection of features.
+
+## Overall impression: 8.8–9.2/10
+
+The biggest thing that's changed is that the platform now has a clear story:
+
+> Describe → Preview → Activate → Invite → Upload → AI coordinates.
+
+That flow is obvious from the homepage through the workspace.
+
+---
+
+# What's working really well
+
+## 1. Hero section
+
+This is probably the strongest version you've had.
+
+The headline:
+
+> **Every transaction gets its own Operations Manager**
+
+is memorable and immediately differentiates Kontra from generic data rooms.
+
+The CTA hierarchy is also good.
+
+---
+
+## 2. Homepage flow
+
+The sequence makes sense:
+
+Hero
+
+↓
+
+Benefits
+
+↓
+
+Example workspace
+
+↓
+
+How it works
+
+↓
+
+Templates
+
+↓
+
+Pricing
+
+Nothing feels out of order anymore.
+
+---
+
+## 3. Workspace creation
+
+This is one of the biggest improvements.
+
+Instead of:
+
+"Create Deal Room"
+
+it's now
+
+Describe transaction
+
+↓
+
+Preview generated workspace
+
+↓
+
+Pay
+
+↓
+
+Done
+
+That's much easier to understand.
+
+---
+
+## 4. Preview
+
+The preview screen is probably my favorite part.
+
+Seeing
+
+* participants
+* documents
+* stages
+
+before paying builds confidence.
+
+I especially like that users can edit everything before activation.
+
+That makes AI feel like a starting point—not something they're locked into.
+
+---
+
+## 5. Workspace
+
+The workspace now feels much more focused.
+
+The first screen answers:
+
+"What should I do next?"
+
+instead of showing lots of analytics.
+
+That's exactly what an operations product should do.
+
+---
+
+## 6. Tasks
+
+The Tasks page is much stronger.
+
+Instead of being empty it tells me:
+
+Invite participants
+
+Upload first document
+
+Confirm closing date
+
+Review checklist
+
+Perfect.
+
+---
+
+# Things I'd still improve
+
+## 1. The transaction type mismatch
+
+This is the biggest issue I noticed.
+
+You typed:
+
+> acquiring Marriott hotel
+
+But selected:
+
+Business Acquisition
+
+The workspace became:
+
+CRE Acquisition
+
+This is actually correct...
+
+…but from a user perspective it feels like Kontra silently changed their selection.
+
+I'd display something like:
+
+> **AI classified this as a Commercial Real Estate Acquisition because the transaction involves purchasing a hotel property.**
+
+That one sentence removes confusion.
+
+---
+
+## 2. Overview metrics
+
+The Overview still has:
+
+```
+0 / 7
+0 invited
+None
+16d
+```
+
+"None" still feels like an actual state.
+
+I'd rather show:
+
+> Not assessed
+
+until documents exist.
+
+That's more accurate.
+
+---
+
+## 3. Empty Activity page
+
+Right now it says
+
+"No activity yet"
+
+I'd rather show
+
+```
+Workspace created
+
+Next expected activity:
+
+• Invite participants
+• Upload documents
+```
+
+Makes it feel alive.
+
+---
+
+## 4. Settings page
+
+The Settings page is the weakest page in the screenshots.
+
+It feels unfinished.
+
+Specifically:
+
+The
+
+Verified Transaction Package
+
+error dominates the page.
+
+If it isn't available yet I'd hide it entirely.
+
+Users shouldn't see failed internal generation.
+
+---
+
+## 5. Participants
+
+This page is much cleaner.
+
+I'd only tighten spacing slightly.
+
+Each participant row is still fairly tall.
+
+Probably 15–20% shorter.
+
+---
+
+## 6. Documents
+
+This page looks excellent now.
+
+Removing the AI badge until upload was the right decision.
+
+It's dramatically cleaner.
+
+---
+
+## 7. Homepage copy
+
+This sentence:
+
+> Built for acquisitions, fundraising, real estate, lending, licensing...
+
+is okay...
+
+I'd probably simplify it.
+
+Something like
+
+> Built for any private transaction.
+
+The details already appear lower.
+
+---
+
+# Tiny polish
+
+I'd also eventually polish these:
+
+* "Workspace active" banner could be 10–15% shorter.
+* Transaction Progress icons could have slightly more spacing.
+* Invite button color is good.
+* Pricing section finally feels clean.
+
+---
+
+# One thing that stood out positively
+
+The platform finally feels like **one product**.
+
+Earlier versions felt like:
+
+AI
+
+*
+
+Deal room
+
+*
+
+Document AI
+
+*
+
+Workflow
+
+*
+
+Analytics
+
+*
+
+Morning Brief
+
+Now everything points back to one idea:
+
+> **Kontra coordinates private transactions.**
+
+That's much easier to understand.
+
+---
+
+# My final impression
+
+If I landed on this site today knowing nothing about Kontra, I would understand:
+
+* what it is,
+* who it's for,
+* how it works,
+* what happens after payment,
+* and what I'm expected to do inside the workspace.
+
+That's a major milestone.
+
+At this point I would stop redesigning the UI and shift your effort toward **pilot validation**—watching real users create workspaces, invite participants, and upload documents to see where they hesitate. Those observations are likely to produce more valuable improvements than additional visual refinements.

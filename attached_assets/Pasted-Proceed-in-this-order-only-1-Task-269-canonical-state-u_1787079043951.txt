@@ -1,0 +1,33 @@
+Proceed in this order only:
+
+1. Task #269 — canonical state unification
+Make workflow-pack resolution and authoritative record_state the single source of truth for Overview, Operations Manager/grounded context, Ask Kontra, Key Facts, record verification, and settlement readiness. Remove downstream reinterpretation of raw Transaction Record rows where canonical state already exists.
+
+Include the missing access checks on /brain/ask and /asset-passport using the same getRoomAccessContext() authorization boundary as the rest of the room.
+
+Validate confirmed, awaiting, source_changed, conflict, not_applicable, and missing status semantics across every consumer.
+
+Do not redesign UI or change participant behavior.
+
+2. Task #268 — settlement atomicity
+Verify migration 018_settlement_atomic_completion.sql, apply it only through the authorized Supabase migration process if the target is missing it, route completion through the atomic RPC, and add regression coverage for concurrent completion, duplicate seal attempts, exactly-one Transaction Seal, and post-seal immutability.
+
+3. Task #270 — tokenization product boundary
+Inventory all execution-shaped tokenization routes. Keep preparation/readiness functionality. Production-disable, clearly classify, or retire legacy mock/in-memory/ledger-only issuance, mint, burn, transfer, secondary-market, governance, pool, and asset-digitization paths so they cannot be interpreted as live blockchain execution.
+
+Preserve Token Issuance/STO workflow behavior where applicable, but do not claim live on-chain issuance unless a real broadcast path is verified.
+
+Do not expand product scope.
+Do not build new Lending, JV, or Licensing workflow packs as part of this work.
+
+After all three changes, rerun the same platform-wide architecture audit and return only:
+
+canonical state PASS/FAIL
+access boundary PASS/FAIL
+settlement/seal PASS/FAIL
+tokenization boundary PASS/FAIL
+backward compatibility PASS/FAIL
+fresh-room E2E PASS/FAIL
+exact remaining launch blockers
+
+Do not deploy until all release-blocking failures are resolved.

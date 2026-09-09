@@ -1,0 +1,170 @@
+This is cleaner, but the Transaction Record is now becoming **too generic and too long**.
+
+The structure is correct. The current field schema is not yet strong enough for the Marriott hotel acquisition you created.
+
+## What improved
+
+The header is much better:
+
+> **1 populated from workspace setup · 18 awaiting information · 0 extracted · 0 confirmed**
+
+That fixes the earlier counting problem. The description also explains the product positively instead of leading with a disclaimer.
+
+The category structure is still right:
+
+**Transaction · Asset / Company · Parties · Ownership · Financial · Legal · Approvals**
+
+## The main issue
+
+For a room identified as a **Marriott Hotel Acquisition**, the record currently asks for broad fields such as:
+
+* Primary party
+* Counterparty
+* Deal value
+* Key financial terms
+* Governing documents
+* Governing jurisdiction
+
+Those fields are technically universal, but they do not demonstrate that Kontra truly understands the transaction.
+
+A buyer opening this room should see hotel-acquisition fields such as:
+
+### Transaction
+
+* Purchase price
+* Earnest money deposit
+* Due-diligence expiration
+* Financing contingency
+* Target closing date
+* Current stage
+
+### Asset / Company
+
+* Property name
+* Property address
+* Hotel brand or flag
+* Property type
+* Number of rooms or keys
+* Current owner entity
+* Property manager
+* Franchise or management agreement
+* Parcel or title reference
+
+### Parties
+
+* Buyer
+* Seller
+* Buyer’s representative
+* Seller’s representative
+* Legal counsel
+* Lender
+* Title or escrow company
+* Property inspector
+
+### Ownership
+
+* Current titled owner
+* Proposed acquiring entity
+* Beneficial owners
+* Ownership percentages
+* Existing liens or encumbrances
+
+### Financial
+
+* Purchase price
+* Historical revenue
+* NOI
+* Occupancy
+* ADR
+* RevPAR
+* Existing debt
+* Proposed financing
+* Required equity
+* Capital-expenditure obligations
+
+### Legal
+
+* Purchase agreement
+* Title status
+* Survey status
+* Zoning
+* Environmental matters
+* Franchise agreement
+* Management agreement
+* Transfer approvals
+* Material litigation
+
+### Approvals
+
+* Buyer approval
+* Seller approval
+* Counsel review
+* Lender approval
+* Franchise approval
+* Closing authorization
+
+Kontra does not need to show every field immediately. But the schema should clearly reflect the selected workflow pack.
+
+## What to tell Replit
+
+> The universal Transaction Record categories are correct, but the current fields are too generic. Make the field schema workflow-pack-driven.
+>
+> Each workflow pack must define:
+>
+> * `field_key`
+> * `display_label`
+> * `category`
+> * `data_type`
+> * `required_or_optional`
+> * `applicable_stages`
+> * `expected_source_documents`
+> * `confirmation_role`
+> * `display_order`
+>
+> Keep the seven universal categories, but load transaction-specific fields inside them.
+>
+> For the Commercial Real Estate Acquisition pack, include fields specific to the asset and acquisition, such as property address, asset type, buyer, seller, purchase price, title owner, due-diligence deadline, financing, title status, environmental status, and closing approvals.
+>
+> For hotel acquisitions, allow the generated custom schema to add hotel-specific fields such as brand, room count, occupancy, ADR, RevPAR, franchise agreement, management agreement, and brand-transfer approval.
+>
+> Do not hardcode Marriott or hotels into the core application. Generate these fields from the workflow pack and the original transaction description.
+>
+> Add two display modes:
+>
+> **Summary View** — show only populated, required, conflicting, or action-needed fields.
+>
+> **Full Record** — show all expected fields, including “Not provided.”
+>
+> Default to Summary View after documents begin arriving so the page does not become an excessively long form.
+>
+> When a field is missing, provide a contextual action where possible:
+>
+> * `Upload source document`
+> * `Request from participant`
+> * `Enter manually`
+> * `Mark not applicable`
+>
+> Do not add new regulated functionality. This remains a coordination, extraction, confirmation, and preparation system.
+
+## One UI recommendation
+
+Right now, every category is expanded and every missing field is visible. That makes the room look incomplete rather than intelligent.
+
+I would default to:
+
+* Transaction: expanded
+* Asset / Company: expanded
+* Other categories: collapsed
+* Categories with conflicts or required missing information: automatically expanded
+
+Each collapsed category should summarize its state:
+
+> **Parties** — 0 of 6 identified
+> **Ownership** — 2 items awaiting review
+> **Financial** — 1 conflict
+> **Legal** — 4 required fields missing
+> **Approvals** — Not started
+
+That would make the record feel like an operational system instead of a long questionnaire.
+
+The architecture is right now. The next step is to make the Transaction Record **specific, adaptive, and actionable**, rather than merely comprehensive.

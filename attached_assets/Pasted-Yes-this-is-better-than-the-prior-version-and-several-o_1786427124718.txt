@@ -1,0 +1,261 @@
+Yes — this is **better than the prior version**, and several of the changes we asked for are now visible. But I still would **not approve the implementation as complete**. There are two major logic problems and a few smaller cleanup items.
+
+### What is now correct
+
+The developer successfully restored the **document ownership chips and Request actions**. That's a meaningful improvement. The Documents page again tells the user not only what is missing, but who is responsible and gives them a direct action.
+
+The terminology is also substantially more consistent now: **Buyer / Seller / Legal Advisor** appear across Documents, People, Next Actions, and Transaction Record. Good.
+
+The Next Actions logic improved too. Instead of three arbitrary advisor invitations, it now starts with:
+
+> Request Letter of Intent
+> Invite Buyer
+> Invite Seller
+
+That's much closer to the behavior we wanted.
+
+And I like:
+
+**NDA Signed → LOI Sent → Due Diligence → Financing → Closing**
+
+more than some of the earlier lifecycle variants. It describes observable transaction states.
+
+---
+
+# But two major problems remain
+
+## 1. The 8% readiness issue is STILL there
+
+This was the most explicit requirement, and it wasn't fixed.
+
+The page says:
+
+**8% — Needs Attention**
+
+and directly below:
+
+**0 of 30 required fields confirmed**
+
+Every Transaction Record category is also showing zero.
+
+Worse, the explanatory copy still says:
+
+> Operational readiness across documents, workspace facts, activity, and compliance signals.
+
+So the implementation is still using the old composite concept.
+
+I would **not let them work around this by changing the wording**. This is an architecture issue.
+
+Kontra now has two fundamentally different concepts:
+
+**Transaction Record completeness** = what Kontra knows about the transaction.
+
+**Operational progress** = what's happening in the workspace.
+
+Those should not be blended into a mysterious percentage.
+
+I'd actually simplify the product further and make this:
+
+**TRANSACTION READINESS**
+**0% — Getting Started**
+`0 of 30 required facts confirmed`
+
+Then, as documents are analyzed and facts confirmed, it moves.
+
+That makes the number auditable.
+
+---
+
+## 2. The NDA contradiction is still there
+
+This is now even easier to see.
+
+Overview:
+
+> **NDA Signed**
+
+Lifecycle:
+
+> **● NDA Signed**
+
+Documents:
+
+> **Non-Disclosure Agreement · Required · Missing**
+
+Transaction Record:
+
+> **0 confirmed**
+
+Kontra is effectively saying:
+
+> "The NDA has been signed."
+
+and:
+
+> "We don't have an NDA and have confirmed nothing."
+
+That's dangerous for the architecture you're building because the whole value of the Transaction Record is supposed to be **structured truth with provenance**.
+
+The solution is NOT necessarily to prevent the user from selecting "NDA Signed."
+
+Instead distinguish:
+
+### Operational position
+
+User can say:
+
+**Current stage: NDA Signed**
+
+But Kontra should know:
+
+**Supporting evidence: Missing**
+
+So the UI could subtly show:
+
+**NDA Signed**
+*Evidence not yet uploaded*
+
+That is much more powerful. Kontra isn't arguing with the user, but it isn't falsely certifying something either.
+
+---
+
+# There are also 4 smaller things I would fix
+
+First, **Property Valuation Report → Buyer** looks questionable as a default responsibility. In an acquisition, that may come from an appraiser, lender process, advisor, or buyer depending on the workflow. I wouldn't hard-code Buyer unless that's deliberately how this template works.
+
+Second, **Due Diligence Checklist → Buyer** has the same issue. That's often managed by the Deal Coordinator/Buyer, but the responsibility model should distinguish **responsible for obtaining/managing** from **source/provider** eventually. Don't solve that now, but don't bake an incorrect semantic assumption deep into the model.
+
+Third, the lifecycle currently says **LOI Sent**, while the action says **Request Letter of Intent**. That can work, but I think **LOI Submitted** or **LOI Executed** is a stronger milestone than "Sent." "Sent" doesn't necessarily indicate meaningful transaction progress. For an acquisition workflow I'd probably use:
+
+**NDA Signed → LOI Executed → Due Diligence → Financing → Closing**
+
+That gives each lifecycle point an actual milestone.
+
+Fourth, `Deal Coordinator` is back. That's fine **if intentional**, but I preferred the distinction we had reached:
+
+**Deal Owner** = person who owns/controls the workspace
+**Deal Coordinator** = optional operational role
+
+Otherwise Kontra is assuming the person who creates a room is professionally acting as a deal coordinator. Since Kontra is supposed to work across transaction types, **Deal Owner** is safer and more universal.
+
+---
+
+# What I would send the developer now
+
+This should be a **small correction pass**, not another redesign:
+
+> **The latest iteration is materially improved. Do not redesign the UI or change the overall Overview/Documents/People architecture. Make the following final logic corrections.**
+>
+> **1. Transaction Readiness is still incorrect**
+>
+> Current UI shows:
+>
+> `8% Needs Attention`
+>
+> while simultaneously showing:
+>
+> `0 of 30 required fields confirmed`
+>
+> This requirement has not been implemented correctly.
+>
+> Transaction Readiness must be derived from the structured Transaction Record rather than generic workspace activity.
+>
+> Do not include room creation, lifecycle selection, participant slots, activity, or generic compliance signals merely to generate a non-zero readiness percentage.
+>
+> At the current state, where 0 of 30 required facts are confirmed, the displayed Transaction Readiness should be 0%.
+>
+> Recommended presentation:
+>
+> `TRANSACTION READINESS`
+>
+> `0% Getting Started`
+>
+> `0 of 30 required facts confirmed`
+>
+> Replace the existing description:
+>
+> `Operational readiness across documents, workspace facts, activity, and compliance signals.`
+>
+> with:
+>
+> `Completeness and confirmation of the structured transaction record.`
+>
+> The percentage must always be explainable from the underlying record.
+>
+> **2. Separate operational lifecycle position from verified evidence**
+>
+> The current room shows `NDA Signed`, while the required Non-Disclosure Agreement is `Missing` and Transaction Record contains zero confirmed facts.
+>
+> Do not treat a manually selected lifecycle position as verified transaction truth.
+>
+> Lifecycle represents **operational position**.
+>
+> Transaction Record represents **supported/confirmed transaction facts**.
+>
+> Documents represent **available supporting evidence**.
+>
+> Therefore a user may place the transaction at `NDA Signed`, but if the NDA has not been uploaded or otherwise supported, Kontra should indicate that the lifecycle position is not yet evidenced.
+>
+> Example:
+>
+> `NDA Signed`
+>
+> `Supporting document missing`
+>
+> Do not automatically create or confirm Transaction Record facts from manual lifecycle selection.
+>
+> Do not automatically mark the NDA uploaded merely because the stage says NDA Signed.
+>
+> **3. Keep the restored Documents functionality**
+>
+> The restored responsible-role chips and `Upload | Request` actions are correct. Keep them.
+>
+> Responsibility must continue to come from workflow-pack configuration rather than screen-specific hard-coding.
+>
+> **4. Standardize the lifecycle milestone**
+>
+> Replace `LOI Sent` with `LOI Executed` for the Marriott Hotel Acquisition workflow unless this workflow intentionally needs a different milestone.
+>
+> Preferred lifecycle:
+>
+> `NDA Signed → LOI Executed → Due Diligence → Financing → Closing`
+>
+> **5. Use Deal Owner as the universal workspace-owner role**
+>
+> Change the owner row from `Deal Coordinator` to `Deal Owner`.
+>
+> `Deal Owner` means the person controlling the Kontra workspace.
+>
+> `Deal Coordinator` should remain available as a separate workflow participant when a transaction actually has one.
+>
+> Do not assume the room creator is acting professionally as a transaction coordinator.
+>
+> **6. Do not make further visual redesigns**
+>
+> Current Overview, Documents, People, lifecycle, Next Actions, and Transaction Record visual structures are approved.
+>
+> Focus only on state logic, terminology, provenance, and synchronization.
+>
+> **After these corrections, do not continue optimizing the empty state.**
+>
+> Run an end-to-end functional test:
+>
+> Create fresh room → invite Buyer → upload NDA → upload LOI → AI extracts facts → user confirms facts → verify Transaction Record → verify readiness calculation → verify Next Actions change → verify lifecycle/evidence relationship → verify participant/document synchronization.
+>
+> Record the state after each step and fix any cross-screen inconsistency before considering the task complete.
+
+### One important strategic point
+
+I think you're now **very close to the point where we should stop changing the empty-room design**.
+
+The screens themselves aren't the problem anymore. They're actually quite clean.
+
+The question now is whether this happens:
+
+**Upload document → AI understands it → facts populate → source is traceable → user confirms → readiness changes → actions change → other screens update.**
+
+If that chain works reliably, Kontra starts feeling like the transaction operating system you've been trying to build.
+
+If it doesn't, another 20 rounds of polishing the Overview won't matter.
+
+So after this correction, **I would upload a real sample NDA and LOI and test the actual engine rather than send another UI redesign request.**

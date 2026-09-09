@@ -352,7 +352,7 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       if (!RESEND_KEY) throw new Error('Email delivery is not configured');
       await sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from: 'Kontra <support@kontraplatform.com>',
         to: action.to,
         subject: action.subject,
         html: action.html || `<p>${action.body || ''}</p>`,

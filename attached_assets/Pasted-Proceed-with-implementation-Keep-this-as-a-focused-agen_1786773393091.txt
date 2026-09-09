@@ -1,0 +1,56 @@
+Proceed with implementation.
+Keep this as a focused agent-experience pass, not a redesign or new architecture.
+Use the existing /brain/briefing, transactionContext, durable tasks/events, Transaction Record, readiness calculation, document state, participant state, and lifecycle state as the sources of truth.
+Implement in this order:
+Coordinator Transaction Brief
+Add it near the top of the coordinator Overview, below the transaction identity/header and before the existing detailed sections.
+Dynamically show:
+Document collection status
+Participant status
+Current lifecycle stage
+Unresolved conflicts/findings
+Extracted facts awaiting confirmation
+Actual blockers
+Kontra's recommended next step
+It must reflect live transaction state, not static/template text.
+Agent recommendations
+Convert existing durable tasks/state into a prioritized set of recommendations.
+Do not create another task table or parallel recommendation state.
+Each recommendation should explain why it matters and expose the appropriate existing action.
+Stage intelligence
+Detect when transaction evidence appears ahead of the coordinator-reported lifecycle stage.
+Show a recommendation such as:
+Kontra recommends advancing NDA → Due Diligence based on the LOI and Purchase Agreement currently on file.
+Require coordinator approval.
+Never automatically change the stage.
+Separate the three concepts clearly
+Document Collection
+Transaction Verification / Readiness
+Issues Requiring Attention
+A room can therefore correctly show:
+Documents: 7/7 complete
+Transaction Record: 3% confirmed
+Issues: 2 requiring review
+Do not allow "Complete" document collection to imply that the transaction itself is complete.
+Fix contradictory messaging
+Do not show ready for final review or no critical issues when unresolved findings/conflicts still require action.
+Participant messaging should distinguish required-document completion from unresolved document findings.
+Canonical/conflict behavior
+Preserve Commercial Real Estate Acquisition rather than rendering it as generic acquisition.
+A confirmed value must remain the authoritative displayed value.
+Later conflicting evidence should appear as New conflicting evidence without silently replacing or downgrading the confirmed value.
+Do not expand participant functionality
+Keep the current participant Overview/Documents/People architecture.
+Participants should continue seeing only role-appropriate information and actions.
+Important: Do not change settlement, sealing, extraction behavior, invitation architecture, document ownership/provenance, participant authorization, or the Transaction Record schema unless a specific bug requires it.
+After implementation, run a fresh CRE acquisition acceptance scenario with all required participants joined and all required documents uploaded.
+Report back with:
+What visibly changed on coordinator Overview
+The exact Transaction Brief produced for the test room
+Recommendations generated and the state/evidence behind each
+Document completeness vs readiness vs issue counts
+Stage recommendation behavior
+Canonical/conflicting-field behavior
+Confirmation that participant views remain role-scoped
+Build/test results
+Do not deploy yet.

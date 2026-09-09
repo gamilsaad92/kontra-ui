@@ -1,0 +1,63 @@
+Approved with the following implementation constraints.
+Proceed with the Overview consolidation described in the wireframe, with these adjustments:
+
+1. Avoid nested dashboard cards.
+The Overview should feel like one command center, not a large card containing several additional large cards. Use typography, spacing, dividers and compact category cards to establish hierarchy.
+
+2. Do not create a Transaction Record top-level tab.
+Transaction Record is the structured truth layer conceptually, but for this implementation its summary and expandable field details remain inside Overview. Keep top-level navigation:
+
+Overview | Documents | People
+
+3. Transaction Readiness must use the existing authoritative readiness calculation.
+Do not invent a new weighting/scoring algorithm as part of this UI work. Display confirmed/total counts as supporting information only.
+
+4. Next Actions must be actionable.
+Reuse existing attention/prioritization data, but every displayed action should route the user to the existing destination/action:
+
+document action → relevant document/upload
+participant action → People/invite
+confirmation action → relevant Transaction Record category
+Do not create a second task system.
+5. Transaction Record categories should be compact and expandable.
+Default Overview shows category summaries only:
+
+Identity & Parties
+Asset / Company
+Transaction Terms
+Financial
+Legal & Diligence
+Expanded state reveals the existing confirmed/missing field information.
+6. Digital Asset functionality remains completely invisible when disabled.
+When enabled, Digital Asset Readiness appears downstream of the Transaction Record as a secondary capability. It must never compete visually with Transaction Readiness.
+
+7. Fix coordinator semantics as part of this implementation.
+Do NOT solve this with another role-name heuristic.
+
+Resolve coordinator/owner from actual workspace ownership/management semantics and authenticated/session identity first. Role metadata is fallback only.
+
+Acceptance criteria:
+
+active workspace owner/coordinator never shows Not invited
+active workspace owner/coordinator never shows an Invite button
+coordinator displays Owner or Coordinator and Active
+invitation denominator excludes coordinator/non-invitable roles
+Marriott workspace should therefore show 0 of 4 participants invited if four external roles exist
+8. Preserve the conceptual distinction:
+Lifecycle = where the transaction is operationally
+
+Transaction Readiness = completeness/confirmation of the structured transaction record
+
+Never derive one from the other or present them as competing progress measurements.
+
+9. Do not modify the Documents UX in this pass.
+
+Documents remain the evidence layer. Do not duplicate the checklist in Overview.
+
+10. Do not add APIs, database tables, scoring engines, or another dashboard system unless an existing data source makes this implementation impossible. If something is genuinely missing, report the dependency before building around it.
+
+Implement this as a consolidation/refactor of the existing Overview rather than another additive feature layer.
+
+After implementation, show screenshots at approximately 1440px desktop and mobile width for Overview and People before proposing any additional tasks.
+
+At that point I would let them implement it. The direction is finally converging toward removing UI rather than continually adding UI, which is what Kontra needs at this stage.

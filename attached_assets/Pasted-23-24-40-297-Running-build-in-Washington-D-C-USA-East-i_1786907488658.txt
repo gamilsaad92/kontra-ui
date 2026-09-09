@@ -1,0 +1,79 @@
+23:24:40.297 Running build in Washington, D.C., USA (East) – iad1
+23:24:40.298 Build machine configuration: 2 cores, 8 GB
+23:24:40.428 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 3784936)
+23:24:41.960 Warning: Failed to fetch one or more git submodules
+23:24:41.960 Cloning completed: 1.532s
+23:24:42.306 Restored build cache from previous deployment (6YEFBYnjdVWKECoR1W9b4ThMGr8A)
+23:24:42.622 Running "vercel build"
+23:24:42.640 Vercel CLI 58.1.0
+23:24:43.195 Running "install" command: `npm install --ignore-scripts --no-audit --no-fund`...
+23:25:55.426 
+23:25:55.426 up to date in 1m
+23:25:55.708 
+23:25:55.708 > kontra-ui@1.0.0 build
+23:25:55.708 > vite build
+23:25:55.708 
+23:25:55.975 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+23:25:56.050 vite v5.4.21 building for production...
+23:25:56.120 transforming...
+23:26:05.257 node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js (6:21): A comment
+23:26:05.258 
+23:26:05.258 "/*#__PURE__*/"
+23:26:05.258 
+23:26:05.258 in "node_modules/@base-org/account/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:05.259 node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+23:26:05.260 
+23:26:05.260 "/*#__PURE__*/"
+23:26:05.261 
+23:26:05.261 in "node_modules/@base-org/account/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:05.357 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Address.js (6:21): A comment
+23:26:05.358 
+23:26:05.358 "/*#__PURE__*/"
+23:26:05.359 
+23:26:05.359 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Address.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:05.380 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+23:26:05.380 
+23:26:05.380 "/*#__PURE__*/"
+23:26:05.381 
+23:26:05.381 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:05.542 node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js (6:27): A comment
+23:26:05.543 
+23:26:05.544 "/*#__PURE__*/"
+23:26:05.544 
+23:26:05.546 in "node_modules/@wagmi/connectors/node_modules/ox/_esm/core/Base64.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:06.272 node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+23:26:06.272 
+23:26:06.273 "/*#__PURE__*/"
+23:26:06.273 
+23:26:06.273 in "node_modules/@base-org/account/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:06.346 node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/internal/cursor.js (2:21): A comment
+23:26:06.347 
+23:26:06.347 "/*#__PURE__*/"
+23:26:06.347 
+23:26:06.348 in "node_modules/@coinbase/wallet-sdk/node_modules/ox/_esm/core/internal/cursor.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+23:26:07.499 ✓ 3999 modules transformed.
+23:26:07.500 x Build failed in 11.42s
+23:26:07.502 error during build:
+23:26:07.502 [vite:esbuild] Transform failed with 1 error:
+23:26:07.502 /vercel/path0/ui/src/pages/public/DocumentChecklistPanel.jsx:7:10: ERROR: Unexpected ")"
+23:26:07.502 file: /vercel/path0/ui/src/pages/public/DocumentChecklistPanel.jsx:7:10
+23:26:07.503 
+23:26:07.503 Unexpected ")"
+23:26:07.503 5  |                </button>
+23:26:07.503 6  |              </p>
+23:26:07.503 7  |            )}
+23:26:07.503    |            ^
+23:26:07.503 8  |            {showAdditional && (
+23:26:07.503 9  |              <div className="mt-3 space-y-4">
+23:26:07.503 
+23:26:07.504     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+23:26:07.504     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+23:26:07.504     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+23:26:07.505     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+23:26:07.505     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+23:26:07.505     at Socket.emit (node:events:519:28)
+23:26:07.505     at addChunk (node:internal/streams/readable:561:12)
+23:26:07.505     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+23:26:07.506     at Readable.push (node:internal/streams/readable:392:5)
+23:26:07.506     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+23:26:07.576 Error: Command "npm run build" exited with 1

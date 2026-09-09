@@ -1,0 +1,39 @@
+o not merge launch-publish, modify code, or change main.
+The matched full-stack validation is approved except for the OpenAI-capacity blocker.
+First restore working OpenAI API capacity/configuration for the staging validation service only.
+Do not change the extraction logic simply to bypass the 429.
+Once staging OpenAI calls succeed, rerun the AI-dependent acceptance flow using the existing matched validation environment:
+1. NDA/LOI extraction
+Upload representative NDA and LOI documents and confirm that AI extraction generates Transaction Record facts.
+Verify extracted facts include source/provenance and remain in a proposed/extracted state rather than automatically becoming confirmed.
+2. Proposed → Confirmed
+Confirm selected extracted facts manually.
+Verify the same facts transition correctly from proposed/extracted to confirmed without duplication.
+3. Transaction Readiness
+Verify readiness changes only for explainable structured-record reasons.
+Record:
+readiness before upload
+readiness after AI extraction but before confirmation
+readiness after confirmation
+confirmed/required field counts at each step
+The displayed percentage and underlying fact state must be internally consistent.
+4. Next Actions
+Verify Next Actions are generated/refreshed from current transaction state.
+After completing an action, it must disappear or change appropriately.
+Verify prioritization responds to:
+missing required documents
+missing required participants
+missing critical facts
+current lifecycle position
+5. Custom workflow-pack AI behavior
+Rerun one custom-pack classification/extraction case with OpenAI working and verify it does not fall back to the default classifier.
+After those tests, return only:
+OpenAI staging status
+PASS/FAIL for the five items above
+readiness values before/extracted/confirmed
+extracted fact examples with provenance/status
+Next Actions before and after completion
+custom-pack classifier result
+any regression discovered
+final recommendation: READY TO MERGE or NOT READY TO MERGE
+Do not merge or deploy Production automatically after the test.

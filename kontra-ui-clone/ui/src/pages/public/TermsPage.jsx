@@ -21,7 +21,7 @@ const SECTIONS = [
   },
   {
     title: "5. Account Registration and Link Security",
-     content: "You must provide accurate information when creating an account. The deal room owner is the individual or organization that purchases a deal room, or an authorized administrator designated by that organization. If an employee purchases a deal room on behalf of an organization and later leaves, ownership and administrative control over the deal room data remains with the organization — not the individual. Kontra may transfer administrative access upon request from the organization, subject to identity verification. You are responsible for maintaining the security of your account credentials and any access links (owner links and participant invite links) associated with your deal room. Do not share sensitive access links with unauthorized parties. Notify us immediately at security@kontraplatform.com if you suspect unauthorized access to your account or deal room links. We may suspend accounts that violate these terms or that we reasonably believe are being used fraudulently.",
+     content: "You must provide accurate information when creating an account. The deal room owner is the individual or organization that purchases a deal room, or an authorized administrator designated by that organization. If an employee purchases a deal room on behalf of an organization and later leaves, ownership and administrative control over the deal room data remains with the organization — not the individual. Kontra may transfer administrative access upon request from the organization, subject to identity verification. You are responsible for maintaining the security of your account credentials and any access links (owner links and participant invite links) associated with your deal room. Do not share sensitive access links with unauthorized parties. Notify us immediately at support@kontraplatform.com if you suspect unauthorized access to your account or deal room links. We may suspend accounts that violate these terms or that we reasonably believe are being used fraudulently.",
   },
   {
     title: "6. Electronic Communications",
@@ -33,7 +33,7 @@ const SECTIONS = [
   },
   {
     title: "8. Copyright and DMCA",
-    content: "Kontra respects intellectual property rights. If you believe that content accessible on or through the platform infringes your copyright, you may submit a written notice to legal@kontraplatform.com that includes: (a) identification of the copyrighted work you claim has been infringed; (b) identification of the material you claim is infringing and its location on the platform; (c) your contact information; (d) a statement that you have a good faith belief that the use is not authorized; and (e) a statement under penalty of perjury that the information is accurate and you are authorized to act on behalf of the copyright owner. Upon receiving a valid notice, Kontra may remove the allegedly infringing content. Users who repeatedly upload infringing content may have their access terminated.",
+    content: "Kontra respects intellectual property rights. If you believe that content accessible on or through the platform infringes your copyright, you may submit a written notice to gamilsaad@kontraplatform.com that includes: (a) identification of the copyrighted work you claim has been infringed; (b) identification of the material you claim is infringing and its location on the platform; (c) your contact information; (d) a statement that you have a good faith belief that the use is not authorized; and (e) a statement under penalty of perjury that the information is accurate and you are authorized to act on behalf of the copyright owner. Upon receiving a valid notice, Kontra may remove the allegedly infringing content. Users who repeatedly upload infringing content may have their access terminated.",
   },
   {
     title: "9. Your Content",
@@ -127,7 +127,7 @@ export default function TermsPage() {
         <div className="mt-10 p-5 rounded-xl bg-gray-50 border border-gray-200">
           <p className="text-sm font-semibold text-gray-900 mb-1">Questions About These Terms</p>
           <p className="text-sm text-gray-600 mb-2">
-            Email <a href="mailto:legal@kontraplatform.com" className="underline hover:text-gray-900">legal@kontraplatform.com</a>
+            Email <a href="mailto:gamilsaad@kontraplatform.com" className="underline hover:text-gray-900">gamilsaad@kontraplatform.com</a>
           </p>
           <p className="text-sm text-gray-500">
             Kontra · Legal entity and business-address details are subject to owner confirmation.

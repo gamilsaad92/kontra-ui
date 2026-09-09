@@ -1,0 +1,41 @@
+Proceed with one final acceptance test only. Do not redesign or add new functionality.
+Create a fresh CRE acquisition test room using the normal user flow and test the new Coordinator Transaction Brief end-to-end.
+Use a realistic scenario with:
+Deal Owner / Coordinator
+Buyer
+Seller
+Legal Advisor
+Financial Advisor
+Target closing date
+Purchase price
+Upload enough documents to create a meaningful state:
+NDA
+LOI
+Purchase Agreement
+Financial Statements
+Title Report
+Intentionally leave at least one required document missing and create at least one conflicting extracted fact so the agent has something to reason about.
+Then verify the coordinator Overview visually and report the exact rendered values for:
+Document Collection — X/Y required documents complete
+Transaction Readiness — percentage and X/Y confirmed fields
+Issues Requiring Attention — exact count and issue names
+Participants — joined/invited/missing status
+Prioritized Recommendations — exact order shown
+Actual Blockers — exact blockers shown
+Stage Recommendation — current stage, recommended stage, and evidence used
+Confirm that clicking Keep current stage makes no stage change
+Confirm that clicking Accept → [stage] uses the existing /advance flow and updates the lifecycle only after coordinator approval
+Confirm a previously confirmed Transaction Record value is not overwritten by conflicting later evidence
+Confirm the conflict is visibly surfaced instead
+Confirm the participant views remain unchanged and role-scoped
+Also verify that these messages are semantically correct:
+Completing all required documents must not imply the transaction itself is complete.
+No critical issues must not appear when unresolved conflicts/findings exist.
+Ready for final review must not appear solely because required documents were uploaded.
+Take screenshots of:
+Coordinator Overview with the Transaction Brief
+Coordinator Overview with a stage recommendation
+Transaction Record conflict
+Buyer participant Overview
+If this acceptance test passes, report READY TO DEPLOY.
+Do not make additional product changes unless the acceptance test exposes an actual defect. Do not deploy yet.

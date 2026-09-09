@@ -20,7 +20,7 @@ const { getRoomPackId, getPackStageConfig } = require('../lib/dealRoomHelpers');
 const { selectActiveDocumentVersions } = require('../lib/documentVersions');
 const { readTransactionState, getHazardLossRepairGate } = require('../lib/transactionState');
 const { buildVerifiedAssetHandoff } = require('../lib/verifiedAssetHandoff');
-const OpenAI = require('openai');
+const { createInstitutionalOpenAIClient } = require('../lib/openaiClient');
 const cache = require('../cache');
 
 // ── Share token helpers ──────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ function verifyShareToken(token) {
   return { propertyId, expiresAt };
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createInstitutionalOpenAIClient();
 
 // ── Required document sections per pack + property type ──────────────────────
 const REQUIRED_SECTIONS = {
@@ -519,7 +519,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
             method: 'POST',
             headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              from: 'Kontra Platform <notifications@kontraplatform.com>',
+              from: 'Kontra Platform <support@kontraplatform.com>',
               to: [email],
               subject: `Verified Transaction Package — ${assetName}`,
               html: `

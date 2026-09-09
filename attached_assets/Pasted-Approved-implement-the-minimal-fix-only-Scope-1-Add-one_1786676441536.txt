@@ -1,0 +1,61 @@
+Approved — implement the minimal fix only.
+
+Scope:
+
+1. Add one reusable server-side canonical transaction-type label resolver keyed by the authoritative machine type/workflow key.
+
+Canonical labels:
+
+* cre_acquisition → Commercial Real Estate Acquisition
+* business_acquisition → Business Acquisition
+* fundraising → Fundraising Round
+* tokenization → Token Issuance / STO
+
+2. At /api/workspace/generate, normalize the returned transactionType + transactionTypeLabel pair. The machine type remains authoritative. Never allow an AI-provided label to override the canonical built-in label.
+3. Apply the same resolver anywhere creation metadata seeds transaction.type, including:
+
+* trial/demo creation
+* guest/checkout creation if applicable
+* Stripe webhook creation
+* syncMetadataToTransactionRecord()
+
+4. Preserve existing confidence semantics:
+
+* Explicit owner-entered closing date → verified, Deal Owner provenance
+* AI-inferred transaction type → extracted, AI provenance
+* AI-inferred transaction structure → extracted only when confidence threshold is met
+* Transaction value remains blank unless explicitly supplied or meets the existing high-confidence rule
+
+5. Do not change the machine workflow type, workflow pack selection, lifecycle, documents, People, settlement, extraction, or canonical schema logic.
+6. Improve Overview readiness wording only enough to distinguish:
+
+* X of Y required fields confirmed
+* Z captured fields awaiting confirmation
+
+Do not change the readiness formula. Only verified required fields count toward the percentage.
+
+7. Add regression coverage:
+
+* Create or simulate transactionType = cre_acquisition
+* Deliberately provide transactionTypeLabel = Business Acquisition
+* Assert persisted transaction.type = Commercial Real Estate Acquisition
+* Assert workflow remains cre_acquisition
+* Assert CRE required-field schema/denominator is used
+* Assert the field remains extracted, not auto-verified
+
+8. Validate with a brand-new REO/CRE room after the fix.
+
+Expected fresh-room result:
+
+* Workflow pack: CRE
+* Transaction Type: Commercial Real Estate Acquisition
+* Closing date populated if entered during creation
+* Transaction structure populated only if confidently inferred
+* Value blank if not supplied
+* Overview shows captured-but-unconfirmed fields separately from confirmed fields
+
+Do not deploy yet. Report the fresh-room validation result first.
+
+Leave the mobile polish issues for a separate pass after this functional issue passes.
+
+Once that fresh room shows the correct CRE label and the right captured/confirmed counts, then I’d move on to the mobile cleanup.

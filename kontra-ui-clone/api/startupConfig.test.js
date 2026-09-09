@@ -4,6 +4,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const request = require('supertest');
 
+jest.setTimeout(15_000);
+
 const API_ENTRY = path.join(__dirname, 'index.js');
 const productionEnvironment = {
   PATH: process.env.PATH,
@@ -11,6 +13,8 @@ const productionEnvironment = {
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
   OPENAI_API_KEY: 'test-openai-key',
+  ENCRYPTION_KEY: 'test-encryption-key',
+  PII_ENCRYPTION_KEY: 'test-pii-key',
 };
 
 function startProduction(environment = {}) {
@@ -27,6 +31,8 @@ describe('production startup configuration', () => {
     ['SUPABASE_URL', { SUPABASE_URL: '' }],
     ['SUPABASE_SERVICE_ROLE_KEY', { SUPABASE_SERVICE_ROLE_KEY: '' }],
     ['OPENAI_API_KEY', { OPENAI_API_KEY: '' }],
+    ['ENCRYPTION_KEY', { ENCRYPTION_KEY: '' }],
+    ['PII_ENCRYPTION_KEY', { PII_ENCRYPTION_KEY: '' }],
     ['SUPABASE_SERVICE_ROLE_KEY', { SUPABASE_SERVICE_ROLE_KEY: 'placeholder-key' }],
   ])('rejects missing or placeholder %s', (name, environment) => {
     const result = startProduction(environment);

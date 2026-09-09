@@ -1,0 +1,55 @@
+Stop feature/UI work. Investigate backward compatibility and durable room-state hydration. Do not modify or delete existing Production room data.
+We have evidence that previously populated rooms are reopening as apparently fresh rooms with no uploaded documents, and the My Deal Rooms dashboard is showing implausible aggregate states such as 102/103 rooms waiting on Borrower and Inspector and visible populated rooms showing 0 parties active.
+1. Pick one known older Marriott room that previously contained uploaded documents and participant activity.
+Trace it end-to-end using its exact property_id / room identifier.
+Verify directly in Production Supabase, read-only:
+deal_rooms
+deal_analyses
+checklist/document assignment rows
+transaction_record_fields
+deal_room_invites
+access/session records where applicable
+deal_room_tasks
+deal_events
+Report whether the historical data still exists before changing code.
+2. Compare database state with each API response used when opening that room.
+Identify exactly where historical documents/participants/facts disappear:
+database → API resolver → frontend room state → rendered UI
+Do not repair by creating replacement rows unless the original data is genuinely absent.
+3. Audit old-room compatibility.
+The current room resolver must support rooms created before the recent workflow/Transaction Record changes. Existing rooms must not require recreation or re-uploading.
+If older rooms use legacy document/checklist/role representations, normalize them at read time into the current canonical model.
+Do not overwrite historical records simply to make the UI render.
+4. Audit My Deal Rooms dashboard metrics.
+The dashboard must derive cards and aggregate counts from the same canonical durable state used inside the room.
+Specifically verify:
+active participant count
+current lifecycle stage
+document count
+documents needing review
+waiting-on-role indicators
+AI review count
+Waiting on Borrower/Inspector must only count a room when that role is actually required and currently has an unresolved required action. A role merely existing in a generic schema must not make the room “waiting.”
+Do not treat missing optional roles or historical default roles as blockers.
+5. Verify room identity collisions.
+There are multiple rooms named “Marriott Hotel Acquisition.” Make sure dashboard cards open the exact underlying room ID/property ID and are not resolving by display name, slug prefix, workflow name, or another non-unique value.
+This is important: clicking one Marriott room must never load the state of another Marriott room.
+6. Acceptance test before making any Production deployment.
+Use:
+one older populated room
+one recently created populated room
+one truly empty room
+For each, compare DB truth with Dashboard and room UI.
+Required result:
+Older populated room
+historical documents visible
+historical AI analyses visible
+participants/invites accurately reflected
+Transaction Record preserved
+correct lifecycle stage
+Recent populated room
+same behavior using current schema
+Empty room
+legitimately renders empty
+Dashboard counts must reconcile exactly with those durable states.
+Do not deploy until the discrepancy is identified and corrected. Report root cause first.

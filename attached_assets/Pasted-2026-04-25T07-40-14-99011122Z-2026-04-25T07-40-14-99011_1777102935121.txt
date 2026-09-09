@@ -1,0 +1,50 @@
+2026-04-25T07:40:14.99011122Z   ]
+2026-04-25T07:40:14.99011354Z }
+2026-04-25T07:40:18.434309403Z ==> Running 'node index.js'
+2026-04-25T07:40:23.139169938Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-04-25T07:40:23.841662088Z Redis package not installed, falling back to memory cache
+2026-04-25T07:40:32.541646551Z Kontra API listening on port 5000
+2026-04-25T07:40:32.542523775Z [market] bootstrap warn: supabase.rpc(...).catch is not a function
+2026-04-25T07:40:32.937480246Z This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with .catch(). The promise rejected with the reason:
+2026-04-25T07:40:32.937517849Z TypeError: supabase.rpc(...).catch is not a function
+2026-04-25T07:40:32.937525929Z     at bootstrap (/opt/render/project/src/api/routers/lifecycle.js:52:13)
+2026-04-25T07:40:32.937530639Z     at Object.<anonymous> (/opt/render/project/src/api/routers/lifecycle.js:54:3)
+2026-04-25T07:40:32.937534479Z     at Module._compile (node:internal/modules/cjs/loader:1554:14)
+2026-04-25T07:40:32.93753834Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-04-25T07:40:32.93754212Z     at Module.load (node:internal/modules/cjs/loader:1289:32)
+2026-04-25T07:40:32.93754598Z     at Function._load (node:internal/modules/cjs/loader:1108:12)
+2026-04-25T07:40:32.93755048Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-04-25T07:40:32.937556711Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-04-25T07:40:32.937562571Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-04-25T07:40:32.937569312Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:256:27)
+2026-04-25T07:40:33.025473754Z ==> No open ports detected, continuing to scan...
+2026-04-25T07:40:33.109287473Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding
+2026-04-25T07:40:34.138300674Z [docs] bootstrap warn: supabase.rpc(...).catch is not a function
+2026-04-25T07:40:34.332337684Z [score-assets] analyzed 0 records
+2026-04-25T07:40:34.731458305Z [score-loans] analyzed 0 records
+2026-04-25T07:40:34.927418895Z [score-troubled] analyzed 0 records
+2026-04-25T07:40:35.902580284Z ==> Running 'node index.js'
+2026-04-25T07:40:40.099173092Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-04-25T07:40:40.793770696Z Redis package not installed, falling back to memory cache
+2026-04-25T07:40:45.491873229Z Error: Cannot find module 'bcryptjs'
+2026-04-25T07:40:45.49189969Z Require stack:
+2026-04-25T07:40:45.49190445Z - /opt/render/project/src/api/lib/localAuth.js
+2026-04-25T07:40:45.49190919Z - /opt/render/project/src/api/middlewares/authenticate.js
+2026-04-25T07:40:45.49191302Z - /opt/render/project/src/api/index.js
+2026-04-25T07:40:45.49191901Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-04-25T07:40:45.49192337Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-04-25T07:40:45.49192773Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-04-25T07:40:45.49193211Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-04-25T07:40:45.491936161Z     at Module.<anonymous> (node:internal/modules/cjs/loader:1311:12)
+2026-04-25T07:40:45.49194277Z     at Module.patchedRequire (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:233:34)
+2026-04-25T07:40:45.491952921Z     at Hook._require.Module.require (/opt/render/project/src/api/node_modules/require-in-the-middle/index.js:181:27)
+2026-04-25T07:40:45.491957891Z     at require (node:internal/modules/helpers:136:16)
+2026-04-25T07:40:45.491962641Z     at Object.<anonymous> (/opt/render/project/src/api/lib/localAuth.js:12:16)
+2026-04-25T07:40:45.491967191Z     at Module._compile (node:internal/modules/cjs/loader:1554:14) {
+2026-04-25T07:40:45.491971891Z   code: 'MODULE_NOT_FOUND',
+2026-04-25T07:40:45.491976911Z   requireStack: [
+2026-04-25T07:40:45.491981081Z     '/opt/render/project/src/api/lib/localAuth.js',
+2026-04-25T07:40:45.491985111Z     '/opt/render/project/src/api/middlewares/authenticate.js',
+2026-04-25T07:40:45.491989471Z     '/opt/render/project/src/api/index.js'
+2026-04-25T07:40:45.491994161Z   ]
+2026-04-25T07:40:45.491997142Z }

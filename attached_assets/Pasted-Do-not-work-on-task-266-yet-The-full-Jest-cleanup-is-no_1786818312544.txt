@@ -1,0 +1,39 @@
+Do not work on task #266 yet.
+The full Jest cleanup is not the release blocker for this UI refinement.
+Before deployment, complete one final authenticated acceptance pass using a fresh disposable transaction and real owner/invite sessions through the normal product flow.
+Validate the same room from these five perspectives:
+Deal Coordinator
+Buyer
+Seller
+Legal Advisor
+Financial Advisor
+For the Coordinator Overview, verify:
+Required Documents metric matches Documents tab exactly.
+Record Verification confirmed count matches Transaction Record exactly.
+Extracted facts awaiting confirmation count is accurate.
+Conflicts are separated from milestone blockers.
+Participant metric matches People tab.
+Key Transaction Facts show canonical values only, with correct confirmed / extracted / conflict status.
+No duplicate recommendations appear between the Transaction Brief and Next Actions.
+Blockers are genuinely blocking the next milestone, not merely incomplete optional work.
+Recent Changes contains meaningful transaction changes only and does not show readiness-score noise.
+Current stage and any stage recommendation are consistent with lifecycle evidence.
+For each participant role, verify:
+Overview shows the correct role, stage, and target close.
+Only documents assigned to that role appear.
+No coordinator Transaction Brief, Transaction Record controls, stage controls, settlement controls, settings, invite management, or other coordinator-only actions appear.
+People remains read-only and does not expose private invitation details.
+No “Create Your Room” CTA appears.
+Empty states are useful where the role currently has no assigned documents.
+Also compare the same room across Overview, Documents, People, and Transaction Record and confirm there are no contradictory counts or statuses.
+Use normal invitation links and authorized sessions only. Do not bypass access controls.
+Save screenshots for:
+Coordinator Overview — top metrics and Key Transaction Facts
+Coordinator Overview — blockers / recommendations / recent changes
+Buyer Overview + Documents
+Seller Overview + Documents
+Legal Advisor Overview + Documents
+Financial Advisor Overview + Documents
+Coordinator People tab
+Report any mismatch before making further code changes.
+Do not deploy. Do not start #266.

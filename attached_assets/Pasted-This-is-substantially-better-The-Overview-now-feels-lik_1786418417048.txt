@@ -1,0 +1,176 @@
+This is **substantially better**. The Overview now feels like one system rather than several dashboard concepts competing with each other. But the screenshots reveal **one real logic bug and two smaller issues** I would fix before moving on.
+
+### The real bug: “Invite Deal Coordinator”
+
+This is incorrect.
+
+The Overview now says:
+
+> **Invite Deal Coordinator**
+> Needed to complete Identity & Parties
+
+But the People tab correctly shows:
+
+> **Deal Coordinator**
+> Workspace coordinator · Active
+> **Owner**
+
+So the action-generation logic is still independently deciding that the coordinator is missing. That means you fixed the **People rendering**, but not the underlying semantic participant resolution used by Next Actions.
+
+This is important because it shows the same coordinator problem still exists deeper in the application.
+
+The action engine should understand:
+
+**Workspace owner/manager = coordinator satisfied.**
+
+It should never generate:
+
+> Invite Deal Coordinator
+
+for the person currently operating the workspace.
+
+Instead, based on this workspace, that slot should probably become:
+
+> **Invite Buyer Representative**
+> Needed to complete Identity & Parties
+> `Open People`
+
+because the Buyer Representative is genuinely not invited.
+
+### The readiness wording is now much better
+
+This is a good change:
+
+> **8% Needs Attention**
+> Completeness and confirmation of the structured transaction record.
+> **0 of 30 required fields confirmed**
+
+That is far more understandable than “0 of 8 readiness areas.”
+
+There is one thing I would verify technically: **how can readiness be 8% while 0 of 30 required fields are confirmed?**
+
+That isn't necessarily wrong. For example, readiness could include extracted/proposed/unconfirmed information, documents, or other completeness signals. But if the description says the percentage measures “completeness and confirmation of the structured transaction record,” users will naturally expect:
+
+**0 / 30 confirmed ≈ 0%**
+
+If the 8% comes from something else, make it explicit. Otherwise I'd make readiness primarily field-based so the percentage and denominator tell the same story.
+
+### Next Actions is finally doing the right job
+
+This is a major improvement:
+
+> Upload Letter of Intent
+> Upload Purchase Agreement
+> Invite Deal Coordinator
+> View all 19 actions
+
+The structure is right. I especially like that it gives the responsible role and a contextual action button without recreating the entire Documents tab.
+
+I would **keep this design**.
+
+The only UX adjustment I'd make is the wording of document actions. The card says **“Upload Letter of Intent”**, but the button says **“Request.”** Those describe different actions.
+
+If the responsible party is Buyer Representative, and the coordinator doesn't possess the document, use:
+
+> **Request Letter of Intent**
+> Required · Buyer Representative
+> `Request`
+
+If the coordinator is responsible for uploading it:
+
+> **Upload Letter of Intent**
+> Required · Deal Coordinator
+> `Upload`
+
+That small distinction makes Kontra feel much more operationally intelligent.
+
+### Send Replit this
+
+> **Keep the current Overview design. Do not restructure or visually redesign it.**
+>
+> The new Next Actions implementation is approved conceptually, but fix the underlying action semantics before proceeding.
+>
+> **1. Fix coordinator resolution globally**
+>
+> Next Actions currently generates:
+>
+> `Invite Deal Coordinator`
+>
+> while People correctly identifies Deal Coordinator as:
+>
+> `Workspace coordinator · Active · Owner`
+>
+> This means coordinator satisfaction is being resolved differently between ParticipantsPanel and the action-generation logic.
+>
+> Do not patch this by filtering the string “Deal Coordinator.”
+>
+> Create/reuse one semantic helper for determining whether a workspace role is already satisfied by the workspace owner/coordinator. Participant rendering, invite counts, Transaction Record party state, and Next Actions should all use the same semantic resolution.
+>
+> Workspace ownership/management semantics take precedence over invite records and role-name heuristics.
+>
+> Once the owner satisfies the coordinator role:
+>
+> * Never generate `Invite Deal Coordinator`
+> * Never mark coordinator as missing
+> * Never include coordinator in external participant denominator
+> * Never expose an Invite action for coordinator
+> * Identity & Parties should not treat the coordinator as an unfilled external participant
+>
+> In this workspace, the appropriate missing-party action should instead be the actual external role, such as:
+>
+> `Invite Buyer Representative`
+>
+> if Buyer Representative is the highest-priority missing participant.
+>
+> **2. Make action verbs match the actual operation**
+>
+> Currently the UI can display:
+>
+> `Upload Letter of Intent` → button `Request`
+>
+> This is semantically inconsistent.
+>
+> Generate the action label based on what the current user can actually do:
+>
+> * If requesting from another participant: `Request Letter of Intent` → `Request`
+> * If current coordinator should provide it: `Upload Letter of Intent` → `Upload`
+> * Missing participant: `Invite Buyer Representative` → `Open People` or `Invite`
+> * Missing record information: `Confirm [field]` → open relevant Transaction Record category
+>
+> Do not change the Documents workflow itself.
+>
+> **3. Verify Transaction Readiness calculation**
+>
+> UI currently displays:
+>
+> `8%`
+>
+> `0 of 30 required fields confirmed`
+>
+> Determine exactly why readiness is 8% when zero required fields are confirmed.
+>
+> If readiness intentionally includes proposed/extracted fields, document state, or another signal, make the displayed explanation consistent with that calculation.
+>
+> If Transaction Readiness is intended to represent confirmation of the structured Transaction Record, calculate the percentage primarily from the same required-field denominator shown underneath it.
+>
+> Do not introduce another readiness model.
+>
+> **4. Preserve everything else**
+>
+> Do not change:
+>
+> * Overview hierarchy
+> * Transaction Lifecycle
+> * Transaction Record layout
+> * category missing summaries
+> * three-action Overview limit
+> * View all actions
+> * Documents UI
+> * People UI
+> * Owner/Coordinator presentation
+>
+> After fixing this, test a single workspace end-to-end and verify that the same underlying state is reflected consistently across **Overview → Transaction Record → Documents → People**.
+
+I think that last sentence is particularly important now. **Stop polishing isolated screens after this.** The remaining risk isn't really visual anymore; it's whether Kontra has one consistent understanding of the transaction across all its surfaces.
+
+And that's exactly what the “Invite Deal Coordinator” bug exposed.

@@ -20,9 +20,12 @@
  *   environmental_report – Phase I/II ESA reports
  */
 
-const OpenAI = require('openai');
+const {
+  createInstitutionalOpenAIClient,
+  safeAIErrorMessage,
+} = require('./openaiClient');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createInstitutionalOpenAIClient();
 
 // ── Extraction schemas per document type ──────────────────────────────────────
 
@@ -380,7 +383,7 @@ Return JSON: {"doc_type": string, "confidence": 0-1, "reasoning": string}`
 
     return JSON.parse(resp.choices[0].message.content || '{}');
   } catch (err) {
-    return { doc_type: 'unknown', confidence: 0, reasoning: err.message };
+    return { doc_type: 'unknown', confidence: 0, reasoning: 'Document classification unavailable' };
   }
 }
 
@@ -405,6 +408,15 @@ async function extractFromDocument({ content, docType, contentType = 'text', fil
 
   if (!schema) {
     return { error: `Unknown doc_type: ${docType}`, extracted: null };
+  }
+  if (contentType === 'application/pdf') {
+    return {
+      doc_type: docType,
+      filename,
+      extracted: null,
+      error: 'Scanned PDF image analysis requires a file upload; base64 PDF content is not accepted.',
+      processing_ms: Date.now() - started,
+    };
   }
 
   try {
@@ -450,8 +462,14 @@ Identify and include in notes any data quality issues, ambiguities, or items req
       extracted_at: new Date().toISOString(),
     };
   } catch (err) {
-    console.error('[documentIntelligence] extraction error:', err.message);
-    return { doc_type: docType, filename, extracted: null, error: err.message, processing_ms: Date.now() - started };
+    console.error('[documentIntelligence] extraction error');
+    return {
+      doc_type: docType,
+      filename,
+      extracted: null,
+      error: safeAIErrorMessage(err, 'Document extraction unavailable'),
+      processing_ms: Date.now() - started,
+    };
   }
 }
 

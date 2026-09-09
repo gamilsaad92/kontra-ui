@@ -10,7 +10,7 @@ const PROPERTY = {
   address: 'Austin, TX',
   deal_amount: '8500000',
   first_name: 'Demo',
-  customer_email: 'demo@kontraplatform.com',
+  customer_email: 'hello@kontraplatform.com',
   workflow_pack_id: 'business_acquisition',
   deal_stage: 'due_diligence',
   activated_at: '2025-02-01T10:00:00.000Z',

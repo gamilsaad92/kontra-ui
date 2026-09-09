@@ -1,0 +1,40 @@
+That confirms the **same live bug is still present**.
+
+The participant blockers look valid for this room because Borrower, Insurer, Repair Contractor, and Document Reviewer were generated as required roles and are still uninvited. But the **Loss Type blocker is definitely wrong**: `Hazard loss` and `Hazard loss - fire` should now reconcile as parent/subtype-compatible values.
+
+So I would mark:
+
+* **Kontra AI participant grounding: PASS**
+* **Loss Type reconciliation in live runtime: FAIL**
+* **Operations Manager blocker answer overall: FAIL**, because it still includes one known-false blocker
+* **Exact-field targeting: still OPEN**
+
+Send Replit this:
+
+> **Live same-room retest still fails after hard refresh.**
+>
+> Kontra AI still reports:
+>
+> `Hazard loss` vs `Hazard loss - fire`
+>
+> as a blocking Loss Type conflict in the original hazard-loss room.
+>
+> The four participant blockers are expected in this room because Borrower, Insurer, Repair Contractor, and Document Reviewer are required and remain uninvited. The problem is specifically the stale/incorrect Loss Type conflict.
+>
+> The semantic taxonomy/tests already define `Hazard loss` and `Hazard loss - fire` as compatible parent/subtype values, so trace why this existing live room is still exposing the stored conflict through `transactionState.conflicts`.
+>
+> Please verify the full persisted-conflict reconciliation path for **existing rooms**, not just newly created conflicts or test fixtures:
+>
+> * load the stored conflict from this room;
+> * run `isConflictSupportedByActiveEvidence` / semantic reconciliation;
+> * confirm the parent/subtype conflict is removed from the live returned transaction state;
+> * confirm it is absent from Operations Manager blockers, Next Actions, and Transaction Record conflict rows;
+> * ensure a genuine sibling conflict such as `Hazard loss - fire` vs `Hazard loss - water` still survives.
+>
+> Do not patch the Operations Manager prompt to hide this. Fix the live canonical/stored conflict reconciliation so every downstream consumer receives the correct state.
+>
+> Also keep the exact-field targeting issue open until a live conflict action visibly scrolls to and highlights the exact field after asynchronous Transaction Record hydration.
+>
+> Retest this **same existing hazard-loss room** before reporting the issue fixed.
+
+At this point I would **not continue deeper QA until this live stale-conflict issue is fixed**, because it contaminates the blocker flow we're trying to validate.

@@ -70,7 +70,7 @@ function mapLoan(row) {
     next_payment_date:     d.next_payment_date     || null,
     next_payment_amount:   d.next_payment_amount   || null,
     servicer_name:         d.servicer_name         || 'Kontra Capital Servicing',
-    servicer_contact:      d.servicer_contact      || 'servicing@kontraplatform.com',
+    servicer_contact:      d.servicer_contact      || 'support@kontraplatform.com',
   };
 }
 

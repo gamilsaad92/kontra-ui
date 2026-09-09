@@ -1,0 +1,60 @@
+Pre-launch task: bring all public demo rooms in line with the current production deal-room experience.
+The live demo rooms are still rendering the legacy deal-room UI and legacy workflow. Do not redesign the current production room and do not modify its authorization, assignment, checklist, Transaction Record, or participant-access logic.
+Required change
+Update the public demos so they demonstrate the same current product architecture and UX as a newly created real room, using seeded/demo data rather than the old legacy demo implementation.
+The demo should reflect the current:
+Coordinator Overview
+Documents experience
+People experience
+canonical participant roles for that transaction pack
+current checklist/document assignments
+Transaction Record
+canonical record-state metrics
+AI findings / issues
+participant status
+stage/recommendation experience
+Next Actions / Request actions
+Kontra AI experience where applicable
+Remove/replace legacy demo elements
+The screenshots show legacy components that should no longer be presented as the current product, including:
+old property-owner/coordinator overview
+Morning/Evening Standup
+old Activity Timeline layout
+old Deal Progress / Party Status grid
+legacy roles such as Lender/Underwriter, Inspector, Insurance Broker, Attorney, Investor, Servicer, Franchisor/Brand when they are not part of the current pack
+old Auto Risk Signals / Risk Assessment presentation
+old Requirement Status presentation
+any old checklist assignment behavior
+Do not simply cosmetically restyle those components. The demo needs to represent the current product.
+Demo data
+Keep the demos useful by seeding realistic data so visitors can see what Kontra does after a transaction has activity:
+uploaded documents
+AI-extracted facts
+confirmed and awaiting Transaction Record fields
+one or two realistic issues/conflicts
+active and not-yet-invited participants
+missing documents
+Request actions
+recent changes
+a realistic stage recommendation
+The demo should feel like a real transaction already being coordinated, not an empty room.
+Packs
+Update all demos currently exposed from View Demo:
+Business Acquisition
+Fundraising
+CRE Acquisition
+Each must use its own current pack configuration, roles, documents, Transaction Record schema and lifecycle. Do not copy CRE-specific behavior into the other demos.
+Important
+Prefer reusing the same current room components and state derivation used by real rooms rather than maintaining a separate legacy demo UI. Demo mode should primarily provide seeded/read-only data and disable mutations where necessary.
+This is important so future production-room changes don't leave the demos on another obsolete implementation.
+Acceptance test
+Before making any deployment:
+Compare each demo against a freshly created room of the same pack.
+Confirm the structural UI is the same current product.
+Confirm seeded demo data renders correctly.
+Confirm no real-room data is exposed.
+Confirm demo visitors cannot mutate production data.
+Confirm all three homepage View Demo links work.
+Confirm Create Your Deal Room returns to the normal creation flow.
+Run production build and regression tests.
+Do not deploy yet. Report the changes and screenshots of all three updated demos first.

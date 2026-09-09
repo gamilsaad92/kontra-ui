@@ -1,0 +1,59 @@
+Stop implementation for the moment. The desktop view reveals a deeper information-architecture conflict.
+We currently have multiple competing representations of the transaction:
+Transaction Snapshot
+Transaction Lifecycle
+What Needs Attention
+Transaction Readiness
+Documents checklist
+These should not behave as independent systems.
+Target architecture
+OVERVIEW = decision layer
+DOCUMENTS = evidence layer
+PEOPLE = responsibility/access layer
+TRANSACTION RECORD = structured truth layer
+Overview
+Redesign Overview around ONE primary transaction command center.
+It should contain:
+Transaction name
+Current workflow stage
+Target close date
+Transaction Readiness %
+Compact lifecycle
+2–4 highest-priority next actions
+Below that show a compact Transaction Record summary:
+Identity & Parties
+Asset / Company
+Transaction Terms
+Financial
+Legal & Diligence
+Each category should show confirmed/total counts and expand for details.
+REMOVE the standalone large “What Needs Attention” card.
+REMOVE the three large “Not recorded” Snapshot tiles. Those fields belong to the Transaction Record and should surface naturally once populated.
+Do not create another readiness/progress system.
+Important semantic distinction
+Lifecycle = where the transaction is operationally.
+Transaction Readiness = completeness/confirmation of the structured transaction record.
+These are separate measurements and must not be conflated.
+Documents
+Keep the existing checklist structure for now.
+Documents are evidence. Their extracted facts should populate/propose fields in the Transaction Record.
+People
+The screenshot proves the coordinator regression is NOT resolved in the frontend I am viewing.
+Deal Coordinator currently shows:
+Not invited yet / Not invited / Invite
+This is invalid.
+The active room coordinator must display as:
+Deal Coordinator
+Owner or Coordinator
+Active
+and NEVER have:
+Not invited
+invitation status
+Invite button
+The participant denominator must count EXTERNAL INVITABLE participants only.
+Do not attempt another role-name heuristic alone. Determine coordinator status from actual workspace ownership/management semantics first, with role metadata only as fallback.
+Digital assets
+Digital Asset Readiness is downstream of the Transaction Record and only appears when digital-asset functionality is enabled.
+Architecture:
+Evidence → Transaction Record → Confirmed Record → optional Digital Asset Readiness
+Before writing code, show me the revised desktop wireframe reflecting this exact architecture and identify which existing components will be removed, merged, or reused.

@@ -1,0 +1,10 @@
+Enhance the current inspection module in the existing Kontra layout without waiting for the broader redesign. The goal is to make inspections AI native, easier to review, and structured around real decision making for findings such as Deferred Maintenance, Life Safety, Potential Life Safety, and Imminent Life Safety. Keep the current page structure where possible, but convert the inspection screen into a review workstation. Add an inspection summary header showing property, inspection date, total findings, unresolved items, AI flagged priority items, review status, and overall risk. Replace static inspection content with a findings review queue where each finding has structured fields including location, description, photos, AI classification suggestion, severity, confidence, rationale, human override, final decision, action required, and status. When a finding is opened, show the source details in the main panel and an AI review panel that explains the suggested classification, why it may be LS, Potential LS, Imminent LS, or DM, what factors were considered, and what action is recommended. Allow the reviewer to accept, override, escalate, request more evidence, resolve, or create a follow-up task. Sort findings by urgency and highlight high-risk items first. Add filters, search, recurring issue tracking, prior finding comparison, and a top-level AI inspection summary that explains key concerns and changes from prior inspections. The inspection layer should feel like an institutional review workflow, not just a data display, with AI embedded directly into classification, prioritization, explanation, and next-step recommendations.
+My recommendation for phase order
+Have the developer do it in this order:
+clean up current inspection page layout
+structure every finding into proper fields
+add AI classification and rationale
+add reviewer override workflow
+add prioritization and filters
+add inspection summary and recurring item comparison
+add follow-up actions and activity logging

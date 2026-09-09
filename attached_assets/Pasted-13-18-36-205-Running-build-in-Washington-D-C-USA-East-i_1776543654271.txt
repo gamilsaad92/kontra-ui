@@ -1,0 +1,56 @@
+13:18:36.205 Running build in Washington, D.C., USA (East) – iad1
+13:18:36.206 Build machine configuration: 2 cores, 8 GB
+13:18:36.360 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: d967981)
+13:18:37.009 Warning: Failed to fetch one or more git submodules
+13:18:37.011 Cloning completed: 650.000ms
+13:18:37.308 Restored build cache from previous deployment (7oqsBKuQTDX3Bmaiq8ssbRYD6hfW)
+13:18:37.510 Running "vercel build"
+13:18:38.199 Vercel CLI 51.6.1
+13:18:38.816 Installing dependencies...
+13:20:09.500 
+13:20:09.500 changed 5 packages in 2m
+13:20:09.501 
+13:20:09.501 213 packages are looking for funding
+13:20:09.501   run `npm fund` for details
+13:20:09.704 
+13:20:09.704 > kontra-ui@1.0.0 build
+13:20:09.704 > vite build
+13:20:09.704 
+13:20:09.977 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+13:20:10.058 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+13:20:10.118 transforming...
+13:20:12.224 [32m✓[39m 52 modules transformed.
+13:20:12.231 [31mx[39m Build failed in 2.15s
+13:20:12.232 [31merror during build:
+13:20:12.232 [31m[vite:esbuild] Transform failed with 2 errors:
+13:20:12.233 /vercel/path0/ui/src/portals/borrower/BorrowerPortal.tsx:443:11: ERROR: The character "}" is not valid inside a JSX element
+13:20:12.233 /vercel/path0/ui/src/portals/borrower/BorrowerPortal.tsx:728:20: ERROR: Unterminated regular expression[31m
+13:20:12.233 file: [36m/vercel/path0/ui/src/portals/borrower/BorrowerPortal.tsx:443:11[31m
+13:20:12.233 [33m
+13:20:12.233 [33mThe character "}" is not valid inside a JSX element[33m
+13:20:12.233 441|                </div>
+13:20:12.233 442|              </div>
+13:20:12.233 443|            )}
+13:20:12.233    |             ^
+13:20:12.233 444|  
+13:20:12.233 445|            {/* ── DOCUMENTS ── */}
+13:20:12.233 
+13:20:12.233 [33mUnterminated regular expression[33m
+13:20:12.233 726|  
+13:20:12.233 727|          </div>
+13:20:12.233 728|                </div>
+13:20:12.234    |                      ^
+13:20:12.234 729|        </main>
+13:20:12.234 730|      </div>
+13:20:12.234 [31m
+13:20:12.234     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+13:20:12.234     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+13:20:12.234     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+13:20:12.234     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+13:20:12.235     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+13:20:12.235     at Socket.emit (node:events:519:28)
+13:20:12.235     at addChunk (node:internal/streams/readable:561:12)
+13:20:12.235     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+13:20:12.235     at Readable.push (node:internal/streams/readable:392:5)
+13:20:12.235     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+13:20:12.257 Error: Command "npm run build" exited with 1

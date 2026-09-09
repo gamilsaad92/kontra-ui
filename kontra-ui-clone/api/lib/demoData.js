@@ -11,7 +11,7 @@ const PROPERTY = {
   address: '1425 Brickell Ave, Miami, FL 33131',
   deal_amount: '14000000',
   first_name: 'Demo',
-  customer_email: 'demo@kontraplatform.com',
+  customer_email: 'hello@kontraplatform.com',
   workflow_pack_id: 'cre_acquisition',
   deal_stage: 'due_diligence',
   activated_at: '2025-01-15T10:00:00.000Z',

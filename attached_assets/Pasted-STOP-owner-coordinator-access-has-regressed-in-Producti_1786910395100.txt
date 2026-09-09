@@ -1,0 +1,35 @@
+STOP — owner/coordinator access has regressed in Production. Fix only this regression.
+I created the room as the owner/coordinator. When I subsequently reopen/reload the same room, Kontra renders:
+You've been invited · Deal Coordinator
+Role-scoped access
+and shows the Participant Workspace with 0 of 0 uploaded.
+This is incorrect.
+The room creator/owner must always resolve to the full Coordinator workspace.
+We previously fixed this by making valid owner authentication take precedence over participant/invite sessions. Determine why that behavior has regressed in the currently deployed source.
+Do not redesign authentication. Do not change checklist assignments, participant-role mappings, Transaction Record logic, lifecycle, settlement, or UI behavior.
+Specifically audit:
+getRoomAccessContext() and all owner/participant precedence logic in the currently deployed source.
+Compare the current implementation against the previously validated owner-precedence implementation.
+Check whether the GitHub source-restoration commits accidentally restored an older DealRoomPage.jsx, API access resolver, or related owner-session logic.
+Check whether reopening from My Deal Rooms, direct room URL, and browser refresh resolve access differently.
+A valid owner credential must always win over any stale participant/invite session for the same room.
+Do not solve this by deleting participant sessions or special-casing Deal Coordinator in the frontend. Resolve identity correctly at the shared authorization/access-context layer.
+Add/retain regression coverage for:
+owner only → owner
+participant only → participant role
+valid owner + stale participant session → owner
+owner refresh → owner
+My Deal Rooms → Open Room → owner
+direct owner room URL → owner
+Then perform one fresh-room acceptance:
+Create room → upload documents → invite participant → return to My Deal Rooms → Open Room → refresh.
+At both re-entry and refresh, verify:
+no You've been invited banner
+no Role-scoped access
+full Coordinator Overview
+full Documents checklist
+full People controls
+existing uploads remain visible
+Transaction Record/progress remains intact
+Do not deploy yet.
+First report the exact root cause, files changed, test results, and whether this regression came from the recent source restoration/deployment.

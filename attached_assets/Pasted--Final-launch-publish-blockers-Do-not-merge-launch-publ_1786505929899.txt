@@ -1,0 +1,111 @@
+# Final launch-publish blockers
+
+Do not merge `launch-publish`, modify `main`, or deploy Production yet.
+
+The matched full-stack validation has now passed the AI extraction, proposed/confirmed fact, readiness, and custom-pack classifier paths. Two blockers remain.
+
+## 1. Restore the task-engine persistence schema
+
+Staging is missing:
+
+`public.deal_room_tasks`
+
+First determine whether:
+
+* this table exists in Production but is missing from staging,
+* there is an existing migration that was never applied,
+* or the table/migration was never committed.
+
+Do not create a new task system.
+
+Restore the schema expected by the existing task engine using the canonical project migration path.
+
+Then verify:
+
+* task generation persists successfully,
+* task listing returns generated tasks,
+* completing an action removes or updates the corresponding task,
+* no duplicate tasks are created on refresh/regeneration,
+* task behavior remains scoped to the correct workspace.
+
+After the schema fix, rerun Next Actions validation for:
+
+* missing required document,
+* missing participant,
+* missing critical fact,
+* lifecycle-relevant blocker.
+
+Confirm prioritization and state updates end-to-end.
+
+## 2. Canonicalize AI-extracted Transaction Record keys
+
+Extraction currently produces valid facts under noncanonical keys such as:
+
+`asset_identity.legal_name`
+
+`transaction.target_closing_date`
+
+These do not map to the required readiness schema and therefore valid extracted data can be ignored by Transaction Readiness.
+
+Do not solve this by adding duplicate required fields.
+
+Create or use one canonical field-mapping layer between AI extraction output and the Transaction Record schema.
+
+Requirements:
+
+* equivalent concepts resolve to one canonical Transaction Record key,
+* no duplicate facts are created under aliases,
+* provenance is preserved,
+* extracted status is preserved,
+* confirmed status is preserved,
+* required-field readiness uses the canonical key only.
+
+Examples:
+
+`transaction.target_closing_date` → canonical closing-date field
+
+`asset_identity.legal_name` → canonical asset/company legal-name field
+
+The canonical mapping must be workflow-pack aware where necessary, but the same real-world fact must not exist simultaneously under multiple aliases.
+
+## 3. Regression test after both fixes
+
+Using the existing matched `launch-publish` frontend + staging API environment, rerun only the affected acceptance path:
+
+1. Create fresh workspace.
+2. Upload representative NDA and LOI.
+3. Confirm AI extraction completes.
+4. Confirm extracted facts map to canonical Transaction Record fields.
+5. Verify no duplicate alias fields exist.
+6. Confirm selected required facts.
+7. Verify Transaction Readiness increases correctly.
+8. Verify task generation persists.
+9. Verify top Next Actions reflect current lifecycle, missing documents, participants, and critical facts.
+10. Complete one action and verify it disappears or changes.
+11. Refresh and confirm tasks do not duplicate.
+
+Also run quick smoke checks for:
+
+* Documents visibility
+* People
+* Transaction Details synchronization
+* Settlement readiness
+* Transaction Seal
+
+Do not repeat broad UI redesign work.
+
+## Return only
+
+* `deal_room_tasks` root cause
+* migration/schema fix used
+* canonical key-mapping approach
+* examples of aliases mapped to canonical keys
+* PASS/FAIL for task persistence
+* PASS/FAIL for task prioritization
+* PASS/FAIL for canonical extraction mapping
+* readiness before/after confirmation
+* Next Actions before/after completing one action
+* any regression
+* final recommendation: `READY TO MERGE` or `NOT READY TO MERGE`
+
+Do not merge automatically after the tests.

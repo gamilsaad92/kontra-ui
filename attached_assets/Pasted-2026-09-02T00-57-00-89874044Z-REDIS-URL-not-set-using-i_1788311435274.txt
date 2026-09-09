@@ -1,0 +1,50 @@
+2026-09-02T00:57:00.89874044Z REDIS_URL not set, using in-memory cache only
+2026-09-02T00:57:02.390050073Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-09-02T00:57:02.390085995Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-09-02T00:57:02.390124527Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-09-02T00:57:06.497969621Z [localAuth] JWT_SECRET is not set — auth will fail. Set JWT_SECRET in environment.
+2026-09-02T00:57:08.390426694Z node:internal/modules/cjs/loader:1228
+2026-09-02T00:57:08.390447015Z   throw err;
+2026-09-02T00:57:08.390451296Z   ^
+2026-09-02T00:57:08.390454666Z 
+2026-09-02T00:57:08.390460506Z Error: Cannot find module '../../../ai/lib/workflowOrchestrator'
+2026-09-02T00:57:08.390463886Z Require stack:
+2026-09-02T00:57:08.390467296Z - /opt/render/project/src/api/src/routes/workflows.js
+2026-09-02T00:57:08.390470746Z - /opt/render/project/src/api/index.js
+2026-09-02T00:57:08.390475267Z     at Function._resolveFilename (node:internal/modules/cjs/loader:1225:15)
+2026-09-02T00:57:08.390478677Z     at Function._load (node:internal/modules/cjs/loader:1055:27)
+2026-09-02T00:57:08.390482087Z     at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+2026-09-02T00:57:08.390485407Z     at wrapModuleLoad (node:internal/modules/cjs/loader:220:24)
+2026-09-02T00:57:08.390488578Z     at Module.require (node:internal/modules/cjs/loader:1311:12)
+2026-09-02T00:57:08.390492018Z     at require (node:internal/modules/helpers:136:16)
+2026-09-02T00:57:08.390496888Z     at Object.<anonymous> (/opt/render/project/src/api/src/routes/workflows.js:39:43)
+2026-09-02T00:57:08.390500848Z     at Module._compile (node:internal/modules/cjs/loader:1554:14)
+2026-09-02T00:57:08.390504448Z     at Object..js (node:internal/modules/cjs/loader:1706:10)
+2026-09-02T00:57:08.390508289Z     at Module.load (node:internal/modules/cjs/loader:1289:32) {
+2026-09-02T00:57:08.390512629Z   code: 'MODULE_NOT_FOUND',
+2026-09-02T00:57:08.390517319Z   requireStack: [
+2026-09-02T00:57:08.390521079Z     '/opt/render/project/src/api/src/routes/workflows.js',
+2026-09-02T00:57:08.390524809Z     '/opt/render/project/src/api/index.js'
+2026-09-02T00:57:08.39052833Z   ]
+2026-09-02T00:57:08.39053201Z }
+2026-09-02T00:57:08.39053526Z 
+2026-09-02T00:57:08.39053873Z Node.js v22.14.0
+2026-09-02T00:57:13.759162459Z ==> Exited with status 1
+2026-09-02T00:57:13.762072259Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-09-02T00:57:18.740968289Z ==> Running 'node index.js'
+2026-09-02T00:57:24.533591011Z ==> Running 'node index.js'
+2026-09-02T00:57:29.838135321Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-09-02T00:57:30.856270598Z REDIS_URL not set, using in-memory cache only
+2026-09-02T00:57:32.654024929Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-09-02T00:57:32.654045179Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-09-02T00:57:32.65406076Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-09-02T00:57:37.564107262Z [localAuth] JWT_SECRET is not set — auth will fail. Set JWT_SECRET in environment.
+2026-09-02T00:57:39.831405283Z [tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. Routes that depend on this module will return 503. Use POST /api/tokenization/assess for production tokenization readiness.
+2026-09-02T00:57:40.33368894Z Kontra API listening on port 10000
+2026-09-02T00:57:41.633762004Z [score-assets] analyzed 0 records
+2026-09-02T00:57:41.834483284Z [startup] workflow_pack_id column ensure skipped: password authentication failed for user "postgres"
+2026-09-02T00:57:42.632033429Z [score-loans] analyzed 0 records
+2026-09-02T00:57:42.864503607Z [score-troubled] analyzed 0 records
+2026-09-02T00:59:56.484597701Z [REQ] POST /api/track
+2026-09-02T00:59:56.68777311Z [REQ] POST /api/track
+2026-09-02T00:59:59.739971692Z [REQ] POST /api/track

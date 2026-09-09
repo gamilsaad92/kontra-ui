@@ -1,0 +1,41 @@
+efine Summary logic only — do not redesign the Transaction Record.
+The current implementation is correct, but Summary should not simply display every workflow_required field.
+
+Summary should be a curated operational snapshot of the transaction.
+
+Rules for Summary:
+
+Display each canonical concept only once. For example, Purchase Price should appear once in Summary even if it is surfaced in multiple Full Record sections.
+Prioritize approximately 15–25 fields that tell a user what the transaction is, who is involved, its economics, major diligence status, and readiness to proceed.
+Always surface unresolved exceptions even if they are not normally part of Summary: conflicts, changed-source values, rejected confirmations, overdue requests, missing critical information, and blocked approvals.
+Workflow required does not automatically mean “show in Summary.” All workflow-required fields remain visible in Full Record.
+Keep the existing seven sections, but hide a section from Summary if it has nothing materially useful to show.
+Preserve all current Upload doc / Request / Enter / N/A, source guidance, provenance, confirmation history, dependency logic, and Full Record behavior.
+For the current Marriott Hotel Acquisition example, Summary should roughly contain:
+Transaction: transaction type, current stage, target closing date, jurisdiction, purchase price, earnest money deposit.
+
+Asset / Company: property name, property address, property type, current owner.
+
+Parties: buyer, seller, legal counsel, title/escrow company.
+
+Ownership: proposed acquiring entity, material liens/encumbrances.
+
+Financial: NOI plus any material financing information once applicable. Do not repeat purchase price.
+
+Legal: purchase agreement status, title status, environmental status, material litigation, material lease/lien encumbrances.
+
+Approvals: only material approvals that are actually applicable to this transaction.
+
+Full Record remains the authoritative complete transaction schema.
+
+And there's one UX detail I would definitely change: “62 awaiting information” should not be the prominent number when Summary is selected.
+That makes an empty new transaction feel like it already has 62 problems.
+
+In Summary mode, I'd show something more like:
+
+18 key items awaiting information · 0 extracted · 0 confirmed
+62 fields in full record
+Then when the user clicks Full Record, show:
+62 awaiting information · 0 extracted · 0 confirmed
+That tiny distinction matters. 62 fields is evidence that Kontra understands the transaction deeply; it shouldn't feel like 62 chores the user has just been assigned.
+At this point, I would make that refinement and then stop working on the structure of this page. The architecture itself now looks right. The next thing worth testing is what happens when you upload an actual Purchase Agreement, title report, P&L, etc. If Kontra intelligently fills this record, cites where every value came from, identifies conflicts, and reduces the outstanding information automatically, that's the experience that will prove whether this feature is genuinely powerful.

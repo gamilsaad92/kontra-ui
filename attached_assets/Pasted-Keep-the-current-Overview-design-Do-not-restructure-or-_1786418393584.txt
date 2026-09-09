@@ -1,0 +1,50 @@
+Keep the current Overview design. Do not restructure or visually redesign it.
+The new Next Actions implementation is approved conceptually, but fix the underlying action semantics before proceeding.
+1. Fix coordinator resolution globally
+Next Actions currently generates:
+Invite Deal Coordinator
+while People correctly identifies Deal Coordinator as:
+Workspace coordinator · Active · Owner
+This means coordinator satisfaction is being resolved differently between ParticipantsPanel and the action-generation logic.
+Do not patch this by filtering the string “Deal Coordinator.”
+Create/reuse one semantic helper for determining whether a workspace role is already satisfied by the workspace owner/coordinator. Participant rendering, invite counts, Transaction Record party state, and Next Actions should all use the same semantic resolution.
+Workspace ownership/management semantics take precedence over invite records and role-name heuristics.
+Once the owner satisfies the coordinator role:
+Never generate Invite Deal Coordinator
+Never mark coordinator as missing
+Never include coordinator in external participant denominator
+Never expose an Invite action for coordinator
+Identity & Parties should not treat the coordinator as an unfilled external participant
+In this workspace, the appropriate missing-party action should instead be the actual external role, such as:
+Invite Buyer Representative
+if Buyer Representative is the highest-priority missing participant.
+2. Make action verbs match the actual operation
+Currently the UI can display:
+Upload Letter of Intent → button Request
+This is semantically inconsistent.
+Generate the action label based on what the current user can actually do:
+If requesting from another participant: Request Letter of Intent → Request
+If current coordinator should provide it: Upload Letter of Intent → Upload
+Missing participant: Invite Buyer Representative → Open People or Invite
+Missing record information: Confirm [field] → open relevant Transaction Record category
+Do not change the Documents workflow itself.
+3. Verify Transaction Readiness calculation
+UI currently displays:
+8%
+0 of 30 required fields confirmed
+Determine exactly why readiness is 8% when zero required fields are confirmed.
+If readiness intentionally includes proposed/extracted fields, document state, or another signal, make the displayed explanation consistent with that calculation.
+If Transaction Readiness is intended to represent confirmation of the structured Transaction Record, calculate the percentage primarily from the same required-field denominator shown underneath it.
+Do not introduce another readiness model.
+4. Preserve everything else
+Do not change:
+Overview hierarchy
+Transaction Lifecycle
+Transaction Record layout
+category missing summaries
+three-action Overview limit
+View all actions
+Documents UI
+People UI
+Owner/Coordinator presentation
+After fixing this, test a single workspace end-to-end and verify that the same underlying state is reflected consistently across Overview → Transaction Record → Documents → People.

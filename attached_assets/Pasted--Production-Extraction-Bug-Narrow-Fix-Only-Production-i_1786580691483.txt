@@ -1,0 +1,140 @@
+# Production Extraction Bug — Narrow Fix Only
+
+Production is live on the approved `main` commit.
+
+Do not roll back yet.
+
+Do not create a branch.
+
+Do not modify unrelated features.
+
+Do not rerun the full smoke suite until this specific failure is understood.
+
+## Failure
+
+Production behavior:
+
+* Workspace opens
+* Transaction Details synchronize correctly
+* Readiness updates from owner-entered confirmed fields
+* Document upload succeeds
+* Deal Owner sees uploaded document
+* AI analysis completes
+* But no extracted Transaction Record facts are available afterward
+
+This means the failure is somewhere between:
+
+`AI analysis completion`
+→ `Transaction Record extraction`
+→ `canonicalization`
+→ `persistence`
+→ `Transaction Record retrieval`
+
+## Debug only this path
+
+Using one disposable Production workspace and one uploaded LOI, trace the exact data flow.
+
+### 1. Confirm extraction job execution
+
+Check Production logs for the uploaded document and confirm:
+
+* extraction function was invoked
+* OpenAI extraction call succeeded
+* raw extracted facts were returned
+* no 429 or model/API failure occurred
+
+Return the extracted fact count and sample keys before canonicalization.
+
+### 2. Confirm canonicalization
+
+For the same extraction result, log/inspect:
+
+* raw key
+* canonical key
+* workflow pack
+* status
+* provenance/source document
+
+Confirm canonicalization does not discard all facts.
+
+### 3. Confirm persistence
+
+Inspect `transaction_record_fields` directly for the disposable workspace after extraction.
+
+Report:
+
+* number of rows before extraction
+* number after extraction
+* keys inserted/updated
+* statuses
+* `source_doc_id`
+* provenance
+* any DB error returned during upsert
+
+If extraction produced facts but zero rows were written, identify the exact failing write.
+
+### 4. Confirm retrieval
+
+If rows exist in the database but do not appear in the room, test the Transaction Record/readiness API directly.
+
+Determine whether the problem is:
+
+* write failure
+* read/filter failure
+* wrong workspace identifier
+* wrong field category
+* wrong canonical key
+* status filtering
+* stale cache
+* asynchronous timing/race
+* another specific cause
+
+### 5. Fix only the identified defect
+
+Apply the smallest possible fix directly to `main`.
+
+Do not change:
+
+* readiness formula
+* UI design
+* workflow packs
+* People
+* Documents layout
+* settlement
+* task engine
+* database schema unless the defect truly requires an existing missing schema object
+
+If schema is implicated, stop and report before creating a new migration.
+
+## Verification after fix
+
+Repeat only:
+
+1. Upload one LOI
+2. AI analysis completes
+3. Extracted Transaction Record facts appear
+4. Facts have canonical keys
+5. Facts have `extracted`/unconfirmed status
+6. Provenance points to the uploaded LOI
+7. Confirm one required fact
+8. Readiness increases accordingly
+
+If all eight pass, then continue the remaining Production smoke items:
+
+* People
+* Next Actions
+* Settlement
+* Transaction Seal
+
+## Return
+
+* root cause
+* exact file/function changed
+* whether data was failing at extraction, canonicalization, persistence, or retrieval
+* before/after DB row counts
+* sample canonical extracted facts
+* readiness before/after confirmation
+* PASS/FAIL
+* final status: `PRODUCTION HEALTHY` or `PRODUCTION ISSUE`
+
+Do not delete `launch-publish` yet.

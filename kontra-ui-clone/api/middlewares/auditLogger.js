@@ -1,22 +1,5 @@
 const { logAuditEntry } = require('../auditLogger');
 
-const REDACT_FIELDS = ['password', 'token', 'secret'];
-
-function cloneAndRedact(value) {
-  if (!value || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(cloneAndRedact);
-  return Object.entries(value).reduce((acc, [key, val]) => {
-    if (REDACT_FIELDS.some((field) => key.toLowerCase().includes(field))) {
-      acc[key] = '***redacted***';
-    } else if (typeof val === 'object' && val !== null) {
-      acc[key] = cloneAndRedact(val);
-    } else {
-      acc[key] = val;
-    }
-    return acc;
-  }, {});
-}
-
 module.exports = function auditLogger(req, res, next) {
   const started = Date.now();
   res.on('finish', () => {
@@ -24,14 +7,18 @@ module.exports = function auditLogger(req, res, next) {
       const durationMs = Date.now() - started;
       const entry = {
         method: req.method,
-        url: req.originalUrl,
+        url: `${req.baseUrl || ''}${req.path || ''}`,
         status: res.statusCode,
         durationMs,
         userId: req.user ? req.user.id : null,
-        organizationId: req.organizationId || null,
-        body: cloneAndRedact(req.body || {}),
-        query: cloneAndRedact(req.query || {}),
-        ip: req.ip,
+        organizationId: req.organizationId || req.headers['x-organization-id'] || null,
+        roomId: req.params?.propertyId || req.params?.roomId || null,
+        requestId: req.headers['x-request-id'] || null,
+        inputBytes: Number(req.headers['content-length']) || 0,
+        contentType: req.headers['content-type'] || null,
+        bodyKeyCount: Object.keys(req.body || {}).length,
+        queryKeyCount: Object.keys(req.query || {}).length,
+        fileCount: req.file ? 1 : Array.isArray(req.files) ? req.files.length : 0,
       };
       logAuditEntry(entry);
     } catch (err) {

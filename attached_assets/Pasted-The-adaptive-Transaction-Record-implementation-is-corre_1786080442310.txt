@@ -1,0 +1,20 @@
+The adaptive Transaction Record implementation is correct. Keep the current architecture and UI. Do not replace it with another redesign.
+Make the following refinements:
+1. Make Summary the default view.
+Summary should show only the most decision-relevant populated, missing-required, changed-source, and exception fields. Full Record remains the complete schema.
+2. Use canonical fields.
+Do not create independent duplicate values when the same concept appears in multiple sections/views. For example, Purchase Price should have one canonical underlying value even if surfaced under Transaction and Financial.
+3. Change the Required badge to Workflow required.
+Add tooltip/disclosure: “Workflow required means this item is configured as necessary to complete this workspace workflow. It does not mean the item is legally, regulatorily, or contractually required.”
+4. Separate AI-suggested relevance from workflow requirements.
+AI-generated transaction-specific fields may initially be marked Suggested or Expected, not automatically Workflow required. Only workflow-pack rules or coordinator action should make an item workflow-required.
+5. Add dependency logic.
+Fields should conditionally activate/deactivate based on confirmed transaction facts. Example: if financing is N/A, lender-related fields and approvals should become N/A or non-applicable rather than remain outstanding.
+6. Preserve Expected in: source guidance and the existing Upload doc / Request / Enter / N/A actions.
+7. Extraction must populate canonical fields, not create duplicate records.
+One uploaded Purchase Agreement may populate multiple Transaction Record fields while each field retains its own source document/version/page provenance.
+8. Do not add more fields merely to increase completeness.
+The schema should be transaction-specific and useful, not exhaustive for its own sake.
+Keep the existing seven-category architecture, confirmation/source-change model, provenance, Summary/Full Record views, and adaptive workflow-pack generation.
+The bigger picture is that I would stop redesigning this page after those changes. It's crossed the threshold from "generic database" into something that actually feels like a transaction operating layer.
+The next payoff won't come from making the Transaction Record prettier. It'll come from connecting Documents → extraction → Record → missing information → participant requests → approvals → readiness into one continuous loop. That's where Kontra's differentiation can become much stronger.

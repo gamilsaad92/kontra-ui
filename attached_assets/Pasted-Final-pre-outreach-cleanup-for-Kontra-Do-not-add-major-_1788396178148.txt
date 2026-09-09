@@ -1,0 +1,19 @@
+Final pre-outreach cleanup for Kontra. Do not add major new features or redesign the product. The goal is to stabilize and polish the current product for an institutional demo.
+Please audit the current production flow end-to-end and address the remaining known issues:
+AI-generated/custom transactions: add “Other” as a valid Transaction Type so workflows such as hazard loss are not forced into an unrelated category.
+Room creation completion copy: replace “Open My Workspace” / “Open your workspace” with “Open My Room” where the destination is the generated deal room.
+Transaction Record extraction: check for duplicate/overlapping canonical fields such as Borrower appearing twice or Property / Property Address representing the same fact. Do not merge legitimately different fields.
+Kontra AI grounding: when asked what is missing or blocking a transaction, use the live room state. Do not report uploaded documents as missing, and do not invent required participant roles that are not actually required by that room.
+Next Actions: preserve the working exact-field/document deep links and automatic clearing after an action is completed. Verify no regression.
+Semantic reconciliation: make sure different financial concepts are not treated as discrepancies merely because their amounts differ—for example, policy/property damage limit vs. repair amount/reimbursement amount.
+Verified Asset / Digital Asset Readiness: preserve the implementation already completed. Do not expand into wallets, token issuance, custody, KYC, trading, smart contracts, or provider integrations.
+Mobile + desktop demo polish: quickly inspect the landing page, room creation, room overview, Transaction Record, Documents, People, Next Actions, Kontra AI, servicing/operations views, and Verified Asset/Readiness for broken buttons, clipping, placeholder/demo language, dead links, obvious layout problems, or inconsistent terminology.
+Regression: run the relevant existing tests after the cleanup. Do not break the Apollo clean baseline room or the working Cedar Grove hazard-loss flows.
+Before changing anything beyond these items, tell me if you find something that would materially block an institutional demo.
+When finished, give me a concise report with:
+Fixed
+Still open
+Demo blockers
+Tests passed/failed
+Anything you recommend fixing before Apollo outreach only
+Do not turn this into a new development phase. The objective is demo readiness and stability.

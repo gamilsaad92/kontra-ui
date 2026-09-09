@@ -1,0 +1,458 @@
+DO NOT REDESIGN THE DEAL ROOM AGAIN.
+
+The current navigation and layout are now accepted:
+
+Overview
+Documents
+People
+Settings through gear icon
+Kontra AI floating assistant
+
+Keep Digital Asset Readiness on Overview.
+
+The remaining problem is STATE LOGIC and PRODUCT INTELLIGENCE.
+
+==================================================
+FIX #1 — EMPTY ROOM STATE IS CURRENTLY WRONG
+==================================================
+
+Right now the Overview says:
+
+"Nothing urgent right now"
+"Nothing requires your attention right now."
+
+This is incorrect when:
+
+- 0 documents are uploaded
+- 0 participants are invited
+- transaction value is not recorded
+- asset/company is not recorded
+- buyer/primary party is not recorded
+
+An empty room has obvious next actions.
+
+Replace this state.
+
+IF the transaction has not meaningfully started:
+
+WHAT NEEDS ATTENTION
+
+Start this transaction
+
+"Add the first transaction documents and participants so Kontra can begin organizing the deal."
+
+Show:
+
+[Upload first document]
+[Invite participant]
+
+Then underneath, optionally show up to 3 starter tasks:
+
+• Upload a core transaction document
+• Invite the primary transaction parties
+• Confirm the basic transaction information
+
+DO NOT DISPLAY:
+
+"Nothing urgent right now"
+
+until meaningful transaction activity exists.
+
+==================================================
+FIX #2 — DEFINE WHEN "NOTHING REQUIRES ATTENTION" IS ALLOWED
+==================================================
+
+Only show:
+
+"Nothing requires your attention right now."
+
+when ALL of the following are true:
+
+- transaction has meaningful activity
+- at least one core document exists
+- there are no currently actionable missing items
+- there are no outstanding participant requests
+- there are no AI findings requiring review
+- there are no conflicts or exceptions
+- there are no overdue/current-stage blockers
+
+This message means:
+
+"The transaction is currently moving normally."
+
+It must NOT mean:
+
+"The room is empty."
+
+==================================================
+FIX #3 — TRANSACTION SNAPSHOT SHOULD POPULATE FROM REAL DATA
+==================================================
+
+Keep the snapshot exactly where it is.
+
+But make sure these values populate dynamically from:
+
+1. workspace creation metadata
+2. extracted document facts
+3. confirmed participant/user input
+
+Fields:
+
+Transaction Value
+Asset / Company
+Buyer / Primary Party
+
+Do not leave these "Not recorded" if Kontra already has that information elsewhere.
+
+Example:
+
+If room creation says:
+"Acquiring Marriott Hotel"
+
+and an uploaded LOI identifies:
+Marriott Downtown Austin
+Buyer: Example Capital
+Purchase price: $84.5M
+
+then Overview should become:
+
+Transaction Value
+$84.5M
+
+Asset / Company
+Marriott Downtown Austin
+
+Buyer
+Example Capital
+
+Every displayed value must keep source/provenance internally.
+
+==================================================
+FIX #4 — DIGITAL ASSET READINESS IS NOW IN THE RIGHT PLACE
+==================================================
+
+KEEP this section.
+
+Do not move it.
+Do not create a separate Tokenization tab yet.
+
+Current placement directly under What Needs Attention is correct.
+
+But improve the concept slightly.
+
+Header:
+
+DIGITAL ASSET READINESS
+
+Building from your transaction activity
+
+Description:
+
+"Kontra organizes transaction information as documents are reviewed, participants respond, and facts are confirmed so the transaction record can support future digital-asset preparation."
+
+Keep:
+
+Identity & Parties
+Asset / Company
+Transaction Terms
+Financial Information
+Legal & Diligence
+
+Possible states:
+
+Not started
+Building
+Needs information
+Ready for review
+
+Do NOT use:
+
+Tokenization approved
+Eligible for tokenization
+Issuance approved
+
+==================================================
+FIX #5 — READINESS MUST RESPOND TO ACTUAL FACTS
+==================================================
+
+Do not calculate readiness based only on documents uploaded.
+
+Example:
+
+Uploading an LOI could populate:
+
+Identity & Parties → Building
+Asset / Company → Building
+Transaction Terms → Building
+
+But Financial Information could remain:
+
+Not started
+
+And Legal & Diligence could remain:
+
+Needs information
+
+Readiness must derive from structured facts.
+
+Document uploaded ≠ readiness complete.
+
+==================================================
+FIX #6 — MAKE EACH READINESS ROW EXPLAINABLE
+==================================================
+
+The arrows currently shown beside readiness categories should work.
+
+When expanded:
+
+Identity & Parties
+Building
+
+Captured:
+✓ Buyer identified
+✓ Seller identified
+
+Still needed:
+○ Buyer legal entity confirmation
+○ Seller legal entity confirmation
+
+Sources:
+Letter of Intent · Page 2
+Purchase Agreement · Page 4
+
+Do the same for every category.
+
+This is important because users must understand what Kontra is building.
+
+==================================================
+FIX #7 — DIGITAL-ASSET HANDOFF
+==================================================
+
+Do NOT add a handoff button yet for an empty transaction.
+
+Once the transaction reaches meaningful preparation completeness, then show a CTA inside Digital Asset Readiness:
+
+[Prepare digital asset package]
+
+or
+
+[Begin digital-asset preparation]
+
+This should eventually create a structured handoff package for an external:
+
+legal provider
+compliance provider
+tokenization / issuance platform
+custody provider
+settlement provider
+
+Kontra is PREPARING and ORGANIZING the record.
+
+Kontra is not claiming to legally approve token issuance.
+
+==================================================
+FIX #8 — DOCUMENTS ARE GOOD. STOP CHANGING THEM.
+==================================================
+
+Keep the current Documents interface.
+
+Current structure is accepted:
+
+Due Diligence Checklist
+Core Documents
+Additional Documents
+Required / Optional
+Missing
+Responsible party
+Upload
+Request
+Add document
+Browse suggested items
+Restore template items
+
+Do not redesign this again.
+
+Important:
+
+The template must remain stable.
+
+Do not randomly change from 9 documents to 11 documents to 12 documents between generated rooms unless the actual transaction template changes.
+
+The same transaction type + same template must generate deterministic requirements.
+
+==================================================
+FIX #9 — PEOPLE IS GOOD. STOP CHANGING IT.
+==================================================
+
+Keep the current People interface.
+
+Do not redesign it.
+
+But make participant roles deterministic.
+
+Do not alternate randomly between:
+
+Buyer
+Buyer Representative
+Deal Owner
+
+or:
+
+Legal Team
+Legal Advisor
+
+Use the role vocabulary defined by the transaction template.
+
+For this Marriott acquisition template use one consistent model.
+
+Example:
+
+Deal Coordinator
+Buyer Representative
+Seller Representative
+Legal Advisor
+Financial Advisor
+
+If another role is genuinely required by the workflow, add it intentionally.
+
+==================================================
+FIX #10 — KONTRA AI SHOULD BECOME THE GUIDANCE LAYER
+==================================================
+
+The drawer UI is now correct.
+
+Keep it.
+
+Do not create a separate AI tab.
+
+Now make the assistant actually reason from room state.
+
+For this exact empty room:
+
+User asks:
+
+"What should I do next?"
+
+Kontra AI should NOT respond generically.
+
+It should say something like:
+
+"This room has not started yet. No core documents have been uploaded and none of the five transaction roles have been invited. I recommend starting with the Letter of Intent because it can establish the parties, asset and preliminary terms."
+
+Actions:
+
+[Upload Letter of Intent]
+[Invite Buyer Representative]
+
+Then possibly:
+
+"After the LOI is analyzed, I can tell you which facts were captured and what remains missing."
+
+==================================================
+FIX #11 — AI MUST UNDERSTAND DIGITAL-ASSET READINESS
+==================================================
+
+If user asks:
+
+"How close is this to tokenization?"
+
+For the current empty room:
+
+Do NOT answer with a percentage.
+
+Answer:
+
+"It's still at the preparation starting point. Kontra does not yet have enough transaction information to assemble a digital-asset handoff package."
+
+Then explain:
+
+Not started:
+• Identity & Parties
+• Asset / Company
+• Transaction Terms
+• Financial Information
+• Legal & Diligence
+
+Recommended first step:
+
+"Upload the LOI or Purchase Agreement."
+
+This connects the Deal Room to the tokenization thesis without overwhelming the user.
+
+==================================================
+FIX #12 — AFTER FIRST UPLOAD, EVERYTHING SHOULD REACT
+==================================================
+
+This is the most important acceptance test.
+
+Upload an LOI.
+
+After analysis:
+
+Overview should update.
+Snapshot should populate available facts.
+What Needs Attention should change.
+Digital Asset Readiness should change.
+Kontra AI should understand what changed.
+
+These must all use the SAME underlying transaction state.
+
+Do not implement each panel with separate fake logic.
+
+==================================================
+FINAL ACCEPTANCE TEST
+==================================================
+
+New Marriott acquisition room:
+
+EXPECTED:
+
+Snapshot:
+mostly empty
+
+What Needs Attention:
+"Start this transaction"
+
+CTA:
+Upload first document
+Invite participant
+
+Digital Asset Readiness:
+Not started
+
+Kontra AI:
+explains what should happen first.
+
+THEN upload LOI.
+
+EXPECTED:
+
+Snapshot:
+asset/buyer/value populate if discovered.
+
+What Needs Attention:
+shows new real next actions.
+
+Digital Asset Readiness:
+relevant sections change to Building / Needs information.
+
+Kontra AI:
+can summarize what the LOI added.
+
+THEN upload Purchase Agreement.
+
+If facts conflict:
+
+Kontra must surface the discrepancy.
+
+Do not silently overwrite one value.
+
+This is the behavior we are validating now.
+
+DO NOT perform another broad redesign.
+DO NOT add more tabs.
+DO NOT remove Digital Asset Readiness.
+DO NOT rebuild Documents.
+DO NOT rebuild People.
+
+From this point forward, improve DATA FLOW, STATE LOGIC, EXTRACTION, SOURCE PROVENANCE and AI GUIDANCE.

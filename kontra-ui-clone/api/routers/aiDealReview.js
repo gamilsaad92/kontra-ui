@@ -6,7 +6,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const multer = require('multer');
-const OpenAI = require('openai');
+const { createInstitutionalOpenAIClient, safeAIErrorMetadata } = require('../lib/openaiClient');
 const { supabase } = require('../db');
 const aiRateLimit = require('../middlewares/aiRateLimit');
 const { uploadToStorage, logEvent, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
@@ -22,6 +22,7 @@ const {
 } = require('../lib/documentVersions');
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
+const { renderPdfPagesForVision } = require('../lib/pdfVision');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
@@ -311,48 +312,21 @@ const upload = multer({
   },
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createInstitutionalOpenAIClient();
 
 // Convert PDF to images using pdftoppm, then OCR via GPT-4o Vision
 async function extractPdfViaVision(buffer) {
-  const { execSync } = require('child_process');
-  const fsSync = require('fs');
-  const pathMod = require('path');
-  const os = require('os');
-  const tmpDir = fsSync.mkdtempSync(pathMod.join(os.tmpdir(), 'kontra-pdf-'));
-  const pdfPath = pathMod.join(tmpDir, 'doc.pdf');
-  const imgBase = pathMod.join(tmpDir, 'page');
-  try {
-    fsSync.writeFileSync(pdfPath, buffer);
-    // First try pdftotext (fast, works for text-based PDFs)
-    try {
-      const txt = execSync(`pdftotext "${pdfPath}" -`, { timeout: 10000 }).toString().trim();
-      if (txt.length > 80) {
-        console.log('[pdf] pdftotext extracted', txt.length, 'chars');
-        return txt.slice(0, 15000);
-      }
-    } catch (_) {}
-    // Fall back to image rendering + GPT-4o Vision (works for scanned PDFs)
-    execSync(`pdftoppm -r 150 -png -l 4 "${pdfPath}" "${imgBase}"`, { timeout: 30000 });
-    const pngs = fsSync.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort().slice(0, 4);
-    if (pngs.length === 0) throw new Error('PDF produced no pages');
-    console.log('[pdf] vision pipeline — pages:', pngs.length);
-    const imageContent = pngs.map(f => ({
-      type: 'image_url',
-      image_url: { url: `data:image/png;base64,${fsSync.readFileSync(pathMod.join(tmpDir, f)).toString('base64')}`, detail: 'high' }
-    }));
-    const visionRes = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: [
-        { type: 'text', text: 'Transcribe ALL text from this document exactly as it appears. Include every number, label, line item, percentage, and dollar value. Preserve table structure. Do not summarize — output the complete raw text.' },
-        ...imageContent
-      ]}],
-      max_tokens: 4096,
-    });
-    return visionRes.choices[0]?.message?.content || '';
-  } finally {
-    try { execSync(`rm -rf "${tmpDir}"`); } catch (_) {}
-  }
+  const { images, pageCount } = renderPdfPagesForVision(buffer);
+  console.log('[pdf] vision pipeline — pages:', pageCount);
+  const visionRes = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: 'Transcribe ALL text from this document exactly as it appears. Include every number, label, line item, percentage, and dollar value. Preserve table structure. Do not summarize — output the complete raw text.' },
+      ...images,
+    ]}],
+    max_tokens: 4096,
+  });
+  return visionRes.choices[0]?.message?.content || '';
 }
 
 async function extractTextFromFile(buffer, mimetype = '', filename = '') {
@@ -449,7 +423,7 @@ Inspection report text:\n${text}` }
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[analyze-inspection]', err.message);
+    console.error('[analyze-inspection]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
@@ -475,8 +449,8 @@ Property: Type=${propertyType||'Unknown'}, Occupancy=${occupancy||'?'}%, NOI=$${
     const result = JSON.parse(completion.choices[0].message.content);
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[score-property]', err.message);
-    res.status(500).json({ error: 'Scoring failed', message: err.message });
+    console.error('[score-property]', safeAIErrorMetadata(err));
+    res.status(500).json({ error: 'Scoring failed' });
   }
 });
 
@@ -562,8 +536,8 @@ ${submissionsBlock}`;
 
     res.json({ success: true, ...payload });
   } catch (err) {
-    console.error('[next-actions]', err.message);
-    res.status(500).json({ error: 'AI next-action scoring failed', message: err.message });
+    console.error('[next-actions]', safeAIErrorMetadata(err));
+    res.status(500).json({ error: 'AI next-action scoring failed' });
   }
 });
 
@@ -606,12 +580,12 @@ Policy text:\n${text}` }
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[review-insurance]', err.message);
+    console.error('[review-insurance]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Review failed', message: err.message });
+    res.status(500).json({ error: 'Review failed' });
   }
 });
 
@@ -654,12 +628,12 @@ Financial document:\n${text}` }
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[review-financials]', err.message);
+    console.error('[review-financials]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Review failed', message: err.message });
+    res.status(500).json({ error: 'Review failed' });
   }
 });
 
@@ -701,12 +675,12 @@ Legal document:\n${text}` }
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[review-legal]', err.message);
+    console.error('[review-legal]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Review failed', message: err.message });
+    res.status(500).json({ error: 'Review failed' });
   }
 });
 
@@ -747,12 +721,12 @@ Document:\n${text}` }
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[review-brand-standards]', err.message);
+    console.error('[review-brand-standards]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Review failed', message: err.message });
+    res.status(500).json({ error: 'Review failed' });
   }
 });
 
@@ -795,7 +769,6 @@ router.post('/analyze-document', aiRateLimit, upload.single('file'), async (req,
         section,
         extractor: isDocx ? 'docx:word/document.xml' : 'content-type/extension',
         text_length: text.length,
-        excerpt: safeExtractionExcerpt(text),
       }),
     );
     if (!text || text.trim().length < 30) {
@@ -850,12 +823,12 @@ Return only valid JSON. No extra text.`;
     }
     res.json({ success: true, analysis: result });
   } catch (err) {
-    console.error('[analyze-document]', err.message);
+    console.error('[analyze-document]', safeAIErrorMetadata(err));
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });
     }
-    res.status(500).json({ error: 'Review failed', message: err.message });
+    res.status(500).json({ error: 'Review failed' });
   }
 });
 

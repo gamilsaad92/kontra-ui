@@ -1,0 +1,147 @@
+Perform a public-site, legal-copy, security-copy, and positioning consistency cleanup across Kontra. Do not redesign the UI, do not add new features, do not change core product behavior, and do not build any new tokenization, settlement, KYC, custody, blockchain, SSO, or enterprise infrastructure. The goal is to make every public claim accurate to the current production implementation.
+1. Remove or soften unsupported/currently-future product claims
+Audit all public pages and replace any wording that implies functionality exists when it is only planned, preparatory, or provider-neutral.
+Specifically fix:
+Remove “Participants submit KYC” unless Kontra currently has an actual KYC workflow. Replace with wording such as:
+“Participants submit required transaction information and documents. Kontra tracks what is complete, awaiting review, or missing.”
+Replace claims that every completed transaction automatically generates a “tokenization-ready digital asset package.” Current behavior is readiness-based and can remain incomplete/ineligible. Use language such as:
+“Kontra can produce a structured Verified Asset / Digital Asset Readiness record from confirmed transaction data, evidence lineage, approvals, and unresolved exceptions.”
+Replace “Tokenization Readiness Score” language where it overstates the current product. Prefer:
+“Digital Asset Readiness” or “Verified Asset Readiness.”
+Do not say an Asset Package is “auto-generated at close” unless that exact behavior is enforced. Current preparation-package generation depends on an eligible readiness snapshot.
+Replace claims such as “structured export connects to any future tokenization platform, custodian, transfer agent, or registry” with:
+“Provider-neutral structured export is designed to support future integrations with external financial infrastructure.”
+Do not imply specific future providers are integrated. Stripe, Bridge, stablecoin providers, CBDC infrastructure, XRPL, Ethereum, Polygon, Canton, Stellar, custodians, transfer agents, KYC providers, AML providers, DTCC, Euroclear, Circle, Ripple, etc. must clearly be labeled future/conceptual unless an actual production integration exists.
+If Wire Transfer and Escrow are only recorded settlement modes and not actual execution/integration adapters, remove the Active adapter representation. Describe them as supported/recordable settlement modes, not active settlement integrations.
+Keep the important boundary language that Kontra does not hold funds and is not a bank, exchange, broker-dealer, investment adviser, custodian, transfer agent, escrow agent, or securities issuer.
+2. Align the architecture with the product that now exists
+The current architecture should consistently reflect:
+Transaction → Verification → Verified Asset / Asset Readiness → External Infrastructure
+Settlement may remain part of the transaction lifecycle, but do not present Kontra as a settlement execution platform unless the actual production implementation supports that.
+Keep “External Infrastructure” clearly marked Future.
+Keep the positioning that Kontra orchestrates the verified handoff rather than becoming blockchain, custody, exchange, settlement, or issuance infrastructure.
+3. Fix inconsistent product terminology
+Standardize public-facing terminology across all pages:
+Use Deal Room, not Workspace, unless “workspace” is intentionally being used generically.
+Change buttons like “Add to Workspace” to “Add to Deal Room.”
+Replace outdated “Investment Readiness Report” references with the current terminology, such as Verified Asset, Digital Asset Readiness, or Asset Readiness, depending on context.
+Do not mix old “tokenization readiness” terminology with the newer provider-neutral Verified Asset foundation.
+4. Fix CRE-only positioning
+Kontra now supports broader private-market transactions, so remove unnecessary CRE-only language from general product/auth pages.
+For example, replace:
+“Your CRE workspace starts here.”
+with something closer to:
+“Your private transaction workspace starts here.”
+or
+“Your transaction workspace starts here.”
+Keep CRE as an important supported use case, but not as the identity of the entire platform.
+5. Resolve the marketplace contradiction
+The About page currently says Kontra is “not a marketplace,” while the public site has a Service Provider Marketplace.
+Change the About language so the legal/business distinction remains clear without contradicting the product. For example:
+“Kontra is not a brokerage, exchange, investment marketplace, or securities marketplace. Its optional service-provider directory helps transaction teams discover operational service providers.”
+Also confirm that any providers, ratings, review counts, “Verified” badges, or business listings shown publicly are real and supported. If they are demo/sample data, label them clearly as demo/sample and do not present them as vetted real-world businesses.
+6. Remove unnecessarily absolute marketing/security claims
+Replace wording such as:
+“Nothing leaks across roles”
+“Every action is logged”
+“Every uploaded document…”
+“All checklist items verified before closing”
+“Deal room live in under 60 seconds”
+with accurate non-absolute wording unless the behavior is technically enforced.
+Prefer:
+“Access is scoped by role and permissions.”
+“Material transaction actions are logged.”
+“Uploaded documents can be analyzed by AI.”
+“Kontra tracks checklist verification through closing.”
+Do not weaken truthful controls; just avoid guarantees broader than the implementation.
+7. Remove public model-name dependence
+Marketing pages should not say GPT-4o or GPT-4o-mini. Use AI or OpenAI API where provider disclosure is relevant.
+The Privacy Policy and Security page may identify OpenAI as a processor if accurate, but avoid hard-coding model names unless there is a legal reason to disclose them and they are still actually used.
+Current Privacy Policy specifically names GPT-4o / GPT-4o-mini. Update this to provider-level language while preserving the disclosure that AI processing occurs through OpenAI’s API and that Kontra does not use transaction data/documents to train its own models.
+8. Preserve truthful AI disclaimers
+Keep the Terms language that AI outputs are informational, can contain errors, and do not replace legal, financial, investment, insurance, engineering, appraisal, or other professional judgment. That section is good and should remain.
+9. Security page cleanup
+Preserve the good disclosure that Kontra itself is not SOC 2 certified and that Render/Supabase certifications apply to their infrastructure, not Kontra.
+Audit each security statement against actual production configuration before leaving it public:
+TLS
+encryption at rest
+signed URL expiration
+RLS
+application authorization
+production access controls
+audit logging
+environment separation
+document storage
+incident-response procedures
+Keep wording such as “designed to prevent” where appropriate instead of asserting an absolute guarantee.
+Do not say “SOC 2 Ready” anywhere unless Kontra has a documented internal basis for that phrase. Prefer:
+“Infrastructure providers maintain industry-standard security certifications; Kontra is not currently SOC 2 certified.”
+10. Enterprise pricing claims
+Audit the enterprise pricing card.
+If these are not currently production-supported, do not advertise them as existing features:
+SSO / SAML
+SLA & uptime guarantee
+white-label
+dedicated support
+Either remove them or clearly mark them as available subject to enterprise agreement / planned / contact us, based on actual readiness.
+Do not create the functionality as part of this task.
+11. Privacy Policy cleanup
+Keep the useful existing disclosures around document storage, AI processing, service providers, retention, audit logging, security, CCPA, deletion, and data rights. The policy already states that documents are stored in Supabase/AWS, OpenAI is used for AI processing, material actions are logged, and post-closure deletion is scheduled after the retention window.
+Fix the following:
+Replace outdated “workspace” terminology with deal room where appropriate.
+Confirm the actual legal entity name before continuing to state Kontra Platform LLC.
+Remove the visible placeholder:
+[BUSINESS ADDRESS — update once registered agent address is confirmed]
+Do not publish a fake address. If a compliant business mailing address has not been finalized, use only the legally appropriate contact information available today or omit the address until counsel/entity setup confirms it. The current placeholder must not remain on production.
+Verify that the claimed 30-day post-closure retention/deletion workflow matches actual backend behavior before leaving it as a contractual/privacy promise.
+Verify PDF, ZIP, and JSON export claims are actually supportable before retaining them.
+Keep the distinction that provider SOC 2 / ISO certifications are their certifications, not Kontra’s.
+12. Terms of Service cleanup
+Keep the existing broker-dealer / investment-adviser / custody / escrow / transfer-agent disclaimers. They are directionally aligned with Kontra’s intended role.
+Update any language implying “tokenization functionality” is live if the current implementation is only Verified Asset / Digital Asset Readiness preparation.
+Prefer language such as:
+“Digital Asset Readiness and related preparation features are informational and preparatory. Kontra does not issue, tokenize, custody, transfer, sell, or trade assets or securities.”
+Confirm the Terms’ pricing, refund policy, deal-room duration, export formats, retention period, governing law, arbitration language, and limitation-of-liability wording are intentional business/legal choices before publishing them as final.
+Remove the same visible business-address placeholder from the Terms.
+Do not independently invent replacement legal terms that materially alter rights, liability, arbitration, indemnity, or regulatory obligations. Flag those for legal review instead.
+13. About page cleanup
+Keep:
+early-stage / real product positioning
+AI transaction coordination
+deal room infrastructure
+no brokerage
+no custody
+no securities intermediation
+Replace any statement that Kontra is “not a marketplace” with the narrower regulated-marketplace distinction described above.
+Remove or verify any claim such as “real transactions,” “actively talking to lenders,” or similar claims if they are not supportable.
+14. Service Provider Marketplace
+Audit the entire Service Provider Marketplace.
+Confirm whether listed providers, ratings, review counts, locations, certifications, and “Verified” status are real production data.
+If they are demo/sample records:
+visibly label the marketplace as Demo / Sample Provider Directory
+remove or relabel “Verified”
+do not imply Kontra has vetted, certified, endorsed, or independently verified these companies
+do not show fabricated customer review counts as real
+This is important before institutional outreach.
+15. Final consistency check
+After the copy changes, scan the entire public site for:
+Workspace vs Deal Room
+CRE-only vs private-market positioning
+Investment Readiness vs Verified Asset / Digital Asset Readiness
+tokenization claims
+settlement claims
+KYC claims
+marketplace contradictions
+SOC 2 language
+GPT/model names
+future integrations presented as live
+fake/demo provider data
+outdated legal-entity references
+placeholder addresses
+Do not alter working Deal Room functionality.
+Before deploying, give me a concise report with:
+exact pages changed,
+major claims removed/reworded,
+anything you found that is still factually uncertain and requires owner/legal confirmation, and
+confirmation that no product functionality was changed.
+Then deploy the copy/legal-site cleanup only after the changes are internally consistent.

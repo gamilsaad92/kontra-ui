@@ -1567,10 +1567,9 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
   );
 }
 
-// ── DigitalAssetTogglePanel (#181) ───────────────────────────────────────────
+// ── DigitalAssetTogglePanel ─────────────────────────────────────────────────
 // Lets owners of non-tokenization workspaces opt the Digital Asset Preparation
-// Layer on or off without switching to the tokenization pack. Saves a single
-// flag into metadata_values via the non-destructive /metadata-merge endpoint.
+// Layer on or off without switching to the tokenization pack.
 function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }) {
   const isTokenization = pack?.id === 'tokenization'
     || pack?.transactionType === 'tokenization'
@@ -1578,11 +1577,39 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
   const [enabled,    setEnabled]    = useState(!!(property?.metadata_values?.digital_asset_enabled));
   const [saving,     setSaving]     = useState(false);
   const [saveOk,     setSaveOk]     = useState(false);
+  const [saveErr,    setSaveErr]    = useState('');
+  const [hasHistory, setHasHistory] = useState(false);
+  const [historyKnown, setHistoryKnown] = useState(false);
   const [ownerToken, setOwnerToken] = useState('');
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
+
+  useEffect(() => {
+    if (!ownerToken || isTokenization) return undefined;
+    let cancelled = false;
+    Promise.all([
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verified-asset/snapshots`, {
+        headers: getRoomAuthHeaders(propertyId),
+      }),
+      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages`, {
+        headers: getRoomAuthHeaders(propertyId),
+      }),
+    ]).then(async ([snapshotsResponse, packagesResponse]) => {
+      const snapshots = snapshotsResponse.ok ? await snapshotsResponse.json() : null;
+      const packages = packagesResponse.ok ? await packagesResponse.json() : null;
+      if (cancelled) return;
+      setHistoryKnown(snapshotsResponse.ok && packagesResponse.ok);
+      setHasHistory(
+        (snapshots?.snapshots || []).length > 0
+        || (packages?.packages || []).length > 0,
+      );
+    }).catch(() => {
+      if (!cancelled) setHistoryKnown(false);
+    });
+    return () => { cancelled = true; };
+  }, [isTokenization, ownerToken, propertyId]);
 
   // Tokenization workspaces always have the layer on — no toggle needed.
   // Non-owners can't change this setting.
@@ -1590,23 +1617,24 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
 
   async function handleToggle() {
     const next = !enabled;
-    setSaving(true);
+    setSaving(true); setSaveErr(''); setSaveOk(false);
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-readiness`, {
         method: 'PATCH',
-         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          values: { digital_asset_enabled: next ? 'true' : '' },
+          enabled: next,
           ownerWriteToken: ownerToken,
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.message || payload.error || `Save failed (${res.status})`);
       setEnabled(next);
       onEnabledChange?.(next);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
-      console.error('[DAToggle]', err.message);
+      setSaveErr(err.message || 'Could not update Digital Asset Readiness');
     } finally {
       setSaving(false);
     }
@@ -1625,7 +1653,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
           {saveOk && <span className="text-[10px] font-bold text-green-700">✓ Saved</span>}
           <button
             onClick={handleToggle}
-            disabled={saving}
+            disabled={saving || (enabled && (!historyKnown || hasHistory))}
             aria-label={enabled ? 'Disable Digital Asset Preparation' : 'Enable Digital Asset Preparation'}
             className="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 shrink-0"
             style={{ background: enabled ? '#7c3aed' : '#e5e7eb' }}>
@@ -1635,11 +1663,16 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
           </button>
         </div>
       </div>
+      {saveErr && <p role="alert" className="mt-3 text-xs font-medium text-red-600">{saveErr}</p>}
       {enabled && (
         <p className="text-[10px] font-medium mt-3 pt-3 border-t leading-relaxed"
           style={{ color: '#7c3aed', borderColor: '#ede9fe' }}>
           🪙 Digital Asset Preparation Layer active — the Overview tab now shows the full readiness tracker.
-          Reload to see updated progress.
+          {hasHistory
+            ? ' Historical Verified Asset artifacts are preserved and this setting is locked on.'
+            : !historyKnown
+              ? ' Historical artifact status is unavailable, so disabling is temporarily locked.'
+              : ' Readiness is calculated from the existing Transaction Record.'}
         </p>
       )}
     </div>
@@ -10527,7 +10560,7 @@ export default function DealRoomPage() {
           plan: "deal",
           propertyId,
           propertyName: property?.property_name || property?.name || propertyId,
-          email: "support@kontraplatform.com",
+          email: "dev@kontraplatform.com",
           role: "owner",
         }),
       });
@@ -10750,33 +10783,33 @@ export default function DealRoomPage() {
   }
 
   // A role query parameter is presentation metadata, not authorization. Do
-    // not render a misleading participant workspace when a notification deep
-    // link is opened without the verified owner token or invite session.
-    const hasVerifiedWorkspaceAccess = isDemo
-      || ['owner', 'participant'].includes(property?.access?.mode);
-    if (isCustom && !isDemo && !loadingApi && !hasVerifiedWorkspaceAccess) {
-      return (
-        <PublicLayout hideFooter>
-          <div className="min-h-[60vh] flex items-center justify-center px-6">
-            <div className="max-w-lg w-full rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
-              <div className="text-3xl mb-3">🔒</div>
-              <h1 className="text-lg font-bold text-gray-900 mb-2">Verify workspace access</h1>
-              <p className="text-sm leading-relaxed text-gray-600">
-                This workspace requires a verified owner or participant session. Open the invitation again or sign in to your Kontra deal rooms before continuing.
-              </p>
-              <Link
-                to="/my-deal-rooms"
-                className="mt-5 inline-flex rounded-xl bg-[#800020] px-4 py-2.5 text-sm font-semibold text-white"
-              >
-                Open My Deal Rooms
-              </Link>
-            </div>
+  // not render a misleading participant workspace when a notification deep
+  // link is opened without the verified owner token or invite session.
+  const hasVerifiedWorkspaceAccess = isDemo
+    || ['owner', 'participant'].includes(property?.access?.mode);
+  if (isCustom && !isDemo && !loadingApi && !hasVerifiedWorkspaceAccess) {
+    return (
+      <PublicLayout hideFooter>
+        <div className="min-h-[60vh] flex items-center justify-center px-6">
+          <div className="max-w-lg w-full rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
+            <div className="text-3xl mb-3">🔒</div>
+            <h1 className="text-lg font-bold text-gray-900 mb-2">Verify workspace access</h1>
+            <p className="text-sm leading-relaxed text-gray-600">
+              This workspace requires a verified owner or participant session. Open the invitation again or sign in to your Kontra deal rooms before continuing.
+            </p>
+            <Link
+              to="/my-deal-rooms"
+              className="mt-5 inline-flex rounded-xl bg-[#800020] px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Open My Deal Rooms
+            </Link>
           </div>
-        </PublicLayout>
-      );
-    }
+        </div>
+      </PublicLayout>
+    );
+  }
 
-      // Every resolved deal-room URL uses the current workspace shell. The
+  // Every resolved deal-room URL uses the current workspace shell. The
   // property.isCustom flag is retained for data/panel behavior, but must not
   // select the retired welcome/activity/checklist layout.
   const isCurrentWorkspace = Boolean(property);
@@ -11047,6 +11080,23 @@ export default function DealRoomPage() {
 
             {activeTab === 'settings' && isCoordinator && (
               <div className="space-y-4">
+                <DigitalAssetTogglePanel
+                  propertyId={pid}
+                  property={property}
+                  pack={pack}
+                  onEnabledChange={(enabled) => {
+                    setApiProperty(current => current
+                      ? {
+                          ...current,
+                          metadata_values: {
+                            ...(current.metadata_values || {}),
+                            digital_asset_enabled: enabled,
+                          },
+                        }
+                      : current);
+                    if (enabled) setActiveTab('overview');
+                  }}
+                />
                 <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
               </div>
             )}

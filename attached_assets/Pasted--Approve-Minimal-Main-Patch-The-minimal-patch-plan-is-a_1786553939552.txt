@@ -1,0 +1,162 @@
+# Approve Minimal Main Patch
+
+The minimal patch plan is approved.
+
+Proceed directly on `main`.
+
+Do not create another branch.
+
+Do not merge or cherry-pick `launch-publish`.
+
+Use `launch-publish` only as a reference for the already-validated behavior.
+
+## Important adjustment — one canonical requirements source
+
+Do not maintain four independently editable copies of:
+
+`transaction_record_requirements.json`
+
+Choose one canonical source of truth.
+
+Recommended canonical source:
+
+`kontra-ui-clone/shared/transaction_record_requirements.json`
+
+Then update the existing sync/build process so deterministic copies are generated into the runtime locations required by:
+
+* Production API
+* cloned API tree
+* cloned UI tree
+* Production UI tree
+
+For example:
+
+`canonical shared file`
+
+→ sync/build step
+
+→ `shared/transaction_record_requirements.json`
+
+→ `kontra-ui-clone/ui/src/shared/transaction_record_requirements.json`
+
+→ `ui/src/shared/transaction_record_requirements.json`
+
+Do not manually maintain these as separate schemas.
+
+Add a validation check that fails the build/deploy if:
+
+* any required runtime copy is missing
+* any generated copy differs from the canonical source
+* required workflow keys are missing
+
+The API must never silently fall back to an empty requirements map.
+
+If requirements cannot load, fail loudly with an explicit configuration error.
+
+## Apply the approved minimal behavior changes
+
+In this dependency order:
+
+### 1. Requirements packaging
+
+* canonical requirements source
+* deterministic runtime copies
+* production deployment-path fix
+* consistency/build check
+
+### 2. Transaction Record canonicalization
+
+Restore:
+
+* workflow-aware canonical keys
+* alias deduplication
+* extracted vs verified states
+* no overwrite of verified values
+* canonicalization tests
+
+### 3. Backend behavior
+
+Restore:
+
+* confirmed-fact Transaction Readiness
+* Transaction Details → Transaction Record synchronization
+* Deal Owner provenance
+* owner document visibility
+* AI extraction canonicalization
+
+### 4. Task engine
+
+Restore:
+
+* task persistence
+* completed/dismissed task idempotency
+* no duplicate recreation on refresh
+
+### 5. UI behavior
+
+Restore only the validated behavior:
+
+* Deal Owner semantics
+* participant-role consistency
+* Transaction Readiness display
+* Transaction Details synchronization
+* lifecycle/evidence separation
+* document responsibility
+* Request behavior
+* multiple responsible-role display
+* owner-aware People/Documents behavior
+
+Do not redesign the UI.
+
+### 6. Preserve existing settlement behavior
+
+Do not reimplement:
+
+* settlement capability
+* settlement readiness gating
+* atomic Transaction Seal completion
+* `ALREADY_SEALED`
+* post-completion records
+
+Only regression-test them after the patch.
+
+## Validation before Production deployment
+
+Validate current `main` itself.
+
+Required checks:
+
+* API syntax
+* canonicalization tests
+* production UI build
+* requirements-file packaging test under both API deployment layouts
+* fresh room readiness = `0%`
+* Transaction Details update canonical fields
+* AI extraction creates canonical extracted facts
+* confirmation increases readiness
+* Deal Owner provenance preserved
+* owner sees uploaded documents
+* People roles consistent
+* Request actions work
+* task refresh does not duplicate completed work
+* lifecycle remains separate from evidence
+* settlement readiness still works
+* exactly one Transaction Seal
+* post-completion records still work
+
+## Deployment
+
+Do not deploy Production automatically after implementation.
+
+Return:
+
+* files changed
+* canonical requirements source path
+* generated runtime paths
+* build/sync mechanism
+* tests run
+* PASS/FAIL results
+* any regression
+* final recommendation: `READY TO DEPLOY` or `NOT READY`
+
+Keep `launch-publish` intact until the direct-`main` implementation is validated.

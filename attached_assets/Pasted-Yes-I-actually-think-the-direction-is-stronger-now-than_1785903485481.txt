@@ -1,0 +1,24 @@
+Yes. I actually think the direction is stronger now than it was when Kontra was primarily about tokenization. Here's why.
+
+The biggest insight you've had is that **tokenization is an outcome, not the starting point**. Every private transaction—whether it's a business acquisition, fundraising round, real estate deal, franchise sale, or another asset transfer—requires the same foundational work: collecting documents, coordinating participants, tracking approvals, maintaining an audit trail, and verifying information. By solving that problem first, you're building something customers need today, regardless of whether they ever tokenize an asset.
+
+The architecture you've moved toward also gives you room to grow. A generic transaction engine with workflow packs means Kontra can support many transaction types without rewriting the platform. That aligns with your goal of making the platform adapt to the transaction rather than being limited to commercial real estate.
+
+Where I would stay disciplined is on **what the first customers are buying**. They are not buying "future tokenization." They're buying:
+
+* Faster, more organized transactions.
+* One workspace for everyone involved.
+* AI-assisted document review and coordination.
+* A complete, verifiable audit trail.
+
+If those first users love the deal room, then you've created the foundation for everything else—including tokenization.
+
+One thing I would avoid is letting the tokenization vision dominate the product today. It's an important strategic narrative for investors, but it shouldn't distract from proving that the deal room solves a real workflow problem. Your own roadmap has consistently emphasized validating the transaction workspace with early customers before expanding further.
+
+Looking at the evolution of Kontra over the past year, I don't see it as moving away from the original vision. I see it as **refining it**:
+
+> **Original idea:** Build infrastructure for tokenized assets.
+>
+> **Current idea:** Build the infrastructure that every private transaction needs, so any completed transaction can become tokenization-ready if and when the parties choose.
+
+That second vision is broader, more practical, and addresses a much larger market while preserving the long-term opportunity that originally inspired Kontra.

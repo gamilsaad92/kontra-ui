@@ -1,0 +1,147 @@
+The AI-generated hazard-loss room demonstrates that dynamic stages, participants, and checklist generation are working. Do not redesign the UI or add new features yet.
+
+We need to correct the remaining places where the generated room falls back to the underlying generic workflow pack.
+
+1. DYNAMIC TRANSACTION RECORD
+
+The Transaction Record must be generated from the approved AI room proposal.
+
+For the current Freddie Mac Hazard Loss test, fields such as:
+
+Purchase Price
+Buyer
+Seller
+Earnest Money Deposit
+Historical Revenue
+
+are inappropriate and must not appear merely because the underlying compatibility pack is Lending/CRE.
+
+The room generator must propose transaction_record_fields appropriate to the described transaction.
+
+For a hazard loss, examples may include:
+
+Property Name
+Property Address
+Loan Number
+Investor / Agency
+Loss Type
+Date of Loss
+Units Affected
+Estimated Repair Cost
+Insurance Claim Amount
+Insurance Proceeds Received
+Insurance Proceeds Held
+Borrower Funds Advanced
+Current Disbursement Request
+Total Previously Disbursed
+Remaining Insurance Proceeds
+Repair Completion Percentage
+Inspection Status
+
+These are examples only. The AI should determine appropriate fields from transaction context rather than hard-coding a hazard-loss schema.
+
+2. SEPARATE BASE PACK FROM ACTUAL TRANSACTION TYPE
+
+The current room incorrectly displays Transaction Type = "Lending."
+
+If an existing pack is required internally for compatibility, separate:
+
+base_pack
+transaction_type
+transaction_subtype
+
+Example:
+
+base_pack = lending
+transaction_type = hazard_loss
+transaction_subtype = freddie_mac_multifamily_casualty
+
+User-facing surfaces, Transaction Record, Operations Manager, readiness, and transaction facts must use the generated transaction context rather than treating base_pack as the transaction type.
+
+3. REMOVE INHERITED IRRELEVANT REQUIREMENTS
+
+The current generated room includes "Servicer Agreement."
+
+Determine why this was generated.
+
+Generated rooms must not automatically inherit required checklist items from the compatibility/base pack unless the room generator explicitly selects them as applicable.
+
+The AI-generated approved proposal must be the source of truth for the room's requirements.
+
+4. REQUIREMENT PROVENANCE
+
+Expose provenance for every AI-generated requirement.
+
+Supported classifications:
+
+Authoritative
+Uploaded
+Kontra Template
+AI Suggested
+
+For authoritative requirements display the actual source.
+
+Do not claim Freddie Mac, CBRE, a regulator, lender, or other organization requires something without retrieved evidence.
+
+If evidence is unavailable, classify the item as AI Suggested or create an Issue to Confirm.
+
+Never fabricate citations.
+
+5. RESEARCH VISIBILITY
+
+On the generated-room review and/or room Overview, expose:
+
+Sources consulted
+Number of source-backed requirements
+Number of AI recommendations
+Outstanding assumptions/questions
+
+Users must be able to inspect why Kontra included a requirement.
+
+6. IMPROVE CONTEXT DEPTH
+
+The generator must reason over facts contained in the description.
+
+For the existing test description it should recognize:
+
+Freddie Mac
+multifamily
+hazard loss
+fire
+12 affected units
+insurance claim acknowledged
+insurance proceeds controlled by servicer
+borrower advanced approximately $150,000
+repairs underway
+reimbursement/disbursement requested
+
+These facts should influence generated requirements, Transaction Record fields, issues/questions, and workflow.
+
+Do not simply map the description to the nearest existing template.
+
+7. DYNAMIC TERMINOLOGY
+
+Generated rooms should avoid transaction-inappropriate labels.
+
+For workflows without a traditional closing, use "Target Completion Date" rather than "Target Closing Date" where appropriate.
+
+Do not change global terminology throughout the application yet.
+
+8. REGRESSION SAFETY
+
+Do not change existing template-created rooms.
+
+AI-generated room behavior should remain additive.
+
+After implementation rerun the same Freddie Mac hazard-loss test and provide:
+
+- detected transaction context
+- generated stages
+- generated requirements
+- generated Transaction Record fields
+- generated participants
+- research sources
+- requirement provenance
+- assumptions/questions
+- screenshots
+- regression test results

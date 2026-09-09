@@ -1,0 +1,34 @@
+Proceed with Task #258 only. Do not add features, redesign UI, create branches, merge anything, or deploy Production.
+Validate the patched current main in staging using the same production-like deployment layout that previously exposed the requirements-file issue.
+Run this release-gate flow:
+Create a fresh standard workspace.
+Confirm empty Transaction Readiness starts at 0%.
+Save Transaction Value and Target Closing Date.
+Verify canonical Transaction Record fields update with Deal Owner provenance.
+Upload NDA and LOI.
+Confirm Deal Owner can see both documents.
+Confirm AI extraction succeeds.
+Verify all extracted facts use canonical keys with provenance and extracted status.
+Confirm selected required facts.
+Verify readiness increases only after confirmation and matches the confirmed/required denominator.
+Verify no alias duplicates exist.
+Verify People roles and Deal Owner semantics.
+Verify Request-document behavior and responsibility labels.
+Verify Next Actions persist, prioritize correctly, and do not recreate completed tasks on refresh.
+Verify document upload does not automatically advance lifecycle.
+Verify one custom workflow pack renders and behaves correctly.
+Enable Settlement capability.
+Verify settlement readiness gate.
+Complete settlement successfully.
+Verify exactly one Transaction Seal.
+Verify duplicate completion returns ALREADY_SEALED.
+Verify post-completion records remain separate.
+Also validate the production-style API packaging specifically:
+shared/transaction_record_requirements.json exists in the runtime artifact
+requirements validator passes
+required field count is non-zero
+failure to load requirements produces an explicit startup/config error, not 0/0 readiness
+Return PASS/FAIL for each item, any regression, readiness values before/after confirmation, and final recommendation:
+READY TO DEPLOY or NOT READY.
+Do not deploy automatically.
+Regarding Jest: if the only remaining issue is missing jest-environment-jsdom, report it separately as a test-environment dependency. Do not install or change dependencies unless required to validate this release.

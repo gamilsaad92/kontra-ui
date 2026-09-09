@@ -20,6 +20,7 @@ const {
   buildTokenizationPrompt,
   buildTokenizationAnswerPrefix,
 } = require('./tokenizationGuidance');
+const { safeAIErrorMetadata } = require('./openaiClient');
 
 let _deps = null;
 function getDependencies() {
@@ -33,8 +34,8 @@ function getDependencies() {
 let _openai = null;
 function getOpenAI() {
   if (!_openai && process.env.OPENAI_API_KEY) {
-    const OpenAI = require('openai');
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { createInstitutionalOpenAIClient } = require('./openaiClient');
+    _openai = createInstitutionalOpenAIClient();
   }
   return _openai;
 }
@@ -988,7 +989,7 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
     setCache(propertyId, result);
     return result;
   } catch (err) {
-    console.error('[operationsManager] getBriefing LLM error:', err.message);
+    console.error('[operationsManager] getBriefing LLM error:', safeAIErrorMetadata(err));
     return fallback();
   }
 }
@@ -1135,7 +1136,7 @@ ${tokenizationGuidance ? `\n${buildTokenizationPrompt(tokenizationGuidance)}` : 
       citedTaskIds: Array.isArray(parsed.citedTaskIds) ? parsed.citedTaskIds : [],
     };
   } catch (err) {
-    console.error('[operationsManager] askQuestion LLM error:', err.message);
+    console.error('[operationsManager] askQuestion LLM error:', safeAIErrorMetadata(err));
     return {
       answer: tokenizationGuidance
         ? `${buildTokenizationAnswerPrefix(tokenizationGuidance)}\n\nAI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.`
@@ -1262,7 +1263,7 @@ Respond as JSON:
     setCachedStandup(propertyId, result);
     return result;
   } catch (err) {
-    console.error('[operationsManager] getStandup LLM error:', err.message);
+    console.error('[operationsManager] getStandup LLM error:', safeAIErrorMetadata(err));
     return fallback();
   }
 }

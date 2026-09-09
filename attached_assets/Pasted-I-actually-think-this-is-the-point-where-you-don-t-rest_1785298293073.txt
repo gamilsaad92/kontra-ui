@@ -1,0 +1,213 @@
+I actually think this is the point where you **don't** restructure the product—you restructure the narrative.
+
+From everything we've discussed over the past few months, one thing has become clear to me:
+
+**Kontra isn't a CRE product. It accidentally *looks* like one because that's the domain you know best.**
+
+When I step back and ignore the labels, here's what I see.
+
+---
+
+## What Kontra really does
+
+It coordinates transactions involving:
+
+* Multiple participants
+* Sensitive documents
+* AI verification
+* Tasks
+* Questions
+* Approvals
+* Audit trail
+* Closing package
+
+None of those are inherently "real estate."
+
+That's a transaction engine.
+
+---
+
+# Phase 1 — Remove industry assumptions
+
+Today your navigation probably implies:
+
+```
+Create Deal
+↓
+CRE Acquisition
+Business Acquisition
+```
+
+Instead I'd make it:
+
+```
+Create Workspace
+
+Choose a workflow
+
+Business Acquisition
+Commercial Real Estate
+Capital Raise
+Debt Financing
+Asset Sale
+Custom
+```
+
+Notice what changed.
+
+CRE isn't the product anymore.
+
+It's one workflow.
+
+---
+
+# Phase 2 — Rename concepts
+
+Instead of
+
+> Deal Room
+
+I'd move toward
+
+> Transaction Workspace
+
+Instead of
+
+> Deal Health
+
+Maybe
+
+> Transaction Health
+
+Instead of
+
+> Deal Timeline
+
+Transaction Timeline
+
+Instead of
+
+> Deal Participants
+
+Participants
+
+Small wording changes.
+
+Huge positioning difference.
+
+---
+
+# Phase 3 — Organize by workflow packs
+
+Imagine your homepage becoming:
+
+## Transaction Workspace
+
+Purpose-built workflows
+
+* Business Acquisition
+* Commercial Real Estate
+* Capital Raise
+* Joint Venture
+* Debt Financing
+* Asset Sale
+
+Soon
+
+* Franchise Purchase
+* Equipment Finance
+* Custom Workflow
+
+Now you're selling the engine.
+
+Not the industry.
+
+---
+
+# Phase 4 — The first 10 customers
+
+This is where I think your architect made the most interesting observation.
+
+If you're intentionally avoiding overlap with Regions while you're employed there, then business intermediaries become very attractive.
+
+Examples include:
+
+* Business brokers selling privately held companies.
+* Boutique M&A advisors working with lower middle-market businesses.
+* Search fund entrepreneurs acquiring their first company.
+* Independent investment bankers focused on private company sales.
+* Attorneys who regularly coordinate business acquisitions.
+
+Those users have many of the same coordination problems as CRE transactions—documents, multiple stakeholders, diligence, approvals, and closing—but they're operating in a different market.
+
+---
+
+# Phase 5 — What stays exactly the same
+
+Almost everything technically.
+
+Your platform already has:
+
+✓ Roles
+
+✓ Documents
+
+✓ AI
+
+✓ Activity
+
+✓ Tasks
+
+✓ Audit
+
+✓ Closing
+
+Nothing there says "commercial real estate."
+
+---
+
+# Where I would spend the next month
+
+If I were advising the company, I'd probably make these changes first:
+
+1. **Rebrand the language**
+
+   * "Deal Room" → "Transaction Workspace."
+   * "Deal Health" → "Transaction Health."
+
+2. **Lead with Business Acquisition**
+
+   * Make it the first featured workflow.
+   * Move CRE to an equal footing rather than the headline.
+
+3. **Add a "Custom Workflow" option**
+
+   * Even if it's initially a copy of an existing workflow, it signals that the platform is adaptable.
+
+4. **Update your homepage**
+
+   * Focus on the problem ("coordinating complex private transactions") rather than the industry.
+
+5. **Pilot outside your employer's ecosystem**
+
+   * Validate the platform with customers who don't overlap with Regions' business.
+
+---
+
+## One thing I would *not* do
+
+I would avoid changing the vision every few weeks.
+
+This doesn't feel like a pivot to me.
+
+A pivot would be:
+
+> "Forget transactions. Let's build accounting software."
+
+That's a different business.
+
+What you're talking about is closer to **revealing what the architecture already is**.
+
+If the core engine has always been workflow packs, role-based access, AI document intelligence, approvals, and audit trails, then you're not abandoning your original idea. You're broadening the way you describe it so the product's positioning better matches its underlying design.
+
+That's an evolution, not a reset.

@@ -1,0 +1,41 @@
+The CBRE regression confirms the generated-room selector fix is working. Do not modify that architecture further.
+Address the remaining AI-generated schema extraction and provenance issues.
+1. Generate a sufficiently complete Transaction Record from the transaction description.
+The AI should identify material structured facts contained in the description, not only 1–2 fields.
+For the CBRE test description, the generated record should reasonably capture fields such as broker, property type, unit count, location, transaction orientation/type, buyer status, expected financing, target closing period, and purchase agreement status.
+These are examples from this test, NOT fields to hard-code.
+The AI should dynamically determine the material facts for each transaction.
+2. Generate relevant missing fields.
+The Transaction Record should also contain transaction-relevant fields the workflow expects to obtain later, even when their values are currently unknown.
+For a CRE sale these may include property name/address, purchase price, buyer, seller, PSA execution date, due diligence deadline, financing status, closing date, etc.
+Again, these are examples only. Do not create another static CRE schema.
+3. Preserve transaction orientation.
+The input describes a property sale marketed by CBRE on behalf of the seller.
+Do not automatically normalize every CRE transfer to “Commercial Real Estate Acquisition / Asset Purchase.”
+Preserve whether the description is seller-oriented, buyer-oriented, or neutral.
+For this scenario, “Commercial Real Estate Sale” / “Asset Sale” or an appropriately neutral Sale/Acquisition classification is preferable.
+4. Fix fact provenance.
+The current UI says CBRE and Multifamily were “extracted from an uploaded document,” despite zero documents being uploaded.
+Facts extracted from the room description must identify their source as the transaction description.
+Example:
+Source: Transaction Description · AI extracted · Awaiting confirmation
+Facts later extracted from documents must identify the actual document source.
+Never label description-derived facts as document-derived.
+5. Keep a distinction between facts and assumptions.
+Explicit description facts may populate the Transaction Record awaiting confirmation.
+AI-inferred fields/requirements should remain recommendations or missing fields and must not be represented as established facts.
+Regression
+Rerun both:
+A. Freddie Mac multifamily hazard loss scenario
+B. Los Angeles CBRE multifamily sale scenario
+Verify that each produces materially different:
+transaction identity
+lifecycle
+participants
+requirements
+Transaction Record schema
+extracted facts
+terminology
+Verify description-derived facts show Transaction Description provenance.
+Verify no compatibility-pack fields appear unless selected by the generated configuration.
+Do not hard-code logic for Freddie Mac, hazard loss, CBRE, or CRE sale.

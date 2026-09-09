@@ -1,0 +1,38 @@
+Proceed with architecture planning for Kontra Settlement Readiness, but do not implement blockchain connectivity, Circle, Arc, stablecoin transfers, smart-contract deployment, wallet execution, or custody yet.
+The objective is to turn the existing disconnected settlement/tokenization functionality into a provider-neutral capability of the universal transaction workspace.
+Preserve the existing core architecture:
+workflow packs → transaction record → approvals → AI analysis → audit history
+Build Settlement as an optional workflow capability controlled by the workflow pack, not a mandatory hardcoded stage for every transaction.
+When enabled, the lifecycle can become:
+Under Review → Approved → Closing → Settlement → Complete
+Create a Settlement Readiness layer with three modes:
+1. Traditional
+Track funding amount, settlement agent, funding confirmation, settlement evidence, required approvals and completion status. Do not store raw bank account/routing credentials in ordinary transaction record fields.
+2. Digital
+Architect the interface and data model for future external stablecoin/digital settlement providers, but do not connect Circle, Arc or any blockchain yet.
+3. Tokenized
+Reuse the existing tokenization readiness architecture and digital_asset_enabled capability, but treat issuance/execution providers as external adapters. Do not activate the existing mock blockchain functionality as production functionality.
+Reuse:
+transaction_record_fields
+transaction_record_approvals
+transaction_record_history
+deal_notifications
+jurisdiction
+tokenization assessments
+AI health/readiness engine
+workflow-pack capability system
+digital_asset_enabled
+Isolate/remove mock and fixture functionality identified in the audit so it cannot be mistaken for production functionality.
+Add a settlement_readiness calculation based on actual transaction state and required conditions.
+Add a terminal complete state with completed_at.
+Design a Closing/Completion Seal generated after successful completion using the existing audit history and transaction record.
+Important: Do not implement payment execution, custody, token deployment, stablecoin transfers, or external blockchain connectivity during this phase.
+Before coding, give me:
+Proposed UX
+Proposed schema changes
+Workflow-pack changes
+Settlement Readiness calculation
+Migration strategy for existing rooms
+Which existing mock/tokenization components will be reused, isolated or retired
+Exact implementation tasks
+Do not modify production code until I approve the plan.

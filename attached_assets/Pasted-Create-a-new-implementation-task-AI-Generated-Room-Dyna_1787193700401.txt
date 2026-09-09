@@ -1,0 +1,155 @@
+Create a new implementation task: AI-Generated Room — Dynamic Schema & Provenance Completion
+
+Task #273 established the AI-generated room foundation. Do not reopen or rewrite Task #273.
+
+Implement the remaining gaps identified during testing of the Freddie Mac Hazard Loss room.
+
+OBJECTIVE
+
+An AI-generated room must be driven by its approved generated proposal and transaction context — not by its compatibility/base workflow pack.
+
+The base pack may remain internally for compatibility, but it must not leak generic fields, requirements, terminology, or transaction classifications into the generated room.
+
+IMPLEMENT:
+
+1. Dynamic Transaction Record
+- Generate Transaction Record fields from the approved AI proposal.
+- Persist those fields at room creation.
+- AI-generated rooms must render those fields instead of the base-pack schema.
+- Do not hard-code a hazard-loss-specific schema.
+- Existing template-created rooms must remain unchanged.
+
+2. Separate Base Pack From Transaction Identity
+Persist and distinguish:
+- base_pack
+- transaction_type
+- transaction_subtype
+
+Example:
+base_pack = lending
+transaction_type = hazard_loss
+transaction_subtype = freddie_mac_multifamily_casualty
+
+All user-facing AI-room surfaces must use transaction_type/subtype, not base_pack.
+
+Fix the current incorrect “Transaction Type = Lending” behavior.
+
+3. Generated Requirements Are Source of Truth
+For AI-generated rooms:
+- Do not automatically inherit required checklist items from the compatibility pack.
+- Only requirements contained in the approved generated proposal should become active requirements.
+- Template requirements may still be selected by the AI, but must be explicitly included and identified as Kontra Template provenance.
+
+Investigate and eliminate the inappropriate “Servicer Agreement” requirement in the current hazard-loss test unless the generator explicitly determines it applies.
+
+4. Requirement Provenance
+Every generated requirement must preserve:
+- source_type
+- source_title
+- source_url/reference when available
+- supporting excerpt when available
+- confidence
+- rationale
+
+Supported source types:
+- authoritative
+- uploaded
+- template
+- ai_recommendation
+
+Never represent an AI recommendation as a Freddie Mac, CBRE, lender, regulator, or other third-party requirement without supporting retrieved evidence.
+
+5. Research Visibility
+Expose in the generated proposal and appropriate room detail:
+- sources consulted
+- source-backed requirements
+- AI recommendations
+- assumptions/questions requiring confirmation
+
+Users must be able to inspect why a requirement exists.
+
+6. Detailed Context Extraction
+The generator must extract transaction-specific facts from the user's description and persist them into transaction context.
+
+Using the existing Freddie test, it should recognize where supported:
+- Freddie Mac
+- multifamily
+- hazard loss/casualty
+- fire
+- 12 affected units
+- insurance claim acknowledged
+- insurance proceeds held/controlled by servicer
+- borrower advanced approximately $150,000
+- repairs underway
+- reimbursement/additional proceeds requested
+
+These facts should influence:
+- generated requirements
+- Transaction Record fields
+- stages
+- participant roles
+- questions/assumptions
+- Operations Manager grounding
+
+Do not simply classify the description into the nearest pack.
+
+7. Dynamic Terminology
+Allow generated transaction context to determine terminology where appropriate.
+
+Example:
+Hazard loss -> Target Completion Date
+Traditional acquisition -> Target Closing Date
+
+Do not globally rename existing template-room terminology.
+
+8. Operations Manager
+Ensure Operations Manager receives:
+- generated transaction type/subtype
+- extracted transaction context
+- generated requirements
+- provenance
+- unresolved questions
+
+It should not describe a hazard-loss room as a generic lending transaction merely because base_pack=lending.
+
+9. Backward Compatibility
+Existing template-created rooms must behave exactly as before.
+
+Do not redesign unrelated UI.
+Do not replace the existing pack system.
+Do not create a separate room architecture.
+
+10. VALIDATION
+
+After implementation, recreate the Freddie scenario using EXACTLY this description:
+
+“Freddie Mac multifamily hazard loss. A fire damaged 12 units at the property. The insurance carrier has acknowledged the claim and insurance proceeds are being held by the servicer. The borrower has advanced approximately $150,000 of its own funds toward repairs and is requesting reimbursement and additional repair proceeds. Repairs are currently in progress. We need to review the request, supporting repair documentation and determine what is required before funds can be released.”
+
+Report:
+
+A. detected transaction context
+B. base_pack
+C. transaction_type
+D. transaction_subtype
+E. generated stages
+F. generated requirements
+G. provenance for every requirement
+H. generated Transaction Record fields
+I. generated participants
+J. research sources
+K. unresolved assumptions/questions
+L. screenshots of resulting room
+M. regression test results for existing template-created rooms
+
+ACCEPTANCE CRITERIA
+
+The test fails if:
+- Transaction Type displays “Lending”
+- Purchase Price / Buyer / Seller / Earnest Money Deposit appear merely because of the compatibility pack
+- Servicer Agreement is inherited automatically from the base pack
+- a Freddie Mac requirement is claimed without source evidence
+- generated requirements lose provenance after room creation
+- Operations Manager uses the base pack as the transaction identity
+- existing template rooms change behavior
+
+The test passes when the approved AI proposal is the source of truth for the AI-generated room while the existing Kontra engine continues to operate underneath it.

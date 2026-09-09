@@ -1,0 +1,53 @@
+11:43:56.874 Running build in Washington, D.C., USA (East) – iad1
+11:43:56.875 Build machine configuration: 2 cores, 8 GB
+11:43:57.055 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 3ff62bd)
+11:43:58.306 Warning: Failed to fetch one or more git submodules
+11:43:58.307 Cloning completed: 1.252s
+11:43:58.640 Restored build cache from previous deployment (3uYX96YsD7t1TGkKEqM1cNoTrepi)
+11:43:58.851 Running "vercel build"
+11:43:59.534 Vercel CLI 51.6.1
+11:44:00.131 Installing dependencies...
+11:45:49.855 
+11:45:49.855 up to date in 2m
+11:45:49.856 
+11:45:49.856 213 packages are looking for funding
+11:45:49.856   run `npm fund` for details
+11:45:50.065 
+11:45:50.066 > kontra-ui@1.0.0 build
+11:45:50.066 > vite build
+11:45:50.067 
+11:45:50.343 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+11:45:50.426 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+11:45:50.493 transforming...
+11:45:54.049 [32m✓[39m 1043 modules transformed.
+11:45:54.050 [31mx[39m Build failed in 3.60s
+11:45:54.051 [31merror during build:
+11:45:54.051 [31m[vite:esbuild] Transform failed with 2 errors:
+11:45:54.051 /vercel/path0/ui/src/pages/dashboard/TokenizationPage.tsx:1073:0: ERROR: The character "}" is not valid inside a JSX element
+11:45:54.052 /vercel/path0/ui/src/pages/dashboard/TokenizationPage.tsx:1074:0: ERROR: Unexpected end of file before a closing "div" tag[31m
+11:45:54.052 file: [36m/vercel/path0/ui/src/pages/dashboard/TokenizationPage.tsx:1073:0[31m
+11:45:54.052 [33m
+11:45:54.052 [33mThe character "}" is not valid inside a JSX element[33m
+11:45:54.052 1071|      </div>
+11:45:54.052 1072|    );
+11:45:54.052 1073|  }
+11:45:54.053    |  ^
+11:45:54.053 1074|  
+11:45:54.053 
+11:45:54.053 [33mUnexpected end of file before a closing "div" tag[33m
+11:45:54.053 1072|    );
+11:45:54.053 1073|  }
+11:45:54.053 1074|  
+11:45:54.053    |  ^
+11:45:54.053 [31m
+11:45:54.053     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+11:45:54.054     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+11:45:54.054     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+11:45:54.054     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+11:45:54.054     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+11:45:54.054     at Socket.emit (node:events:519:28)
+11:45:54.054     at addChunk (node:internal/streams/readable:561:12)
+11:45:54.054     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+11:45:54.055     at Readable.push (node:internal/streams/readable:392:5)
+11:45:54.055     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+11:45:54.081 Error: Command "npm run build" exited with 1

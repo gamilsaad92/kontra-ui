@@ -1,0 +1,43 @@
+Ask Kontra grounding validation failed. Do not deploy a fix yet; diagnose the smallest root cause.
+In a fresh real CRE Acquisition room, Ask Kontra returned contradictory/invented transaction state.
+Exact observed response included:
+Correctly identified cre_acquisition
+Correctly identified current stage as Uploading
+Correctly identified Target Close Date 2026-08-31
+Then stated that Due Diligence is blocking progression to Underwriting, Loan Committee, and Closing
+Stated property inspection and insurance verification are active blockers
+Reported 20 tokenization gaps including Transaction type and Transaction stage, despite already knowing both from canonical room state
+Diagnose:
+1. Lifecycle grounding
+Determine where Due Diligence → Underwriting → Loan Committee → Closing came from.
+Ask Kontra must use the room's resolved Workflow Pack lifecycle only. It must never substitute generic lending/CRE lifecycle stages.
+2. Blocker grounding
+Determine where inspection and insurance were classified as active blockers.
+Current blockers must derive from canonical/durable room state: required documents, participant state, explicit critical-path tasks, record conflicts/gaps, and configured lifecycle requirements. Generic CRE knowledge must not become a factual room blocker.
+3. Digital Asset Preparation grounding
+Digital-asset readiness must inherit facts already known in canonical record_state and room state.
+If Transaction Type = CRE Acquisition and Stage = Uploading are known, they must not simultaneously appear as missing tokenization inputs.
+Tokenization-specific gaps should represent only information genuinely absent after canonical transaction facts have been mapped into the digital-asset preparation schema.
+4. Answer hierarchy
+Verify Ask Kontra grounds answers in this order:
+canonical Transaction Record + resolved Workflow Pack
+→ current lifecycle state
+→ durable documents/participants/tasks/events
+→ optional Digital Asset Preparation state
+→ general educational model knowledge
+General model knowledge must never overwrite or invent transaction-specific state.
+5. Regression validation
+Test Ask Kontra across CRE Acquisition, Business Acquisition, Fundraising and Token Issuance/STO with:
+What should happen next?
+What are the current blockers?
+What still needs verification?
+Could this transaction be prepared for tokenization?
+For every factual statement in the answer, identify its grounding source.
+Specifically verify:
+no lifecycle stages from another Workflow Pack;
+no invented blockers;
+no already-known canonical fields reported as missing;
+core transaction gaps separated from optional tokenization gaps;
+tokenization gaps do not affect ordinary transaction readiness when preparation is disabled;
+participants cannot obtain information outside their authorized scope.
+Report the exact root cause and smallest proposed fix. Do not implement automatically.

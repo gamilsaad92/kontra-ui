@@ -1,0 +1,57 @@
+Resolve the single duplicate task key and complete migration 019. No other work.
+Production preflight found one duplicate generated-task key:
+property_id = launch-task-validation-mspjv9c1
+task_type = missing_participant
+source_type = party_role
+source_id = missing-role:insurer
+row_count = 2
+1. Inspect the two rows first
+Return both rows':
+IDs
+created/updated timestamps
+status
+execution status
+approval state
+completed/dismissed/resolved state
+idempotency key if present
+execution result if present
+Confirm whether launch-task-validation-mspjv9c1 is a disposable validation/test workspace.
+2. Resolve deterministically
+If it is confirmed to be a disposable validation workspace, remove the duplicate task data for that disposable workspace and preserve no unnecessary production test residue.
+If it is not disposable, do not simply delete a row. Preserve the authoritative task using this priority:
+completed/resolved task over open duplicate
+task with durable execution/approval history over one without it
+oldest canonical task if otherwise equivalent
+Remove only the redundant duplicate after confirming no unique audit/history information would be lost.
+Do not modify unrelated task rows.
+3. Re-run duplicate preflight
+Confirm there are zero duplicate generated-task keys across Production.
+4. Apply the existing committed migration 019
+Apply:
+019_transaction_pipeline.sql
+Do not create a replacement migration.
+5. Verify parity
+Confirm:
+deal_events exists
+processing columns exist
+durable task columns exist
+correlation/event metadata exists
+processing/correlation indexes exist
+uq_deal_room_tasks_generated exists
+6. Run the focused regression checks
+Verify:
+participant states remain correct
+no stale Invite actions
+task refresh produces no duplicates
+source_changed behavior remains intact
+lifecycle advancement works
+settlement readiness works
+Transaction Seal still creates exactly once
+Return only:
+duplicate-row disposition
+migration 019 status
+Production parity PASS/FAIL
+regression PASS/FAIL
+current main SHA
+READY TO DEPLOY or NOT READY
+Do not make application-code changes or deploy automatically.

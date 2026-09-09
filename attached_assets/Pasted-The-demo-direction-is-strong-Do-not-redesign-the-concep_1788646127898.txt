@@ -1,0 +1,76 @@
+The demo direction is strong. Do not redesign the concept or the Operations Manager UI. Make only the following focused revisions to the demo video:
+
+1. Strengthen the opening 2–3 seconds.
+
+Replace the current opening with:
+
+“A data room stores the deal.
+Kontra runs it.”
+
+Then underneath in smaller text:
+
+“Meet the AI Operations Manager for complex transactions.”
+
+Keep the opening visually clean and immediate.
+
+2. Reduce passive scrolling in the middle of the video.
+
+The demo currently spends too much time simply scrolling through the Operations Manager. Tighten this section so the viewer clearly understands three things:
+
+* Kontra understands the transaction state.
+* Kontra identifies what requires a decision or action next.
+* The user can act directly from that recommendation.
+
+3. Show one real action being taken.
+
+During the Operations Manager section, click one actionable item such as:
+
+* Request
+* Review Record
+* Open Project
+
+The viewer should see that the Operations Manager is not just displaying information — it is actively driving the transaction forward.
+
+4. Add one short Kontra AI interaction.
+
+Open Kontra AI and ask:
+
+“What is blocking this transaction?”
+
+Show Kontra AI answering from the actual live transaction state and identifying the real blockers shown in the room.
+
+Important: the answer must be grounded in the transaction’s current documents, facts, confirmations, participants, and requirements. Do not use scripted information that conflicts with the live room state.
+
+5. When the Canonical Transaction Values section appears, add a short onscreen callout:
+
+“One verified source of truth across every document.”
+
+Keep this subtle and do not cover the actual UI.
+
+6. Tighten the final screen.
+
+Use:
+
+“Every transaction gets its own Operations Manager.”
+
+Then:
+
+“Kontra understands the documents, tracks the decisions, coordinates the people, and shows exactly what happens next.”
+
+Keep the existing CTA buttons:
+
+Create Deal Room
+View Demo
+
+7. Keep the finished video short.
+
+Target approximately 30–40 seconds. Do not add extra feature explanations or extend the video substantially.
+
+8. Preserve what is already working.
+
+Do not redesign the Operations Manager.
+Do not change the existing Kontra visual identity.
+Do not add unnecessary animation.
+Do not make broad product changes as part of this request.
+
+This is a final demo-polish pass intended for LinkedIn and direct prospect outreach. The goal is to make the value of Kontra understandable to someone seeing the product for the first time within the first few seconds.

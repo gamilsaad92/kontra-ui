@@ -1,0 +1,72 @@
+### Strategic Direction for Kontra (Developer Brief)
+
+**Mission:** Build the operating system for private transactions—not a tokenization platform.
+
+The market is rapidly building tokenization infrastructure. Banks, asset managers, and blockchain companies are creating settlement rails, digital deposits, custody, and regulated issuance. We should **not** compete in those areas.
+
+Instead, Kontra should own everything that happens **before settlement**.
+
+Every private transaction—whether it's a business acquisition, fundraising round, commercial real estate deal, franchise sale, or future tokenized asset—requires participants to organize documents, coordinate due diligence, review information, track approvals, maintain an audit trail, and reach a verified closing package.
+
+That is Kontra's core product.
+
+### Product Principles
+
+* Kontra is the **AI Transaction Workspace** for private markets.
+* Every transaction ends with a **verified, structured, auditable digital record**.
+* Tokenization is **an optional downstream outcome**, not the primary workflow.
+* The platform must remain **asset-agnostic** through workflow packs.
+
+### Long-Term Architecture
+
+Design every component so that a completed transaction naturally produces:
+
+* Verified document package
+* Immutable audit trail
+* Structured ownership and participant data
+* AI-generated due diligence history
+* Tokenization-ready metadata
+
+This should happen automatically without requiring blockchain.
+
+### Integration Strategy
+
+Kontra should integrate with future infrastructure instead of replacing it.
+
+Possible integrations include:
+
+* Tokenization providers
+* Stablecoin settlement
+* Tokenized bank deposits
+* Digital custodians
+* Identity/KYC providers
+* Digital registries
+
+Kontra prepares the transaction. Other platforms can settle, issue, or custody the asset.
+
+### Development Priority
+
+Continue investing in:
+
+* AI document intelligence
+* Workflow orchestration
+* Role-based collaboration
+* Approval management
+* Audit trails
+* Transaction analytics
+* Universal workflow packs
+* API-first architecture
+
+Avoid spending engineering effort building:
+
+* Blockchain infrastructure
+* Token issuance engines
+* Wallet management
+* Custody systems
+* Settlement rails
+
+### Vision
+
+Kontra should become the standard workspace where private transactions are created, coordinated, verified, and completed. If a customer later chooses to tokenize an asset, Kontra should already have produced everything required to make that process straightforward.
+
+**In short:** We are not building the next blockchain. We are building the transaction infrastructure that every private market transaction needs before it can be financed, settled, or tokenized.

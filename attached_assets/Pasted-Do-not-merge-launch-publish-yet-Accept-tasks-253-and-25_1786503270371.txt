@@ -1,0 +1,48 @@
+Do not merge launch-publish yet. Accept tasks #253 and #254, in that order.
+Task #253 — P0: Deal Owner document visibility
+Fix the owner-facing GET /api/public/deal-room/:propertyId/analyses behavior so the Deal Owner / workspace owner can see all documents and analysis records belonging to their room, regardless of participant assignment.
+Do not solve this with a role-name string check.
+Owner visibility must be based on actual workspace ownership/management semantics.
+Participant-role filtering should apply only to non-owner participants.
+Acceptance criteria:
+Deal Owner can see NDA and LOI uploaded to the workspace
+Deal Owner can see their AI analysis payloads
+participant-specific filtering still works for Buyer/Seller/Advisor views
+post-completion records remain separated correctly
+no document appears twice
+no unauthorized participant gains access to documents outside their assigned scope
+Re-run the NDA and LOI test after the fix and confirm the owner Documents response contains both persisted records.
+Task #254 — full-stack matched Preview validation
+After #253 passes, validate the exact launch-publish frontend against the exact launch-publish API code.
+Do not use the Production Render API for this test.
+Create a temporary/staging API deployment from launch-publish and point the existing Vercel Preview to that API only.
+Then run the full acceptance flow again:
+create fresh workspace
+save Transaction Value and Target Closing Date
+verify Transaction Record + Deal Owner provenance
+verify readiness moves from 0% for explainable reasons
+invite external participant
+upload NDA
+upload LOI
+verify owner can see both documents
+verify AI extraction
+verify proposed vs confirmed facts
+confirm facts
+verify readiness updates
+verify Next Actions update
+verify lifecycle does not auto-advance from upload
+verify document responsibility and Request flows
+verify settlement readiness
+complete transaction
+verify exactly one Transaction Seal
+verify post-completion records
+Also test one custom workflow pack and one standard pack through the same matched frontend/API environment.
+Return:
+exact frontend commit
+exact API commit
+test API URL/environment
+PASS/FAIL for every test
+any differences from Production main
+any regression
+final recommendation: READY TO MERGE or NOT READY TO MERGE
+Do not merge, change main, or deploy Production until that report is complete.

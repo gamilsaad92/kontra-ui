@@ -1,0 +1,42 @@
+21:36:02.575 Running build in Washington, D.C., USA (East) – iad1
+21:36:02.576 Build machine configuration: 2 cores, 8 GB
+21:36:02.714 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: 4186380)
+21:36:04.584 Warning: Failed to fetch one or more git submodules
+21:36:04.585 Cloning completed: 1.871s
+21:36:04.934 Restored build cache from previous deployment (6YEFBYnjdVWKECoR1W9b4ThMGr8A)
+21:36:05.492 Running "vercel build"
+21:36:05.510 Vercel CLI 58.1.0
+21:36:06.049 Running "install" command: `npm install --ignore-scripts --no-audit --no-fund`...
+21:37:18.366 
+21:37:18.366 up to date in 1m
+21:37:18.638 
+21:37:18.639 > kontra-ui@1.0.0 build
+21:37:18.639 > vite build
+21:37:18.639 
+21:37:18.902 The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+21:37:18.978 vite v5.4.21 building for production...
+21:37:19.050 transforming...
+21:37:21.853 ✓ 26 modules transformed.
+21:37:21.854 x Build failed in 2.85s
+21:37:21.854 error during build:
+21:37:21.854 [vite:esbuild] Transform failed with 1 error:
+21:37:21.854 /vercel/path0/ui/src/pages/public/DealRoomPage.jsx:1:4: ERROR: Unexpected "}"
+21:37:21.855 file: /vercel/path0/ui/src/pages/public/DealRoomPage.jsx:1:4
+21:37:21.856 
+21:37:21.856 Unexpected "}"
+21:37:21.856 1  |  tyId}`)));
+21:37:21.857    |      ^
+21:37:21.857 2  |      } catch {}
+21:37:21.857 3  |    }, [propertyId]);
+21:37:21.857 
+21:37:21.858     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+21:37:21.858     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+21:37:21.858     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+21:37:21.858     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+21:37:21.859     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+21:37:21.859     at Socket.emit (node:events:519:28)
+21:37:21.859     at addChunk (node:internal/streams/readable:561:12)
+21:37:21.860     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+21:37:21.860     at Readable.push (node:internal/streams/readable:392:5)
+21:37:21.860     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+21:37:21.896 Error: Command "npm run build" exited with 1

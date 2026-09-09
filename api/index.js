@@ -145,6 +145,9 @@ const {
   extractTransactionContext,
   inferGeneratedTransactionIdentity,
 } = require('./lib/transactionRoomGenerator');
+const {
+  buildDigitalAssetReadinessToggle,
+} = require('./lib/digitalAssetReadinessToggle');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -6760,10 +6763,117 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   }
 });
 
+async function hasDigitalAssetReadinessHistory(propertyId) {
+  const [snapshotsResult, packagesResult] = await Promise.all([
+    supabase
+      .from('verified_asset_snapshots')
+      .select('id')
+      .eq('property_id', propertyId)
+      .limit(1),
+    supabase
+      .from('digital_asset_preparation_packages')
+      .select('id')
+      .eq('property_id', propertyId)
+      .limit(1),
+  ]);
+
+  for (const result of [snapshotsResult, packagesResult]) {
+    if (result.error
+      && !verifiedAssetSnapshotsUnavailable(result.error)
+      && !digitalAssetPackagesUnavailable(result.error)) {
+      throw result.error;
+    }
+  }
+
+  return (snapshotsResult.data || []).length > 0
+    || (packagesResult.data || []).length > 0;
+}
+
+// ── Digital Asset Readiness setting ──────────────────────────────────────────
+// This changes only the opt-in flag. The room, Transaction Record, documents,
+// participants, stages, provenance, and verification history are preserved.
+app.patch('/api/public/deal-room/:propertyId/digital-asset-readiness', async (req, res) => {
+  const { propertyId } = req.params;
+  const { enabled, ownerWriteToken } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can change Digital Asset Readiness');
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled must be a boolean' });
+  }
+
+  try {
+    const { data: room, error: roomError } = await supabase
+      .from('deal_rooms')
+      .select('metadata_values')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomError) throw roomError;
+    if (!room) return res.status(404).json({ error: 'room not found' });
+
+    const hasHistoricalArtifacts = !enabled
+      ? await hasDigitalAssetReadinessHistory(propertyId)
+      : false;
+    const toggle = buildDigitalAssetReadinessToggle({
+      metadataValues: room.metadata_values || {},
+      enabled,
+      hasHistoricalArtifacts,
+    });
+    if (!toggle.ok) {
+      return res.status(409).json({
+        error: toggle.code,
+        message: toggle.message,
+      });
+    }
+
+    if (!toggle.changed) {
+      return res.json({
+        ok: true,
+        enabled: toggle.enabled,
+        changed: false,
+        metadata_values: toggle.metadataValues,
+      });
+    }
+
+    const { error: updateError } = await supabase
+      .from('deal_rooms')
+      .update({ metadata_values: toggle.metadataValues })
+      .eq('property_id', propertyId);
+    if (updateError) throw updateError;
+
+    const recalculated = await recalculateTransactionState(propertyId, {
+      source: 'digital_asset_readiness_toggled',
+      actorId: access.actorId,
+      actorType: access.actorType,
+      evaluateTasks: false,
+    });
+    logEvent(
+      propertyId,
+      enabled ? 'digital_asset_readiness_enabled' : 'digital_asset_readiness_disabled',
+      access.actorType,
+      access.actorId,
+      enabled
+        ? 'Digital Asset Readiness enabled for existing room'
+        : 'Digital Asset Readiness disabled',
+      { enabled },
+    );
+
+    return res.json({
+      ok: true,
+      enabled: toggle.enabled,
+      changed: true,
+      metadata_values: toggle.metadataValues,
+      transaction_state: recalculated?.state?.recordState || null,
+      readiness: recalculated?.state?.readiness || null,
+    });
+  } catch (err) {
+    console.error('[digital-asset-readiness PATCH]', err.message);
+    return res.status(500).json({ error: 'Failed to update Digital Asset Readiness' });
+  }
+});
+
 // ── Metadata merge (non-destructive PATCH) ───────────────────────────────────
 // Merges individual key/value pairs into metadata_values without overwriting
-// unrelated keys. Used by DigitalAssetTogglePanel (#181) and
-// OwnershipStructurePanel (#182). Auth: owner_write_token.
+// unrelated keys. Digital Asset Readiness uses the dedicated route above.
 app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) => {
   const { propertyId } = req.params;
   const { values, ownerWriteToken } = req.body || {};
@@ -6771,6 +6881,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
   if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
   if (typeof values !== 'object' || values === null || Array.isArray(values)) {
     return res.status(400).json({ error: 'values must be an object' });
+  }
+  if (Object.prototype.hasOwnProperty.call(values, 'digital_asset_enabled')) {
+    return res.status(400).json({
+      error: 'Use the Digital Asset Readiness settings endpoint to change this flag',
+    });
   }
 
   const { data: room, error: authErr } = await supabase

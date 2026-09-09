@@ -1,0 +1,50 @@
+Visually, the mobile layout is generally working, but functionally I would not call this correct yet.
+
+The biggest issue is visible in your screenshots: the room was created as “Reo Acquisition Deal Room,” but the Transaction Record says Transaction type — Business Acquisition. That is a serious classification mismatch. If Kontra selected the REO/CRE workflow during creation, the record should not be seeded as Business Acquisition.
+
+There are a few other things I’d fix:
+
+* 0% readiness conflicts with the record. Transaction Type is already populated/confirmed-looking in the record, yet Overview says 0 of 21 required fields confirmed. If AI-extracted fields require user confirmation, 0% may be technically intentional—but the UI needs to make that distinction obvious. Right now it looks contradictory.
+* Creation data still appears incomplete. Closing Date and Transaction Structure are shown as missing. Based on the implementation you showed me, the creation closing date should have carried into the Transaction Record if you entered one when creating this room.
+* Participant count looks wrong. It says 0 of 4 participants invited, but the screen shows Buyer, Seller, Legal Advisor, Financial Advisor plus the Deal Coordinator. If the owner/coordinator isn’t counted, that’s okay, but the wording should probably make that clear.
+* Mobile Documents needs cleanup. The document rows are usable, but the labels/buttons wrap heavily and create a lot of vertical space. Not launch-blocking, but definitely worth polishing.
+* The floating Kontra AI button covers content in multiple screenshots. On mobile it should probably collapse to a smaller circular button or reposition so it doesn’t obscure actions/fields.
+* The green status banner at the top is badly constrained on mobile; the text is cut/wrapped into a very narrow column next to “Share Read-only Preview.”
+
+So I would not start uploading documents yet. This fresh-room test has already exposed a creation/seeding problem.
+
+Send the developer this:
+
+Fresh mobile acceptance test FAILED. Do not change unrelated functionality.
+
+The newly created room is named Reo Acquisition Deal Room and uses the REO acquisition workflow, but Transaction Record → Transaction Terms shows:
+
+Transaction type — Business Acquisition
+
+This is incorrect. Trace the value from AI room generation → selected workflow/deal type → room creation payload → metadata_values → canonical Transaction Record seeding. Determine exactly where Business Acquisition is being introduced.
+
+Also verify creation-time persistence for:
+
+* original transaction description
+* AI-generated room name
+* workflow/deal type
+* human-readable transaction type
+* inferred transaction structure
+* target closing date
+* transaction value only when explicitly/high-confidence supplied
+
+For this room, Closing Date and Transaction Structure are also showing as missing. Determine whether those values were supplied/inferred during creation and, if so, why they were not seeded into the canonical Transaction Record.
+
+Do not patch the displayed text. Fix the source-of-truth/persistence mapping.
+
+Also verify readiness semantics. AI-extracted fields may remain unconfirmed if that is intentional, but the Overview count and Transaction Record status must represent the same state consistently.
+
+Separately, log these mobile UI issues without changing desktop behavior:
+
+1. Kontra AI floating button obscures page content.
+2. Top green room-status banner is poorly responsive and text is squeezed/cut off.
+3. Documents checklist rows wrap excessively on mobile.
+
+First report root cause and proposed minimal fix. Do not deploy until the functional creation/seeding issue is validated with a brand-new room.
+
+The REO → Business Acquisition mismatch is the one I care about most. That’s exactly the kind of defect we wanted this end-to-end test to catch before you start testing document intelligence.

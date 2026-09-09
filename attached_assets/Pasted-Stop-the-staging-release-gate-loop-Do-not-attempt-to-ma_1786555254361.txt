@@ -1,0 +1,43 @@
+Stop the staging release-gate loop.
+Do not attempt to make the current staging/test environment match Production and do not fix failures that exist only because that environment is missing known Production schema, dependencies, or adapter capabilities.
+We are simplifying the release process.
+Do only these checks before deployment:
+Confirm all approved minimal-patch changes currently on main are committed and the working tree is clean.
+Check the actual Production Supabase schema directly for every database object required by the current main implementation.
+Specifically verify existence of:
+transaction_record_fields.verified_role
+transaction_record_fields.extraction_timestamp
+required Transaction Record fields/status/provenance columns
+deal_analyses.post_completion
+deal_analyses.post_completion_added_at
+deal_rooms.settlement_mode
+deal_rooms.settlement_mode_locked_at
+deal_rooms.settlement_readiness_pct
+deal_rooms.sealed_at
+deal_rooms.completed_at
+deal_room_invites
+deal_room_tasks
+complete_settlement_transaction() RPC
+unique Transaction Seal index
+If something required by current main is missing from Production Supabase, stop and report only the missing objects and the existing migration that supplies each one.
+Do not invent new migrations if an existing migration already defines them.
+Confirm the Production deployment artifact will contain:
+shared/transaction_record_requirements.json
+and that the requirements validation passes.
+Confirm the normal Production build succeeds using the actual Production build configuration.
+Ignore the current staging failures caused solely by:
+stale/missing staging migrations
+staging pgAdapter limitations
+missing staging dependencies
+PILOT_ADMIN_PASSWORD
+the existing Jest/jsdom configuration issue
+Do not modify those as part of this release.
+Return only:
+current main commit
+working tree clean: yes/no
+Production Supabase schema: PASS/FAIL
+missing Production DB objects, if any
+requirements packaging: PASS/FAIL
+Production build: PASS/FAIL
+recommendation: DEPLOY or DO NOT DEPLOY
+Do not deploy automatically.

@@ -252,7 +252,7 @@ function buildReadinessExhibit(property, liveRecordState, packId) {
       sourceType: 'illustrative_demo_record',
       extractionTimestamp: sourceStateAt,
       extractedBy: 'Kontra demo fixture',
-      verifiedBy: 'coordinator@example.com',
+      verifiedBy: 'demo-coordinator@kontra.example',
       verifiedRole: 'deal_coordinator',
       verifiedAt: recordedAt,
       updatedAt: sourceStateAt,

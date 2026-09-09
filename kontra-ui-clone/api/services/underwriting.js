@@ -1,12 +1,15 @@
-const OpenAI = require('openai');
+const {
+  createInstitutionalOpenAIClient,
+  safeAIErrorMetadata,
+} = require('../lib/openaiClient');
 const { extractDocxText } = require('../lib/docxText');
 
 let openai = null;
 if (process.env.OPENAI_API_KEY) {
   try {
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    openai = createInstitutionalOpenAIClient();
   } catch (err) {
-    console.error('Failed to initialize OpenAI client for underwriting services:', err);
+      console.error('Failed to initialize OpenAI client for underwriting services:', safeAIErrorMetadata(err));
     openai = null;
   }
 }
@@ -14,6 +17,12 @@ if (process.env.OPENAI_API_KEY) {
 function documentTextFromBuffer(buffer) {
   const docxText = extractDocxText(buffer);
   return docxText || buffer?.toString('utf8') || '';
+}
+
+function redactSensitiveIdentifiers(text) {
+  return String(text || '')
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[REDACTED_SSN]')
+    .replace(/\b\d{2}-\d{7}\b/g, '[REDACTED_EIN]');
 }
 
 function parseDocumentBuffer(buffer) {
@@ -28,7 +37,7 @@ function parseDocumentBuffer(buffer) {
 }
 
 async function summarizeDocumentBuffer(buffer) {
-  const text = documentTextFromBuffer(buffer);
+       const text = redactSensitiveIdentifiers(documentTextFromBuffer(buffer));
   let summary = text.slice(0, 200);
   let key_terms = {};
   if (openai) {
@@ -48,7 +57,7 @@ async function summarizeDocumentBuffer(buffer) {
       if (typeof data.summary === 'string') summary = data.summary;
       if (data.key_terms) key_terms = data.key_terms;
     } catch (err) {
-      console.error('OpenAI doc summary error:', err);
+      console.error('OpenAI doc summary error:', safeAIErrorMetadata(err));
     }
   }
   return { summary, key_terms };
@@ -58,22 +67,24 @@ async function autoFillFields(buffer) {
   const fields = parseDocumentBuffer(buffer);
   if (openai) {
     try {
-      const text = documentTextFromBuffer(buffer);
+      const text = redactSensitiveIdentifiers(documentTextFromBuffer(buffer));
       const resp = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
             content:
-              'Extract borrower or business details from IDs or W-9s as JSON {"name":string,"ssn":string,"ein":string,"address":string,"income":number}',
+              'Extract non-sensitive borrower or business details as JSON {"name":string,"address":string,"income":number}. Do not extract, infer, or return SSNs, EINs, tax IDs, account numbers, or other identity numbers.',
           },
           { role: 'user', content: text.slice(0, 12000) },
         ],
       });
       const extra = JSON.parse(resp.choices[0]?.message?.content || '{}');
-      Object.assign(fields, extra);
+      for (const key of ['name', 'address', 'income']) {
+        if (extra[key] !== undefined && extra[key] !== null) fields[key] = extra[key];
+      }
     } catch (err) {
-      console.error('OpenAI auto fill error:', err);
+      console.error('OpenAI auto fill error:', safeAIErrorMetadata(err));
     }
   }
   return fields;
@@ -105,7 +116,7 @@ async function classifyDocumentBuffer(buffer) {
       });
       return resp.choices[0]?.message?.content?.trim().toLowerCase() || 'other';
     } catch (err) {
-      console.error('OpenAI classify error:', err);
+      console.error('OpenAI classify error:', safeAIErrorMetadata(err));
     }
   }
   return 'other';

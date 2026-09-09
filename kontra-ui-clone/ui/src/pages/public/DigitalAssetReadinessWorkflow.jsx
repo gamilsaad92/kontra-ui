@@ -342,7 +342,7 @@ export default function DigitalAssetReadinessWorkflow({ propertyId, property, on
             <div className="mb-3 rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
               <p className="text-[10px] text-amber-700 leading-relaxed">
                 Issuance Preparation can be reviewed now. External handoff readiness requires ownership,
-                legal, and compliance items to be completed before the package is export-ready.
+                legal, and compliance items to be completed before the package is ready for external review.
               </p>
             </div>
           )}

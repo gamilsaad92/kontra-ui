@@ -1,0 +1,57 @@
+The room-loading/Overview issue appears to be fixed. When I return through **My Deal Rooms → Open Room**, the full room state now loads correctly.
+
+However, there is still a **participant document-routing regression** that did not exist before.
+
+### Problem
+
+In the invited **Buyer** view, documents are still being displayed/routed to the wrong participant.
+
+For example, the Buyer Documents tab shows items such as:
+
+* Non-Disclosure Agreement
+* Letter of Intent
+* Purchase Agreement
+* Title Report
+* Property Inspection Report
+* Environmental Report
+* Closing Documents
+
+At the same time, the UI says:
+
+> “This document section is not assigned to your role.”
+
+These states are contradictory. A participant should only see and interact with documents/checklist items that are actually assigned to their role.
+
+### Required fix
+
+Please trace the participant document-assignment logic end-to-end.
+
+1. Determine the canonical role assignment for every checklist/document item from the workflow pack.
+2. Ensure the invited participant view filters documents using that assignment.
+3. Do **not** solve this by hardcoding document names or Buyer-specific exceptions.
+4. Do not change the intended workflow-pack assignments just to make the UI pass.
+5. Make sure aliases/canonicalization work from the recent Transaction Record fix has not affected role/document assignment.
+6. If a document is not assigned to the current participant's role, it should not appear as one of **“Your Documents”** or expose an upload action.
+7. If we intentionally want participants to have read-only visibility into certain shared documents, treat that separately from documents they are responsible for uploading.
+
+### Regression testing
+
+Please test an actual rendered CRE Acquisition room using separate invitation links for:
+
+**Buyer / Seller / Lender / Inspector / Attorney**
+
+For each participant verify:
+
+* Only correctly assigned upload responsibilities appear under **Your Documents**.
+* Upload buttons appear only where that participant is authorized to upload.
+* Shared/read-only documents, if applicable, are clearly distinguished from assigned documents.
+* Uploading a document updates the correct checklist item.
+* Owner view continues to show the complete transaction.
+* No participant can gain access to another role's restricted documents by changing the URL or client state.
+* Refreshing and reopening the room preserves the same permissions.
+
+Please add automated regression coverage for role-scoped document routing so future workflow/schema changes cannot break this again.
+
+**Do not redesign the Documents tab or workflow packs as part of this task. Fix the underlying assignment/authorization regression first.**
+
+After fixing it, report the root cause, files changed, roles tested, and rendered-room acceptance results.

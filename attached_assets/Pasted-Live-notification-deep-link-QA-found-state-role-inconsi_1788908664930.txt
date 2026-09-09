@@ -1,0 +1,38 @@
+Live notification deep-link QA found state/role inconsistencies. Do not redesign the participant UI. Trace and fix the grounding only.
+The stage-transition email was successfully delivered for Freddie Mac Multifamily Hazard Loss and correctly reported:
+Assessment → Reimbursement Processing
+The Open Workspace CTA successfully opened the correct role-scoped Hazard Loss workspace.
+However, the destination workspace contradicts the canonical transaction/email state:
+1. Stage mismatch
+Email: Reimbursement Processing
+Participant Overview: Stage not yet reported
+The participant workspace must display the canonical current transaction stage available to that recipient.
+2. Action assignment mismatch
+Email says:
+Blocking actions assigned to you:
+Borrower has not been invited or submitted documents yet
+Insurer has not been invited or submitted documents yet
+Repair Contractor has not been invited or submitted documents yet
+But the participant workspace says:
+NOTHING REQUIRES YOUR ACTION RIGHT NOW
+Determine whether those blockers are actually assigned to this recipient. Do not label transaction-level/coordinator blockers as “assigned to you” unless recipient ownership is explicit. Email and participant workspace must derive recipient-specific actions from the same canonical assignment/authorization state.
+3. Verify role grounding
+The role-scoped workspace identifies this recipient as Owner while rendering the participant workspace (0 of 0 uploaded). Verify this is the actual role assigned to this email/session and not a role-resolution fallback/error.
+Preserve what already passed:
+stage-transition event dispatch
+email delivery
+idempotent notification infrastructure
+role-scoped CTA/security
+correct transaction routing
+People privacy behavior
+Do not resend this notification or change the room stage during investigation.
+Report:
+canonical current stage:
+why participant UI showed Stage not yet reported:
+recipient canonical role:
+why participant UI shows Owner:
+blockers actually assigned to recipient:
+why email and workspace disagreed:
+smallest fix:
+production deployed: YES/NO
+ready for retest: YES/NO

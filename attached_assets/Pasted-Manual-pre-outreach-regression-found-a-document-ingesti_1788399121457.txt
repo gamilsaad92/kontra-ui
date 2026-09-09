@@ -1,0 +1,25 @@
+Manual pre-outreach regression found a document-ingestion blocker in a fresh AI-generated hazard-loss room.
+I uploaded three valid DOCX files into their correct required document rows:
+Loss Documentation
+Insurance Coverage
+Repair Estimate
+All three uploads are recognized as uploaded, but AI analysis returns essentially the same incorrect result for each:
+“The document appears to be corrupt or contains unreadable content, making it impossible to extract any meaningful information or findings.”
+These are valid, text-based DOCX files and should be directly parseable.
+This is also preventing downstream behavior from being tested correctly:
+document facts are not being extracted;
+Repair Costs remains Not Recorded even though the Repair Estimate contains $96,480.00;
+Transaction Record is not hydrating from the uploaded documents;
+Digital Asset Readiness remains 0/3;
+cross-document checks report that uploaded documents do not contain a shared structured amount.
+Please trace the actual DOCX ingestion/extraction path in this fresh room and identify the root cause. Do not add fallback fake extraction or hardcode these documents.
+Verify that ordinary text-based DOCX uploads are converted/extracted correctly and passed to the existing document-analysis pipeline.
+After fixing, retest these same three document types and confirm:
+readable summaries are generated from their actual contents;
+structured facts populate the Transaction Record;
+$96,480 repair cost is extracted semantically as repair cost;
+the $2,500,000 property-damage policy limit is not treated as conflicting with the $96,480 repair/reimbursement amount;
+cross-document checks operate on the extracted structured values;
+existing PDF/document ingestion behavior is not regressed.
+Do not change the room requirements, readiness rules, or reconciliation logic merely to make this test pass. Fix the ingestion/extraction failure at its source.
+Tell me the root cause, files changed, and regression tests run before making any unrelated changes.

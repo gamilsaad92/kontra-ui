@@ -1,0 +1,179 @@
+Run a platform-wide architecture validation of the current Kontra product. Do not redesign the UI and do not change behavior unless a real inconsistency is found.
+
+The goal is to confirm that the platform now has one coherent architecture across all transaction types, not separate logic that only works in demos.
+
+Validate all supported transaction types / workflow packs, including at minimum:
+
+CRE Acquisition
+Business Acquisition
+Fundraising
+Lending / Finance
+Joint Venture
+Licensing
+Token Issuance / STO
+Any other currently enabled transaction type
+
+Validate these layers across the entire platform:
+
+1. Canonical transaction state
+
+Transaction Record is the canonical source of truth.
+Documents, AI extraction, coordinator inputs, participant submissions, and confirmations feed the same durable canonical state.
+Overview, Key Transaction Facts, Record Verification, lifecycle, blockers, recommendations, tasks, events, settlement/readiness, and Ask Kontra derive from that same state.
+Canonical aliases are deduplicated.
+confirmed, awaiting, source_changed, conflict, not_applicable, and missing states reconcile consistently.
+A field must not appear confirmed in one surface and missing in another.
+
+2. Participant and coordinator architecture
+
+Coordinator/owner always receives the full coordinator workspace.
+Owner access always takes precedence over stale participant sessions.
+Participants see only the documents, actions, and information assigned to their verified role.
+Checklist visibility and upload authorization use the exact same assignment resolver.
+URL/body role overrides cannot expand participant access.
+People, Documents, Overview, and Ask Kontra remain role-scoped.
+Coordinator-only controls never appear to participants.
+Reopening an older room must restore the correct durable room state and must not create a fresh/empty workspace.
+
+3. Agent / Operations Manager behavior
+
+Validate where agentic behavior currently exists across the platform.
+There should not be a separate hidden architecture competing with Transaction Record state.
+Agentic behavior may surface through:
+document analysis
+Coordinator Transaction Brief
+blockers
+next actions
+durable tasks/events
+stage recommendations
+Ask Kontra
+Recommendations must be grounded in durable transaction state.
+Agents must not invent participants, documents, blockers, or facts.
+Agents must not automatically advance lifecycle stages.
+Stage advancement remains coordinator-approved.
+Agents must not bypass participant authorization.
+
+4. Tokenization architecture
+Validate the actual platform-wide tokenization state and classify it precisely.
+
+Determine whether Kontra is currently:
+
+tokenization-aware only,
+tokenization assessment-capable,
+tokenization preparation-enabled,
+tokenization execution-enabled,
+or some combination.
+
+Specifically verify:
+
+Tokenization remains optional where appropriate.
+Normal transaction workflow does not require tokenization fields unless that transaction type explicitly requires them.
+Core transaction completeness and Record Verification are independent of tokenization readiness.
+Tokenization-specific gaps do not become ordinary lifecycle blockers unless digital-asset preparation has explicitly been enabled and configured to require them.
+Ask Kontra should inspect the canonical Transaction Record first, then identify additional tokenization-specific gaps.
+Ask Kontra may assess technical/structural preparation but must not state that a transaction is legally or regulatorily eligible to tokenize.
+Existing normal transaction types should not be forced into a tokenization workflow.
+Token Issuance/STO should be evaluated separately because tokenization is native to that transaction type rather than optional.
+If blockchain/network/wallet/smart-contract code still exists, identify whether it is actually connected to live transaction execution or only dormant/testnet/preparation infrastructure.
+
+5. Workflow-pack isolation
+
+Every workflow pack must use its own canonical required fields, roles, documents, stages, and readiness denominator.
+A CRE field should not appear in Fundraising unless intentionally shared.
+A Fundraising field should not appear missing because the UI is using generic CRE/business field definitions.
+Not-applicable fields must be excluded from active denominators.
+Pack-specific participant requirements must drive participant counts and blockers.
+
+6. Backward compatibility
+Test a sample of older rooms from before the recent architecture changes.
+
+Confirm:
+
+historical uploads remain visible;
+historical Transaction Record values remain intact;
+historical accepted invites remain recognized;
+legacy participant-role aliases still resolve correctly;
+old rooms do not get mutated merely by opening them;
+old rooms do not display as fresh empty rooms;
+no checklist rows are created just from GET/read behavior unless explicitly intended.
+
+7. Ask Kontra
+Validate Ask Kontra in both real rooms and seeded demos.
+
+Ask questions such as:
+
+“What should happen next?”
+“What are the current blockers?”
+“What is missing from this transaction?”
+“Who still needs to act?”
+“Can this transaction be tokenized?”
+“What information is still needed for tokenization preparation?”
+
+Compare every answer against the visible canonical room state.
+
+Confirm:
+
+transaction-specific facts come before generic education;
+answers do not contradict Transaction Record, Participants, Documents, stage, or blockers;
+long answers are complete and scrollable;
+no hidden token/output truncation remains;
+participant Ask Kontra sessions do not reveal coordinator-only or other-party private data.
+
+8. Settlement / completion / Transaction Seal
+
+Verify recent architecture changes did not alter settlement readiness semantics.
+Transaction Seal remains idempotent and unique.
+Duplicate completion/sealing attempts do not create duplicate seals.
+Tokenization-related logic must not bypass normal completion/sealing controls.
+
+9. Platform-wide acceptance scenarios
+Run at least one fresh end-to-end room for each major pack and at least a few historical-room checks.
+
+For each fresh room:
+
+create room normally;
+establish owner session;
+invite required participants;
+upload representative documents from coordinator and participants;
+confirm participant isolation;
+verify extraction;
+verify Transaction Record;
+verify Overview metrics;
+verify blockers/recommendations;
+reopen from My Deal Rooms;
+refresh the room;
+confirm durable state remains identical.
+
+Do not create unnecessary production data. Use disposable development/test fixtures where possible.
+
+Acceptance criteria
+
+One canonical transaction-state model across the platform.
+No contradiction between surfaces.
+No owner/participant identity downgrade.
+No participant checklist leakage.
+No upload-authorization mismatch.
+No stale legacy role blockers.
+No pack-schema contamination.
+No old-room regression.
+No tokenization field pollution of normal transaction readiness.
+No automated stage changes.
+No settlement or Transaction Seal regression.
+
+Report back with:
+
+Platform architecture status: PASS / FAIL
+Canonical state: PASS / FAIL
+Participant/coordinator isolation: PASS / FAIL
+Agent / Operations Manager architecture: PASS / FAIL
+Tokenization architecture: PASS / FAIL
+Exact current tokenization classification
+Workflow-pack isolation: PASS / FAIL
+Backward compatibility: PASS / FAIL
+Ask Kontra grounding/privacy: PASS / FAIL
+Settlement / Transaction Seal: PASS / FAIL
+Any exact contradictions found
+Any architecture gaps that still exist
+Whether any code change is actually necessary
+
+Do not implement fixes automatically. If anything fails, identify the smallest proposed fix first.

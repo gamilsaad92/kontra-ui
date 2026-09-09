@@ -482,7 +482,7 @@ function StageFunded({
         <Input value={str('servicer_name')} onChange={(v) => onField('servicer_name', v)} placeholder="e.g. Kontra Capital Servicing" />
       </Field>
       <Field label="Servicer Contact Email">
-        <Input type="email" value={str('servicer_contact')} onChange={(v) => onField('servicer_contact', v)} placeholder="servicing@kontraplatform.com" />
+        <Input type="email" value={str('servicer_contact')} onChange={(v) => onField('servicer_contact', v)} placeholder="Servicer email" />
       </Field>
       <Field label="Special Conditions / Notes" className="sm:col-span-2">
         <textarea

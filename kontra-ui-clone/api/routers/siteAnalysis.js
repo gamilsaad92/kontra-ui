@@ -1,8 +1,8 @@
 const express = require('express');
-const OpenAI = require('openai');
+const { createOpenAIClient } = require('../lib/openaiClient');
 
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
 
 router.post('/', async (req, res) => {
   const { zip, lotSize, zoning } = req.body || {};

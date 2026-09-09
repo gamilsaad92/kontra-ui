@@ -1,0 +1,307 @@
+I reviewed this new iteration against the previous one. **Some things improved, but I would not approve this version yet.** A few of the changes actually introduced new inconsistencies.
+
+The biggest issue is that the platform is starting to mix **transaction roles, workspace roles, and document responsibility** again.
+
+### What improved
+
+The lifecycle is much better now:
+
+**NDA Signed → LOI Submitted → Due Diligence → Financing → Closing**
+
+That reads naturally, fits on desktop, and actually describes the progression of an acquisition. Keep it.
+
+The Overview is also visually strong. The hierarchy of **Readiness → Next Actions → Lifecycle → Transaction Record** works. I would stop making structural UI changes there.
+
+And `Deal Owner` is better than calling the owner `Deal Coordinator` if the intent is to describe the person who created/controls the room.
+
+### 1. The 8% problem was NOT fixed
+
+This is still the first thing I'd send back.
+
+The screen says:
+
+**Transaction Readiness: 8%**
+
+while immediately underneath it says:
+
+**0 of 30 required fields confirmed**
+
+And the Transaction Record shows every category at zero.
+
+The developer kept:
+
+> Operational readiness across documents, workspace facts, activity, and compliance signals.
+
+That's specifically what I would remove.
+
+If you're going to call this **Transaction Readiness**, it should measure the completeness/confirmation of the Transaction Record.
+
+At this state, I'd expect **0%**, not 8%.
+
+Later, after uploading documents, AI might extract 12 facts but none have been confirmed. Then you could show something richer, for example:
+
+**40% populated · 10% confirmed**
+
+But I would not silently mix workspace activity into a single 8%.
+
+### 2. `Acquirer` is not necessarily wrong — but you're losing consistency
+
+Now People says:
+
+**Acquirer**
+
+while Transaction Record says:
+
+**Buyer and seller not identified**
+
+This is exactly the type of semantic drift we were trying to eliminate.
+
+Either use:
+
+**Buyer / Seller**
+
+or:
+
+**Acquirer / Seller**
+
+But don't make one subsystem speak one vocabulary and another subsystem speak another.
+
+For this hotel acquisition, I actually prefer **Buyer** because it's immediately understandable and already aligns with the Transaction Record.
+
+If you want Kontra to support acquisitions where "Acquirer" is the preferred term, that's fine—but the workflow pack should determine the label **once**, and every surface consumes it.
+
+### 3. The Documents screen regressed significantly
+
+This is the biggest regression in these screenshots.
+
+Previously, Documents showed responsibility:
+
+> Letter of Intent — Buyer
+> Financial Statements — Seller
+> Title Report — Legal Advisor
+
+Now all of those responsibility chips are gone.
+
+And the **Request** buttons disappeared too. Everything just says:
+
+**Upload**
+
+I would reverse that change.
+
+The document screen was stronger before because Kontra wasn't merely a file repository. It answered:
+
+> What is missing?
+> Who owes it?
+> What can I do about it?
+
+That's part of the value proposition.
+
+A row should look roughly like:
+
+**Financial Statements** · Required · Missing · **Seller**
+`Upload` `Request`
+
+not simply:
+
+**Financial Statements** · Required · Missing → `Upload`
+
+Otherwise the Documents tab starts looking like Dropbox with an AI layer.
+
+### 4. There is another important contradiction: NDA Signed vs NDA Missing
+
+Look at the top:
+
+**Current stage: NDA Signed**
+
+Lifecycle:
+
+**● NDA Signed**
+
+But Documents says:
+
+**Non-Disclosure Agreement — Required — Missing**
+
+That's a logical contradiction.
+
+Kontra is asserting that the NDA has been signed while simultaneously saying the NDA document is missing.
+
+Now, there *can* be a legitimate distinction between operational stage and document possession. Maybe the owner manually says "NDA signed" even though nobody uploaded it.
+
+But then Kontra needs to express that uncertainty:
+
+**NDA Signed — unverified**
+
+or
+
+**Stage reported: NDA Signed**
+**Supporting NDA: Missing**
+
+It should not present both as authoritative truth.
+
+This is exactly why the Transaction Record architecture matters.
+
+### 5. Next Actions are now too participant-heavy
+
+The three top actions are:
+
+**Invite Acquirer**
+**Invite Legal Advisor**
+**Invite Financial Advisor**
+
+Technically valid, but not necessarily the three most important actions in a transaction.
+
+If the NDA is supposedly signed and you're moving toward LOI, I'd expect something more like:
+
+**Upload/Request Letter of Intent**
+**Invite Buyer**
+**Upload/Request Financial Statements**
+
+The priority engine should rank actions by **transaction progression**, not simply identify three empty participant slots.
+
+Otherwise a transaction with ten roles could produce a Morning Brief consisting mostly of "invite X."
+
+---
+
+## Send this to Replit
+
+> **The overall UI architecture is approved. Do not redesign the Overview, Documents, or People pages. Make only the following data-model and behavioral corrections.**
+>
+> **1. Fix Transaction Readiness**
+>
+> Transaction Readiness must measure the completeness/confirmation of the structured Transaction Record, not generic workspace activity.
+>
+> Current state incorrectly shows:
+>
+> `8% Transaction Readiness`
+> `0 of 30 required fields confirmed`
+>
+> These are contradictory.
+>
+> If zero required Transaction Record fields are populated/confirmed, readiness should reflect that state.
+>
+> Do not inflate Transaction Readiness because the workspace exists, a stage was selected, activity occurred, participants exist, or compliance signals exist.
+>
+> Keep operational/activity signals separate from Transaction Readiness.
+>
+> Architect readiness so future fact states can support:
+>
+> `Missing → AI Extracted/Proposed → Confirmed`
+>
+> without treating document upload alone as confirmation.
+>
+> **2. Normalize role terminology across the entire workspace**
+>
+> The People page currently uses `Acquirer` while the Transaction Record says `Buyer and seller not identified`.
+>
+> A workflow pack must define canonical transaction-role labels once, and Overview, Documents, People, Transaction Record, Next Actions, AI, notifications, and requests must consume those same labels.
+>
+> Do not independently rename roles per screen.
+>
+> For the current Marriott Hotel Acquisition template, use `Buyer` consistently unless the template explicitly defines `Acquirer` as the canonical role. Whichever is selected must propagate everywhere.
+>
+> `Deal Owner` is acceptable for the workspace owner and should remain separate from transaction-party identity.
+>
+> **3. Restore document responsibility and Request actions**
+>
+> The current Documents screen has regressed by removing participant-responsibility chips and Request buttons.
+>
+> Restore both.
+>
+> Every document item should be capable of displaying:
+>
+> `Document Name · Required/Optional · Missing/Uploaded · Responsible Role`
+>
+> and appropriate actions:
+>
+> `Upload`
+> `Request`
+>
+> Responsibility must come from the workflow-pack/document-item configuration.
+>
+> Example:
+>
+> `Financial Statements · Required · Missing · Seller`
+>
+> `Upload | Request`
+>
+> Request should target the participant assigned to that document. If that participant has not been invited, the flow should explain that and offer to invite them rather than silently failing.
+>
+> **4. Resolve lifecycle/document contradictions**
+>
+> Current workspace displays:
+>
+> `NDA Signed`
+>
+> while Documents displays:
+>
+> `Non-Disclosure Agreement · Required · Missing`
+>
+> Do not allow Kontra to present these as two simultaneously verified truths.
+>
+> Lifecycle position and supporting evidence must have explicit provenance.
+>
+> If a stage is manually selected but its supporting document/fact has not been verified, represent the stage as operational/user-reported rather than verified.
+>
+> Do not automatically mark a document uploaded merely because the lifecycle stage was changed.
+>
+> Likewise, do not automatically advance lifecycle solely because a document was uploaded unless the workflow rule explicitly supports that behavior.
+>
+> Preserve the distinction between:
+>
+> `Operational position`
+>
+> and
+>
+> `Verified transaction facts`.
+>
+> **5. Improve Next Action prioritization**
+>
+> Do not simply fill the top three actions with missing participant invitations.
+>
+> Rank actions according to transaction progression, blockers, required documents, missing critical facts, participant dependencies, and current lifecycle stage.
+>
+> Participant invitations should appear when they unblock meaningful transaction work.
+>
+> For example, if the transaction is at NDA Signed and LOI is the next stage, a missing required LOI should generally outrank inviting a non-critical advisor.
+>
+> **6. Preserve the current lifecycle UI**
+>
+> Keep:
+>
+> `NDA Signed → LOI Submitted → Due Diligence → Financing → Closing`
+>
+> The current desktop rendering is good.
+>
+> **7. Preserve the current visual architecture**
+>
+> Do not redesign spacing, cards, typography, tabs, Transaction Record accordions, lifecycle presentation, or People layout as part of this task.
+>
+> This is a consistency/data-model correction, not another UI redesign.
+>
+> **Acceptance test**
+>
+> Create one fresh Marriott Hotel Acquisition workspace and verify the same state across Overview, Documents, People, Transaction Record, and Next Actions.
+>
+> Then:
+>
+> 1. Invite the Buyer.
+> 2. Upload an NDA.
+> 3. Upload an LOI containing identifiable buyer, seller, property, and transaction terms.
+> 4. Allow AI extraction to complete.
+> 5. Confirm selected extracted facts.
+>
+> Verify after every step that:
+>
+> * participant status updates everywhere;
+> * document status updates everywhere;
+> * responsibility remains consistent;
+> * Transaction Record receives extracted facts;
+> * proposed facts are distinguishable from confirmed facts;
+> * readiness changes for an explainable reason;
+> * Next Actions remove completed actions and reprioritize;
+> * lifecycle does not make unsupported claims;
+> * terminology remains identical across all screens.
+>
+> **Do not consider the task complete based only on static rendering. Test the state transitions.**
+
+That last acceptance test is important. **I would stop evaluating Kontra with empty-room screenshots after this fix.** The empty state is now sufficiently mature. The real test is whether Kontra behaves like a transaction system when you upload an NDA/LOI, invite someone, extract facts, confirm them, and then watch the entire room react coherently. That's the point where we'll know whether the architecture is actually working rather than merely looking correct.

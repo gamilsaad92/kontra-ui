@@ -1,0 +1,35 @@
+Pre-launch fixes only — no redesign and no unrelated changes.
+1. Fix Ask Kontra response truncation
+Ask Kontra is displaying incomplete responses. In the Fundraising demo, the tokenization answer ends mid-sentence at point 3 (“Generic Education: Tokenization can involve…”), with no way for the user to access the remainder.
+Diagnose whether the truncation occurs in:
+model/API output generation,
+API response serialization/storage, or
+frontend rendering.
+The complete model response must be preserved and accessible to the user.
+Preferred behavior:
+Allow the answer panel to scroll through the complete response.
+Do not silently truncate AI responses.
+If a deliberate display limit exists, add “Show full answer” / “Show less.”
+Keep the question input accessible after reading the full response.
+Verify long responses on desktop and mobile.
+Add a regression test using an answer long enough to exceed the current visible response area and confirm the final sentence is accessible.
+2. Recheck Transaction Record canonicalization in the deployed Fundraising demo
+The current preview still shows contradictory state:
+Overview / Record Verification: 17 of 17 confirmed / 100%
+Detailed Transaction Record categories: 0/6, 0/6, 2/5, 0/7, 0/6
+Key Transaction Facts shows both Target Closing Date = 2026-10-15 and Target Close Date = Not recorded
+Do not patch these values visually. Determine why this deployed frontend is still reading the legacy/generic definitions instead of the canonical resolved Fundraising schema/state.
+There should be one canonical closing-date presentation, and the detailed Transaction Record totals must reconcile with the 17/17 Overview state.
+3. Validate before deployment
+Test all three public demos:
+CRE Acquisition
+Business Acquisition
+Fundraising
+Confirm:
+Overview counts reconcile with detailed Transaction Record counts.
+No duplicate canonical/alias fields are rendered.
+Ask Kontra long answers can be read completely.
+Tokenization answers use canonical Transaction Record state.
+Demo mutations remain read-only.
+No console errors.
+Do not change styling, workflow behavior, authorization, lifecycle, settlement, sealing, or tokenization architecture.

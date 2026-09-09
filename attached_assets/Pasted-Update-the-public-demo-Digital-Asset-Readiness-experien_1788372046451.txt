@@ -1,0 +1,64 @@
+Update the public demo Digital Asset Readiness experience across all three demo rooms: Harbor View Apartments, Meridian Software Group, and Nexus AI — Series B.
+The goal is to make each demo show a coherent, transaction-specific completed-readiness exhibit while preserving the live demo room’s current in-progress state.
+Do not change production eligibility logic, real Deal Room behavior, or core UI architecture. Do not add new features.
+For each public demo:
+Keep the current live transaction example exactly as-is, including its existing incomplete items, open issues, missing documents, awaiting confirmations, participant status, and current stage.
+In the Digital Asset Readiness section, add or preserve a clearly labeled separate illustrative completed readiness exhibit that is:
+read-only
+explicitly separate from the live transaction state
+based on that specific demo’s own transaction type and canonical data
+not reused from Harbor View across the other demo rooms
+The completed illustrative exhibit should show a coherent completed state, including:
+all required canonical fields confirmed
+no unresolved blockers
+no unresolved exceptions
+provenance intact
+required approvals satisfied
+a recorded settlement mode
+an eligible readiness snapshot
+immutable snapshot history
+a generated Digital Asset Preparation Package
+package history tied to the specific snapshot
+read-only inspection in the public demo
+Fix the current Meridian and Nexus problem where Digital Asset Readiness shows:
+“Unavailable”
+0/0 confirmed
+0 blockers
+no snapshot
+Harbor View-specific illustrative copy
+Meridian and Nexus must each have their own completed illustrative exhibit derived from their own transaction context.
+Preserve the clear disclaimer that the completed snapshot/package is illustrative and separate from the live demo transaction. The live demo room should continue to demonstrate active issues and work-in-progress state, while the completed exhibit demonstrates what Kontra ultimately produces once the record is fully verified.
+For Harbor View, also fix the remaining internal inconsistency in the completed illustrative exhibit. It currently says:
+Eligible
+Ready for External Review
+29/29 confirmed
+0 blockers
+required approvals satisfied
+but some frozen values still contain unresolved conditions such as:
+Phase I ESA outstanding
+Schedule B exceptions under review
+Two Schedule B exceptions require confirmation
+Approval/Counsel awaiting title exception review
+Approval/Closing not yet authorized
+Update only the illustrative completed exhibit seed data so those frozen values represent genuinely resolved/completed conditions consistent with eligibility.
+For Meridian Software Group, the completed illustrative exhibit should reflect a completed Business Acquisition record using Meridian-specific facts and resolved legal/diligence conditions. It should not reference Harbor View, CRE, property-specific fields, or Harbor View source records.
+For Nexus AI — Series B, the completed illustrative exhibit should reflect a completed Fundraising / Series B record using Nexus-specific facts and resolved fundraising/legal conditions. It should not reference Harbor View, CRE, property fields, or Harbor View source records.
+The illustrative completed snapshot/package must remain provider-neutral. Do not introduce token issuance, custody, wallets, KYC execution, trading, blockchain integrations, transfer-agent functionality, or settlement execution.
+Keep the current Digital Asset Readiness positioning:
+Verified Asset foundation
+provider-neutral preparation status
+Ready for External Review
+immutable snapshot
+provenance/evidence lineage
+Digital Asset Preparation Package
+Do not allow the demo exhibit to bypass or weaken real production readiness rules. This should be demo seed/display data only.
+After the update, verify all three public demos:
+Harbor View shows Harbor-specific completed exhibit
+Meridian shows Meridian-specific completed exhibit
+Nexus shows Nexus-specific completed exhibit
+no demo shows 0/0 unavailable readiness unless there is an actual service failure
+no demo references another demo’s data
+snapshot and package buttons work read-only
+snapshot/package history displays correctly
+no production Deal Room functionality changed
+Before deploying, give me a concise report of exactly what changed in each demo and confirm that only public demo seed/display data was modified.

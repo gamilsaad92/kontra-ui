@@ -1,0 +1,276 @@
+Given your situation, I would **tell the developer one thing** and **tell the market another thing**.
+
+Most founders make the mistake of building what they want internally and marketing it the same way externally.
+
+---
+
+# What To Tell The Developer
+
+Tell him:
+
+> We are no longer building a lender platform with a marketplace attached.
+>
+> We are building a commercial real estate operating system where the property is the center of everything.
+
+Everything should revolve around:
+
+```text
+Property
+ ├── Documents
+ ├── Financials
+ ├── Inspections
+ ├── Compliance
+ ├── Service Providers
+ ├── AI Analysis
+ ├── Watchlist
+ └── Loans
+```
+
+Not:
+
+```text
+Lender Portal
+Borrower Portal
+Investor Portal
+Servicer Portal
+```
+
+Those become permissions behind the scenes.
+
+### Immediate Development Priorities
+
+1. Fix routing between public and logged-in experiences.
+2. Create property profiles.
+3. Create service provider profiles.
+4. Build watchlists.
+5. Build AI document review.
+6. Build document vault.
+7. Build inspection tracking.
+8. Build compliance tracking.
+
+Do not spend time building tokenization screens right now.
+
+Do not spend time building lender-specific workflows right now.
+
+Those can stay in the database and codebase but should not be the public-facing experience.
+
+---
+
+# What To Tell The Market
+
+Do NOT say:
+
+> AI Loan Servicing Platform
+
+Do NOT say:
+
+> Real Estate Tokenization Platform
+
+Do NOT say:
+
+> Freddie Mac Compliance Software
+
+Nobody wakes up looking for those things.
+
+Instead say:
+
+> Kontra is the operating system for commercial real estate assets.
+
+---
+
+# Who Is Your First Customer?
+
+Not banks.
+
+Not Freddie servicers.
+
+Not institutional investors.
+
+Target:
+
+### Property Owners
+
+Own:
+
+* 5 properties
+* 10 properties
+* 50 properties
+
+Pain points:
+
+* Documents everywhere
+* Inspections everywhere
+* Vendor tracking everywhere
+* Compliance spreadsheets
+
+---
+
+### Asset Managers
+
+They live in Excel.
+
+Kontra becomes:
+
+> One workspace for every property.
+
+---
+
+### Property Managers
+
+Need:
+
+* Inspections
+* Compliance
+* Vendors
+* Documents
+
+---
+
+# Marketing Strategy
+
+Since you want organic discovery rather than lender sales, I'd focus on SEO and free tools.
+
+### Tool #1
+
+Inspection Analyzer
+
+Upload inspection.
+
+Get:
+
+* Life safety findings
+* Deferred maintenance
+* Cost estimate
+
+Free.
+
+---
+
+### Tool #2
+
+Property Health Score
+
+Input:
+
+* Occupancy
+* NOI
+* Age
+* Inspection findings
+
+Output:
+
+* Property score
+
+Free.
+
+---
+
+### Tool #3
+
+Insurance Review
+
+Upload policy.
+
+AI reviews:
+
+* Expiration
+* Missing coverage
+* Risks
+
+Free.
+
+---
+
+### Tool #4
+
+Financial Statement Review
+
+Upload operating statement.
+
+AI generates:
+
+* Occupancy analysis
+* Expense variance
+* Trend analysis
+
+Free.
+
+---
+
+These tools generate traffic.
+
+Traffic creates users.
+
+Users create properties.
+
+Properties create data.
+
+Data creates enterprise value.
+
+---
+
+# What I Would Put On The Homepage
+
+Instead of:
+
+> AI Servicing
+>
+> Tokenization
+>
+> Lender Portal
+
+I would put:
+
+### Headline
+
+**Commercial Real Estate Intelligence, Operations, and Compliance in One Platform**
+
+### Subheadline
+
+Track properties, inspections, documents, compliance, vendors, and risk from a single workspace.
+
+### Buttons
+
+**Explore Properties**
+
+**Try AI Tools**
+
+---
+
+# The Long-Term Play
+
+What I think many people miss about your idea is this:
+
+The servicing platform is not the business.
+
+The data is the business.
+
+If Kontra eventually contains:
+
+* 50,000 properties
+* Millions of documents
+* Inspection histories
+* Insurance histories
+* Compliance histories
+* Vendor relationships
+
+then later you can add:
+
+* Lender monitoring
+* Loan surveillance
+* Participations
+* Tokenization
+
+from a position of strength.
+
+So if I were you, I'd tell the developer:
+
+> Stop thinking about portals.
+>
+> Start thinking about properties.
+
+And I'd tell the market:
+
+> Kontra helps commercial real estate owners and operators manage assets, inspections, documents, compliance, and risk in one place.
+
+That's a much easier story to sell, discover, and grow while you're still building the company.

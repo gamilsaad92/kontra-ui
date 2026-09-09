@@ -287,7 +287,7 @@ export default function LegalReviewPanel({ propertyId, pack, isDemo }) {
               disabled
               name="More Providers"
               disabledText="No additional legal AI providers are connected."
-              requestHref="mailto:hello@kontra.ai?subject=Legal AI Provider Request"
+              requestHref="mailto:hello@kontraplatform.com?subject=Legal AI Provider Request"
             />
           </div>
         </section>

@@ -1,0 +1,139 @@
+I agree. It **doesn’t feel right yet**, and I think the reason is structural, not cosmetic.
+
+The implementation added the lifecycle and renamed the readiness panel, but the page still feels like **three stacked systems** instead of one coherent operating view:
+
+**Transaction Snapshot**
+then **Transaction Lifecycle**
+then **What Needs Attention**
+then **Transaction Readiness**
+
+They all describe the same transaction state from slightly different angles, so the Overview feels repetitive and heavy.
+
+The lifecycle bar itself is also too literal. Seeing `NDA Signed → LOI Signed → Due Diligence → Agreement Signed → Closing` under the snapshot makes it feel like a generic project tracker. It doesn’t communicate what Kontra is doing differently.
+
+The bigger problem is the hierarchy. Right now, the most important thing—the user’s current state and what they need to do next—is buried between large cards.
+
+I would redesign the Overview around **one primary command center**.
+
+Something closer to:
+
+> **Marriott Hotel Acquisition**
+> Stage: NDA Signed · Target Close Aug 19
+>
+> **Transaction Readiness — 18%**
+> Building the verified transaction record
+>
+> **Next actions**
+> Upload core transaction document
+> Invite Buyer Representative
+> Confirm transaction terms
+>
+> `NDA Signed  →  LOI  →  Due Diligence  →  Agreement  →  Closing`
+
+Then below that:
+
+**Transaction Record**
+
+* Parties
+* Asset / Company
+* Economics / Terms
+* Legal / Compliance
+* Documents / Approvals
+
+And those sections progressively fill in.
+
+That would let you remove the separate giant **What Needs Attention** card entirely. The next actions belong inside the primary readiness card.
+
+I would also make the lifecycle much smaller. It should be a thin context indicator, not a major visual block. Right now it occupies too much vertical space relative to how little decision value it provides.
+
+The current **Transaction Readiness** area also feels too much like an expanded checklist. The “Confirmed / Missing” two-column structure is useful internally, but visually it makes Kontra feel administrative. I’d summarize first:
+
+> **Identity & Parties** — 1 of 5 confirmed
+> Buyer missing · Seller missing
+
+and only expand to see the underlying fields.
+
+That makes the overview feel like intelligence rather than a database.
+
+There’s also still a bug in your People screenshot: **Deal Coordinator is again showing “Not invited yet” with an Invite button.** So the deployed custom-pack coordinator fix is still not consistently working in the frontend you’re viewing. That needs to be fixed before anything else on People.
+
+I’d send Replit this:
+
+> The UX implementation is technically correct but the Overview still feels fragmented and repetitive. Do not add more features. Redesign the hierarchy using the existing data/components.
+>
+> **Goal:** Overview should feel like one transaction command center, not multiple stacked status cards.
+>
+> **1. Merge Transaction Snapshot + Lifecycle + What Needs Attention + high-level Readiness into one primary card.**
+>
+> The top card should communicate:
+>
+> * transaction name
+> * current stage
+> * target close/date if present
+> * key transaction values
+> * readiness %
+> * 2–4 highest-priority next actions
+> * compact lifecycle
+>
+> Do not keep a separate large `What Needs Attention` card underneath.
+>
+> **2. Make the lifecycle compact.**
+>
+> It should be a thin progress indicator inside the primary card, not its own large section.
+>
+> Use the actual effective workflow stages.
+>
+> Current stage = emphasized
+> completed = subtle check
+> future = muted
+>
+> Do not make it look like a project-management timeline.
+>
+> **3. Turn Transaction Readiness into summarized intelligence first, details second.**
+>
+> Instead of immediately showing large Confirmed/Missing columns, show compact category rows/cards:
+>
+> `Identity & Parties — 1/5 confirmed`
+> `Asset / Company — 0/4 confirmed`
+> `Transaction Terms — 2/6 confirmed`
+> `Documents — 3/10 complete`
+> `Approvals — 0/3 complete`
+>
+> Each category expands to show detailed confirmed/missing fields.
+>
+> Preserve all existing data and functionality.
+>
+> **4. Make the primary card answer three questions immediately:**
+>
+> `Where is this transaction?`
+> `How ready is it?`
+> `What should I do next?`
+>
+> If those answers are not obvious within five seconds, the Overview is not finished.
+>
+> **5. Keep stage-aware behavior.**
+>
+> Early → Transaction Readiness
+> Closing → Closing Readiness
+> Settlement → Settlement Readiness
+> Complete → Transaction Seal
+>
+> But these should feel like the same evolving primary system, not different dashboards appearing at different stages.
+>
+> **6. Fix the People regression again.**
+>
+> In the current Marriott custom workspace, `Deal Coordinator` still shows:
+>
+> * Not invited yet
+> * Not invited
+> * Invite button
+>
+> The coordinator must be detected from actual workspace ownership/management semantics, not only role metadata. Confirm the currently authenticated coordinator appears as Owner/Coordinator and is never inviteable.
+>
+> **7. Do not add APIs, database changes, settlement providers, blockchain, wallets, or new backend functionality.**
+>
+> First return a wireframe-level layout of the revised Overview before coding.
+
+I think that will get you closer.
+
+The issue right now isn’t that Kontra needs **more** on the screen. It needs **less duplication and stronger hierarchy**. The product should feel like it understands the transaction, not like it is exposing every internal subsystem at once.

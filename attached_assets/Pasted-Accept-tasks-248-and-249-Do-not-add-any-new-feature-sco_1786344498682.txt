@@ -1,0 +1,37 @@
+Accept tasks #248 and #249. Do not add any new feature scope.
+#248 — P0: Fix invitation API
+Fix the GET /invites 500 caused by the missing deal_room_invites.updated_at column.
+Before choosing the fix, inspect the invite schema and determine whether:
+updated_at should actually exist and needs an additive migration, or
+the query incorrectly requests a field the invite model does not require.
+Do not blindly add the column just to silence the error.
+Then verify the complete invitation lifecycle:
+Invite participant → email/invite created → People tab updates → invite accepted → participant status updates
+Test Buyer, Seller and at least one advisor role.
+Also verify there is no reappearance of the prior access/PIN problem and that participant access uses the current authentication/invite architecture.
+The owner/coordinator row should not misleadingly display Not invited if the owner is inherently part of the workspace. Use an appropriate owner status such as Owner, Active, or equivalent.
+#249 — P1: Complete post-completion records
+Implement the intended sealed-workspace behavior:
+pre-completion documents remain under Sealed Documents
+new documents uploaded after sealed_at are automatically stamped post_completion = true
+set post_completion_added_at
+surface them under Post-Completion Records
+clearly label them as not part of the original Transaction Seal
+do not modify or regenerate the original Transaction Seal
+do not unlock Transaction Record fields or approvals
+Verify a post-completion upload survives refresh and appears only in the Post-Completion section.
+Regression test after both fixes
+Re-test:
+document upload
+AI analysis
+Overview refresh
+participant invitation
+participant acceptance/access
+Settlement Readiness
+Transaction Seal
+post-completion upload
+Stop after these fixes and return test results. Do not begin new blockchain, Circle, Arc, wallet, or settlement-provider work.
+There are also two UI things I would clean up as part of #248 rather than create another feature task.
+In the People screenshot, “Deal Room Owner — Not invited” doesn't make conceptual sense. The owner shouldn't have to invite themselves. It makes the product look like its participant-state logic is wrong even if technically it isn't.
+And the headline says “0 of 5 roles invited” while one of those five roles is the owner. If the owner isn't an inviteable role, the denominator should probably be the actual external participants, e.g. “0 of 4 participants invited.”
+Other than those points, this release is now in much better shape. The settlement smoke tests are strong: deterministic completion worked, duplicate sealing was prevented, mode locking worked, sealed writes were rejected, and the mock tokenization surface is blocked. I would finish these two open operational issues before doing anything else.

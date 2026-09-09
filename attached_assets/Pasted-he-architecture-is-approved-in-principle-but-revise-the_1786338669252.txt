@@ -1,0 +1,38 @@
+he architecture is approved in principle, but revise the plan before implementation with the following changes.
+1. Reconsider the lifecycle
+Do not assume Closing → Funded → Settlement → Complete.
+Design the canonical settlement-enabled lifecycle as:
+Closing → Settlement → Complete
+Treat Funded as a settlement milestone/status where appropriate rather than requiring funding to precede settlement. Preserve backward compatibility with existing rooms currently using the funded stage.
+Explain the safest migration strategy before implementation.
+2. Complete must create an immutable Transaction Seal, but do not permanently freeze the entire workspace.
+The transaction record, approvals, settlement evidence included in the seal, and the seal itself must become immutable.
+Allow a separate Post-Closing/Post-Completion Records area for documents added after completion. These records must be clearly timestamped and excluded from the original sealed snapshot.
+3. Fix Settlement Readiness semantics.
+Use:
+verified = 1.0
+needs_review = 0.5
+missing = 0
+Approval conditions count only when actually approved.
+A transaction may only advance to complete when every mandatory settlement condition is verified/approved. A numerical score of 100% alone must never authorize completion.
+AI/readiness scoring is informational and organizational; deterministic verified conditions control completion.
+4. Rename the underlying Closing Seal concept to Transaction Seal.
+The underlying system should be transaction-type-neutral.
+Workflow packs may customize its display name, e.g. Closing Seal, Completion Record, Settlement Record, etc.
+5. Keep Digital Settlement provider-neutral.
+Do not hardcode Circle, Arc, Kinexys, Ethereum, or another provider/network into the core architecture.
+Provider integrations will later be adapters.
+Phase 1 remains tracking/readiness only. No payment initiation, custody, wallet execution, smart-contract deployment, or blockchain transactions.
+6. Treat tokenization as a capability, not fundamentally as a transaction type.
+Preserve the existing Tokenization workflow pack for backward compatibility, but design new settlement architecture so tokenization can be enabled on Fundraising, CRE, Business Acquisition, custom packs, and future transaction types.
+Architecture should ultimately support:
+Transaction Type + Capabilities
+rather than requiring a separate Tokenization transaction type.
+7. Proceed with the proposed production mock isolation.
+Mock blockchain transactions, fixture KYC data, hardcoded funding data and in-memory token registry functionality must never present themselves as live production functionality.
+After incorporating these changes, return the revised architecture and implementation tasks. Do not code yet.
+Once those changes are made, I think we're getting to something substantially more important than adding a blockchain feature to Kontra.
+We're defining a clean boundary:
+Kontra determines whether a transaction is ready, coordinates its settlement, records what happened and creates the permanent transaction record.
+Banks / Circle / Arc / tokenization providers / future rails execute the actual movement of value.
+That boundary gives Kontra room to become much bigger without forcing you into becoming a bank, blockchain, exchange, or custodian.

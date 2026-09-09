@@ -1,0 +1,84 @@
+Yes. **This is much closer to where I wanted it.** I would consider the Summary architecture basically finished now.
+
+The biggest improvement is that it no longer feels like a 61-field questionnaire. The top now tells me:
+
+**25 key items awaiting information**
+**61 fields in full record**
+
+That distinction works extremely well. It communicates, “Kontra knows 61 things about this transaction, but these 25 are what matter right now.”
+
+I also like the collapsed-section behavior. Seeing **“4 key items missing”** under Parties, **“2 key items missing”** under Ownership, and **“5 key items missing”** under Legal is much more operational than just seeing “Not started.” A user can scan the entire transaction and immediately understand where information is missing.
+
+The actual field selection is also substantially better. You now have a sensible hierarchy:
+
+* **Transaction:** type, stage, closing date, jurisdiction, purchase price, EMD
+* **Asset:** property, address, type, current owner
+* **Parties:** buyer, seller, counsel, title/escrow
+* **Ownership:** acquiring entity and encumbrances
+* **Financial:** NOI plus existing debt, proposed financing and required equity
+* **Legal:** agreement, title, environmental, litigation, liens/leases
+
+That feels like an actual **transaction snapshot**, rather than a database schema.
+
+### One thing I would change
+
+There is now a semantic inconsistency between the orange badge and Summary membership.
+
+For example:
+
+**NOI** → `Workflow required`
+**Existing debt** → no badge
+**Proposed financing** → no badge
+**Required equity** → no badge
+
+Yet all four appear in Summary.
+
+That's actually **fine**—and reinforces the architecture we wanted—but it means the system now has three separate concepts:
+
+**Workflow requirement** = the workflow says this information is necessary.
+**Summary importance** = useful enough to surface in the operational snapshot.
+**Exception importance** = normally hidden, but something happened that requires attention.
+
+Make sure those are actually separate properties in the data model. Don't let the developer implement Summary by checking `workflow_required`, because you'll eventually fight that logic across every transaction pack.
+
+Something like:
+
+`workflow_required`
+`summary_priority`
+`exception_state`
+
+Then Summary can be generated from priority + exceptions independently of whether something is technically required.
+
+### I would also change the progress bar
+
+Right now the bar is empty and says **“25 key items awaiting information.”**
+
+Once data starts coming in, this could become extremely useful. Instead of just being a decorative bar, make it represent **Summary completeness**.
+
+For example:
+
+**17 of 25 key items complete · 68%**
+
+Then underneath:
+
+`5 extracted · 10 confirmed · 2 manually entered · 8 awaiting information`
+
+But importantly, **don't turn this into a generic deal-health score.** It's just factual record completeness. A transaction could be 100% documented and still be a terrible deal or have a major unresolved issue.
+
+### Then I would stop
+
+I wouldn't keep redesigning this screen.
+
+The important test now is **not another empty-state screenshot**.
+
+Upload a real Purchase Agreement.
+
+That should trigger the magic:
+
+Kontra reads it → identifies the transaction → extracts buyer/seller/property/purchase price/EMD/closing date/etc. → populates these fields → shows the source underneath → changes the completeness bar → potentially identifies conflicts with existing values → leaves the user to confirm important information.
+
+Then upload a Title Commitment. Then financials. Then an environmental report.
+
+If that experience works properly, this Transaction Record becomes much more than another tab. **It becomes the structured transaction memory underneath Kontra.** Documents are the evidence; the Transaction Record is the evolving structured truth; Overview tells you what matters; Activity tells you what happened.
+
+That architecture is strong. I would now shift development effort from **how this page looks** to **how intelligently and reliably it becomes populated.**

@@ -1,0 +1,162 @@
+Create a focused corrective task for AI-generated room Transaction Record rendering.
+
+The latest Freddie Mac Hazard Loss test shows that dynamic transaction identity, stages, participants, and requirements are now working substantially as intended.
+
+DO NOT redesign or refactor those systems.
+
+Fix the remaining Transaction Record and terminology inconsistencies.
+
+CURRENT FAILURE
+
+The AI-generated room correctly identifies:
+
+Transaction Type:
+Hazard-Loss Insurance Proceeds Review
+
+Transaction Structure:
+Insurance proceeds disbursement and repair review
+
+However:
+
+1. The Transaction Record says:
+“No required field schema configured.”
+
+2. Key Transaction Facts still displays generic CRE/acquisition fields:
+- Purchase Price
+- Buyer
+- Seller
+- Earnest Money Deposit
+- Target Closing Date
+- Historical Revenue
+
+3. The Overview still displays:
+“Target close Aug 31, 2026”
+
+This demonstrates that some Overview components are still independently falling back to compatibility-pack/default schemas and terminology.
+
+FIX
+
+1. AI-generated Transaction Record fields
+
+Ensure transaction_record_fields from the APPROVED AI PROPOSAL are persisted when the room is created and are available to all Transaction Record consumers.
+
+An AI-generated room should never show:
+“No required field schema configured”
+when the approved proposal contains generated Transaction Record fields.
+
+If the proposal is currently failing to generate transaction_record_fields, fix the generation/persistence path.
+
+Do NOT substitute compatibility-pack fields.
+
+2. Key Transaction Facts
+
+Remove any independent hard-coded/default CRE field selection for AI-generated rooms.
+
+Key Transaction Facts must be derived from the room's effective Transaction Record schema.
+
+For the current hazard-loss room, Purchase Price, Buyer, Seller, Earnest Money Deposit, and Historical Revenue must not appear unless they were explicitly generated for that transaction.
+
+Key Transaction Facts should select the most important fields from the generated Transaction Record.
+
+For this test, reasonable examples include:
+
+Investor / Agency
+Loss Type
+Units Affected
+Borrower Funds Advanced
+Insurance Claim Status
+Insurance Proceeds
+Current Disbursement Request
+Repair Status
+
+These examples must NOT become a hard-coded hazard-loss schema.
+
+The component should render whatever fields the generated proposal identifies as key/appropriate.
+
+3. Preserve extracted facts
+
+The description already provides:
+
+Freddie Mac
+Multifamily
+Fire
+12 affected units
+Insurance claim acknowledged
+Insurance proceeds held by servicer
+Borrower advanced approximately $150,000
+Repairs in progress
+Reimbursement/additional proceeds requested
+
+Persist these as generated transaction facts with appropriate confirmation/provenance state.
+
+Do not require the user to re-enter facts already supplied in the transaction description.
+
+4. Missing relevant fields
+
+The AI may generate appropriate empty fields for information still needed, such as:
+
+Property Name
+Property Address
+Loan Number
+Date of Loss
+Estimated Repair Cost
+Insurance Proceeds Received
+Current Disbursement Request
+Prior Disbursements
+Inspection Status
+
+These are examples only.
+
+The AI determines the actual schema based on the transaction.
+
+5. Dynamic terminology propagation
+
+The room correctly uses “Claim Review,” but other components still show closing terminology.
+
+For this hazard-loss workflow:
+
+“Target close” / “Target Closing Date”
+
+should render as:
+
+“Target completion” / “Target Completion Date”
+
+Use the generated transaction terminology/configuration consistently across Overview and Transaction Record.
+
+Do NOT globally rename this for traditional transaction rooms.
+
+6. Single source of truth
+
+Audit the Overview for any component that independently derives:
+- transaction type
+- key transaction fields
+- lifecycle terminology
+- required fields
+
+from base_pack or static workflow schemas.
+
+For AI-generated rooms these must resolve through the approved generated room configuration/effective Transaction Record.
+
+Existing template-created rooms must remain unchanged.
+
+VALIDATION
+
+Recreate the SAME Freddie Mac test.
+
+PASS requires:
+
+- No Purchase Price
+- No Buyer
+- No Seller
+- No Earnest Money Deposit
+- No Historical Revenue
+- No generic Target Closing Date
+- No “No required field schema configured”
+- Generated hazard-loss Transaction Record fields appear
+- Facts contained in the description are populated
+- Unknown facts remain missing rather than invented
+- Key Transaction Facts are selected from the generated schema
+- Target Completion terminology appears where appropriate
+- Existing template-created rooms remain unchanged
+
+Also report why the Key Transaction Facts component was previously rendering compatibility/default fields independently of the generated Transaction Record.

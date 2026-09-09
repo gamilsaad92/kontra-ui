@@ -1,0 +1,100 @@
+13:03:52.487 Running build in Washington, D.C., USA (East) – iad1
+13:03:52.488 Build machine configuration: 2 cores, 8 GB
+13:03:52.611 Cloning github.com/gamilsaad92/kontra-ui (Branch: main, Commit: be6d9af)
+13:03:53.449 Warning: Failed to fetch one or more git submodules
+13:03:53.450 Cloning completed: 839.000ms
+13:03:53.822 Restored build cache from previous deployment (7oqsBKuQTDX3Bmaiq8ssbRYD6hfW)
+13:03:54.009 Running "vercel build"
+13:03:54.775 Vercel CLI 51.6.1
+13:03:55.333 Installing dependencies...
+13:05:50.697 
+13:05:50.697 changed 5 packages in 2m
+13:05:50.697 
+13:05:50.698 213 packages are looking for funding
+13:05:50.698   run `npm fund` for details
+13:05:50.847 
+13:05:50.847 > kontra-ui@1.0.0 build
+13:05:50.847 > vite build
+13:05:50.847 
+13:05:51.097 [33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+13:05:51.173 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
+13:05:51.228 transforming...
+13:05:53.178 [32m✓[39m 52 modules transformed.
+13:05:53.181 [31mx[39m Build failed in 1.98s
+13:05:53.181 [31merror during build:
+13:05:53.182 [31m[vite:esbuild] Transform failed with 7 errors:
+13:05:53.182 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:490:11: ERROR: The character "}" is not valid inside a JSX element
+13:05:53.182 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:568:11: ERROR: The character "}" is not valid inside a JSX element
+13:05:53.182 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:623:11: ERROR: The character "}" is not valid inside a JSX element
+13:05:53.182 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1044:17: ERROR: The character "}" is not valid inside a JSX element
+13:05:53.182 /vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:1084:10: ERROR: The character "}" is not valid inside a JSX element
+13:05:53.183 ...[31m
+13:05:53.183 file: [36m/vercel/path0/ui/src/portals/investor/InvestorPortal.tsx:490:11[31m
+13:05:53.183 [33m
+13:05:53.183 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.183 488|                </div>
+13:05:53.183 489|              </div>
+13:05:53.184 490|            )}
+13:05:53.184    |             ^
+13:05:53.184 491|  
+13:05:53.184 492|            {/* ── DISTRIBUTIONS ── */}
+13:05:53.184 
+13:05:53.184 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.184 566|                </div>
+13:05:53.184 567|              </div>
+13:05:53.185 568|            )}
+13:05:53.185    |             ^
+13:05:53.185 569|  
+13:05:53.185 570|            {/* ── PERFORMANCE ── */}
+13:05:53.185 
+13:05:53.185 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.185 621|                </div>
+13:05:53.185 622|              </div>
+13:05:53.186 623|            )}
+13:05:53.186    |             ^
+13:05:53.186 624|  
+13:05:53.186 625|            {/* ── GOVERNANCE ── */}
+13:05:53.186 
+13:05:53.186 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.186 1042|                      </table>
+13:05:53.186 1043|                    </div>
+13:05:53.187 1044|                  )}
+13:05:53.187    |                   ^
+13:05:53.187 1045|  
+13:05:53.187 1046|                  {/* Recent market trades */}
+13:05:53.187 
+13:05:53.187 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.187 1082|                </div>
+13:05:53.188 1083|              );
+13:05:53.188 1084|            })()}
+13:05:53.188    |            ^
+13:05:53.188 1085|  
+13:05:53.188 1086|            {/* ── TOKEN NAV PRICING ── */}
+13:05:53.191 
+13:05:53.192 [33mThe character "}" is not valid inside a JSX element[33m
+13:05:53.192 1082|                </div>
+13:05:53.193 1083|              );
+13:05:53.193 1084|            })()}
+13:05:53.193    |                ^
+13:05:53.193 1085|  
+13:05:53.193 1086|            {/* ── TOKEN NAV PRICING ── */}
+13:05:53.193 
+13:05:53.193 [33mUnterminated regular expression[33m
+13:05:53.193 1443|    
+13:05:53.194 1444|          </div>
+13:05:53.194 1445|          </div>
+13:05:53.194    |                ^
+13:05:53.194 1446|        </main>
+13:05:53.194 1447|      </div>
+13:05:53.194 [31m
+13:05:53.194     at failureErrorWithLog (/vercel/path0/ui/node_modules/esbuild/lib/main.js:1472:15)
+13:05:53.194     at /vercel/path0/ui/node_modules/esbuild/lib/main.js:755:50
+13:05:53.194     at responseCallbacks.<computed> (/vercel/path0/ui/node_modules/esbuild/lib/main.js:622:9)
+13:05:53.195     at handleIncomingPacket (/vercel/path0/ui/node_modules/esbuild/lib/main.js:677:12)
+13:05:53.195     at Socket.readFromStdout (/vercel/path0/ui/node_modules/esbuild/lib/main.js:600:7)
+13:05:53.195     at Socket.emit (node:events:519:28)
+13:05:53.195     at addChunk (node:internal/streams/readable:561:12)
+13:05:53.195     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+13:05:53.196     at Readable.push (node:internal/streams/readable:392:5)
+13:05:53.196     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)[39m
+13:05:53.213 Error: Command "npm run build" exited with 1

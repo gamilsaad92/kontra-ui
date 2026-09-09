@@ -1,0 +1,160 @@
+# Controlled Merge and Production Deployment
+
+The `launch-publish` validation is approved and the branch is **READY TO MERGE**.
+
+Proceed with a controlled merge and production deployment.
+
+## 1. Preserve current Production first
+
+Before merging:
+
+* Record the current `main` commit SHA.
+* Record the current Production Vercel deployment.
+* Record the current Production Render deployment.
+* Confirm the working tree is clean.
+* Do not modify database schema beyond migrations already validated and required by the approved branch.
+
+These references are the rollback point.
+
+## 2. Merge `launch-publish` into `main`
+
+Merge the validated `launch-publish` branch into `main`.
+
+Do not squash or manually reconstruct the validated implementation unless technically required.
+
+Before pushing, confirm the resulting merged tree preserves:
+
+* canonical Transaction Record mapping
+* Deal Owner semantics
+* owner document visibility
+* Transaction Details synchronization
+* Transaction Readiness based on confirmed required facts
+* proposed/extracted vs verified fact states
+* task persistence and idempotency
+* Next Actions
+* workflow-pack behavior
+* settlement capability
+* atomic settlement completion
+* Transaction Seal
+* post-completion records
+
+If the merge produces unexpected semantic changes despite having no textual conflicts, stop and report them before deployment.
+
+## 3. Deploy the merged `main`
+
+Deploy the resulting `main` version to:
+
+* Production Vercel frontend
+* Production Render API
+
+Confirm both deployments correspond to the same merged `main` revision.
+
+Do not leave Production with a new frontend pointing at an older API.
+
+## 4. Run Production smoke tests
+
+Use a disposable Production test workspace.
+
+Verify:
+
+### Workspace
+
+* room creation succeeds
+* Deal Owner access succeeds
+* Overview loads
+* Documents loads
+* People loads
+
+### Transaction Record
+
+* fresh workspace starts at `0%`
+* Transaction Value saves to canonical Transaction Record
+* Target Closing Date saves to canonical Transaction Record
+* Deal Owner provenance is preserved
+
+### Documents + AI
+
+* upload NDA
+* upload LOI
+* owner sees both documents
+* AI extraction succeeds
+* extracted facts have canonical keys
+* provenance is present
+* extracted facts remain unconfirmed until explicitly confirmed
+* no duplicate alias rows are created
+
+### Readiness
+
+Verify:
+
+`0 confirmed facts → 0%`
+
+AI extraction alone does not falsely increase confirmed readiness.
+
+After confirming required facts, readiness increases according to the required-field denominator.
+
+### People
+
+* Deal Owner displays correctly
+* Deal Owner is not inviteable
+* external participant invitation works
+* participant denominator excludes Deal Owner
+
+### Next Actions
+
+* actions generate successfully
+* actions reflect current transaction state
+* completing an action updates/removes it
+* refresh does not recreate completed tasks
+
+### Lifecycle
+
+* document upload does not automatically advance lifecycle
+* explicit authorized advancement works
+* lifecycle remains operational state rather than verified evidence
+
+### Settlement
+
+* settlement capability works
+* readiness gate works
+* direct bypass to Complete remains blocked
+* valid completion creates exactly one Transaction Seal
+* duplicate completion returns `ALREADY_SEALED`
+* post-completion documents remain separate
+
+## 5. Do not redesign anything during deployment
+
+Do not make additional UX, terminology, workflow, scoring, schema, or feature changes as part of this deployment.
+
+This is a deployment of the validated implementation, not another development pass.
+
+If a Production smoke test fails, stop and diagnose it rather than adding unrelated fixes.
+
+## 6. After successful Production validation
+
+Return:
+
+* previous `main` SHA
+* merged `main` SHA
+* merge commit SHA
+* Vercel Production deployment status
+* Render Production deployment status
+* confirmation frontend and API use the intended merged revision
+* Production smoke-test PASS/FAIL results
+* any differences from staging
+* any errors observed
+* rollback status
+* final Production status
+
+Do not delete `launch-publish` yet.
+
+Keep it temporarily until Production smoke testing passes. Once Production is confirmed healthy, it can be retired.
+
+## Non-blocking cleanup
+
+Do not include these in the deployment unless required:
+
+* repair the pre-existing `tasks.test.js` import path
+* staging `PILOT_ADMIN_PASSWORD` configuration
+
+Track them separately after Production is stable.

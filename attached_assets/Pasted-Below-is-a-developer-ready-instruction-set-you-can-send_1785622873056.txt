@@ -1,0 +1,1415 @@
+Below is a developer-ready instruction set you can send directly.
+
+# Kontra UX Simplification Brief
+
+## Objective
+
+Simplify Kontra without removing the underlying capabilities.
+
+The current version has strong functionality, but too many concepts, sections, configuration choices, and empty states are visible at the same time. The goal is to make Kontra feel like an intelligent transaction coordinator rather than a complex transaction-management system.
+
+The core user experience should answer three questions immediately:
+
+1. What is blocking the transaction?
+2. Who needs to act next?
+3. What should I do now?
+
+All existing functionality can remain in the product, but advanced controls should be progressively disclosed instead of presented upfront.
+
+---
+
+# 1. Product hierarchy
+
+Use the following hierarchy consistently throughout the product.
+
+## Primary product concept
+
+**Transaction Workspace**
+
+This is the product the customer creates and pays for.
+
+## Primary intelligence layer
+
+**AI Operations Manager**
+
+This is the intelligence inside each workspace that monitors progress, identifies blockers, drafts follow-ups, and recommends actions.
+
+## Supporting product objects
+
+Only expose these when necessary:
+
+* Participants
+* Documents
+* Tasks
+* Activity
+* Transaction stages
+* Verification
+* Workspace settings
+
+Avoid introducing additional concepts such as workflow packs, intelligence modules, verification engines, legal providers, operations standups, closing seals, or transaction packages in the primary interface.
+
+Those concepts may exist internally, but the customer should not need to learn them before using the product.
+
+---
+
+# 2. Simplify the homepage
+
+## Keep the main headline
+
+Keep:
+
+> Every transaction gets its own Operations Manager.
+
+This is strong and should remain the primary homepage message.
+
+## Replace the supporting paragraph
+
+Use:
+
+> Kontra coordinates documents, participants, deadlines, and approvals across private transactions. It identifies what is missing, follows up with the right people, and shows you what needs attention next.
+
+Avoid describing too many capabilities in the hero section.
+
+## Simplify the transaction examples
+
+Replace the current long industry line with:
+
+> Built for acquisitions, fundraising, real estate, lending, licensing, and other private transactions.
+
+Do not show too many examples or attempt to prove universality in the hero.
+
+## Primary buttons
+
+Use only two primary actions:
+
+**Create Workspace**
+
+**View Demo**
+
+Do not include the price inside the hero button.
+
+Change:
+
+> Create Your Workspace — $499
+
+to:
+
+> Create Workspace
+
+Price can appear below the button or in the pricing section.
+
+## Remove audience chips from the hero
+
+Remove the role chips from the hero area:
+
+* Lenders & Investors
+* Buyers & Borrowers
+* Sellers
+* Founders & CEOs
+* CPAs & Auditors
+* Legal Counsel
+* Inspectors
+* Brokers & Advisors
+
+These create visual noise before the user understands the product.
+
+Move role-based explanations lower on the homepage.
+
+---
+
+# 3. Homepage navigation
+
+The current navigation contains duplicate or unnecessary items.
+
+Use:
+
+* Product
+* How It Works
+* Pricing
+* Demo
+* My Workspaces
+
+Right-side action:
+
+* Create Workspace
+
+Remove the duplicate “My Workspaces” item.
+
+Rename “AI Tools” to “Product” or remove it entirely.
+
+The navigation should not require users to understand separate AI modules.
+
+---
+
+# 4. Simplify the homepage content order
+
+Use this section order:
+
+## Section 1: Hero
+
+Headline, supporting copy, Create Workspace, View Demo.
+
+## Section 2: Three outcomes
+
+Show only three benefits:
+
+### Know what is blocking the transaction
+
+Kontra identifies missing documents, overdue responsibilities, unresolved issues, and stalled participants.
+
+### Keep every party coordinated
+
+Each participant receives a role-specific view and knows what they are responsible for.
+
+### Move the transaction forward
+
+The AI Operations Manager recommends the next action and drafts follow-ups for approval.
+
+## Section 3: Product demonstration
+
+Show one realistic transaction workspace with populated data.
+
+The example should show:
+
+* One active blocker
+* One completed item
+* One overdue participant
+* One drafted follow-up
+* One current transaction stage
+
+Do not show an empty workspace on the homepage.
+
+## Section 4: How it works
+
+Reduce the current four-step process to three steps:
+
+1. Describe your transaction
+2. Invite participants and upload documents
+3. Kontra coordinates the transaction
+
+## Section 5: Built for different transaction types
+
+Show transaction templates here.
+
+Examples:
+
+* Business Acquisition
+* Commercial Real Estate
+* Fundraising
+* Private Lending
+* Licensing
+* Joint Venture
+
+## Section 6: Pricing
+
+Show the $499 one-time workspace fee.
+
+## Section 7: Final call to action
+
+> Create your transaction workspace
+
+---
+
+# 5. Simplify workspace creation
+
+The current creation process exposes too much configuration before the workspace exists.
+
+## New creation flow
+
+Use four steps only:
+
+### Step 1: Describe
+
+Ask:
+
+> What transaction are you coordinating?
+
+Provide a large text field.
+
+Suggested example:
+
+> Acquiring a 120-room Marriott hotel. The buyer, seller, lender, attorney, CPA, broker, and property inspector will participate. We are currently preparing due diligence.
+
+Under the input, provide optional structured fields:
+
+* Transaction type
+* Current stage
+* Target closing date
+
+These fields should be optional.
+
+Primary action:
+
+> Generate Workspace
+
+---
+
+### Step 2: Preview
+
+After generation, show a simplified summary.
+
+Display:
+
+* Workspace name
+* Transaction type
+* Participants
+* Document checklist
+* Transaction stages
+
+Do not display every item expanded by default.
+
+Use collapsed sections:
+
+**Participants — 6**
+
+**Documents — 14**
+
+**Stages — 5**
+
+Allow users to expand and edit each section.
+
+Primary action:
+
+> Continue
+
+Secondary action:
+
+> Regenerate
+
+Do not show repeated AI warning messages in multiple locations.
+
+Show one notice only:
+
+> Kontra provides suggested transaction structures. Review the workspace with your legal, financial, and transaction advisers before relying on it.
+
+---
+
+### Step 3: Your information
+
+Collect:
+
+* Workspace name
+* First name
+* Last name
+* Email
+* Your role
+
+The legal acceptance should remain.
+
+Simplify the legal language to:
+
+> I agree to Kontra’s Terms and Privacy Policy. I understand that Kontra provides transaction coordination software and does not act as a broker, lender, attorney, financial adviser, or other licensed professional.
+
+---
+
+### Step 4: Review and activate
+
+Show:
+
+* Workspace name
+* Transaction type
+* Number of participants
+* Number of documents
+* Number of stages
+* Price
+* Access term
+
+Primary action:
+
+> Pay $499 and Activate Workspace
+
+Secondary demo action should not be presented as an equal primary action.
+
+Use a small text link:
+
+> Continue in demo mode
+
+Do not use “Try Demo” inside the production payment flow unless demo mode is intentionally available to all users.
+
+---
+
+# 6. Remove the initial setup-choice screen
+
+Remove the separate page asking:
+
+* Start from a template
+* Build with AI
+* Start blank
+
+Instead, begin with the transaction-description screen.
+
+Below the description field, offer smaller secondary choices:
+
+> Or start from a template
+
+> Or start with a blank workspace
+
+AI-generated setup should be the default path.
+
+This removes one full screen from the flow.
+
+---
+
+# 7. Template cleanup
+
+The template selection currently includes saved user workspaces mixed together with system templates.
+
+Separate them.
+
+## System templates
+
+Show only:
+
+* Business Acquisition
+* CRE Acquisition
+* Fundraising
+
+Any additional system templates can be added later.
+
+## Saved templates
+
+Place these under a separate section:
+
+> Your saved templates
+
+Do not mix saved user-created items with Kontra’s official templates.
+
+Remove duplicates such as multiple “Marriott Hotel Acquisition” entries.
+
+Add controls for saved templates:
+
+* Rename
+* Duplicate
+* Delete
+
+---
+
+# 8. AI-generated workspace review
+
+The current review page is too dense.
+
+## Participants section
+
+Each participant row should show:
+
+* Role name
+* Required or optional
+* Can upload documents
+* Remove icon
+
+Avoid displaying multiple small pills unless necessary.
+
+Example:
+
+**Financial Adviser**
+Required · Can upload
+
+Use an edit icon to open additional settings.
+
+## Documents section
+
+Each document row should show:
+
+* Document name
+* Assigned participant
+* Required or optional
+* AI review enabled or disabled
+* Remove icon
+
+Use words or clear icons, not ambiguous small “AI” badges.
+
+Example:
+
+**Financial Statements**
+Financial Adviser · Required · AI review on
+
+## Stages section
+
+Show the stage list with drag handles.
+
+Example:
+
+1. Preparation
+2. Due Diligence
+3. Review
+4. Closing
+5. Completed
+
+Avoid stages that are written as completed actions such as “NDA Signed” unless that is appropriate to the transaction.
+
+Use stage names that represent the current state of the transaction.
+
+## Editing behavior
+
+Users should be able to:
+
+* Add a participant
+* Rename a participant
+* Add a document
+* Reassign a document
+* Mark a document required or optional
+* Enable or disable AI review
+* Add, rename, reorder, or delete a stage
+
+Do not force users to configure advanced permissions during initial setup.
+
+---
+
+# 9. Redesign the workspace home screen
+
+The workspace home screen should become an action-oriented Operations Manager view.
+
+## Replace the current stacked dashboard
+
+The current home screen separately shows:
+
+* Morning or evening briefing
+* Activity timeline
+* Tasks
+* Setup checklist
+* Risk
+* Progress
+* Party status
+* Verified transaction package
+
+This creates too many competing sections.
+
+Replace the main workspace home screen with five clear areas.
+
+---
+
+## Area 1: Transaction header
+
+Display:
+
+* Workspace name
+* Transaction type
+* Current stage
+* Target closing date
+* Overall status
+
+Example:
+
+**Marriott Hotel Acquisition**
+
+Business Acquisition · Due Diligence · Target close September 30
+
+Status:
+
+**At Risk**
+
+Reason:
+
+Seller financials are 6 days overdue.
+
+Do not rely on decorative background imagery as the primary source of identity. The image can remain, but the status and transaction information must be readable without it.
+
+---
+
+## Area 2: AI Operations Manager
+
+This should be the most prominent section.
+
+Title:
+
+> Operations Manager
+
+Subheading:
+
+> Here is what needs attention next.
+
+Show three to five prioritized action cards.
+
+Example:
+
+### Seller financials are overdue
+
+The seller has not uploaded the last three years of financial statements. They were due six days ago.
+
+Actions:
+
+* Approve Reminder
+* View Request
+* Mark Resolved
+
+### Legal review is waiting
+
+The purchase agreement has been uploaded, but legal counsel has not completed review.
+
+Actions:
+
+* Notify Legal Counsel
+* Open Document
+
+### CPA review completed
+
+The CPA reviewed the quality-of-earnings report. No material issues were identified.
+
+Action:
+
+* View Findings
+
+Each card should include:
+
+* Severity
+* Responsible participant
+* Due date
+* Recommended action
+* Supporting source
+
+This section should replace the separate Morning Brief, Evening Standup, and much of the Tasks area.
+
+---
+
+## Area 3: Transaction progress
+
+Show one clean stage tracker.
+
+Example:
+
+Preparation → Due Diligence → Review → Closing → Completed
+
+The active stage should be clearly highlighted.
+
+Under the stage tracker, show:
+
+* Required documents completed
+* Participants current
+* Open blockers
+* Days until target close
+
+Example:
+
+* 8 of 14 required documents received
+* 4 of 6 participants current
+* 2 blockers
+* 34 days to target close
+
+Do not add a separate “Verified” stage after Closed. Verification is a property of the transaction package, not a lifecycle stage.
+
+---
+
+## Area 4: Participant status
+
+Show a compact participant table.
+
+Columns:
+
+* Participant
+* Responsibility
+* Status
+* Last activity
+* Action
+
+Example:
+
+| Participant   | Status              | Last activity | Action        |
+| ------------- | ------------------- | ------------- | ------------- |
+| Seller        | 2 documents overdue | 6 days ago    | Send reminder |
+| CPA           | Current             | Today         | View activity |
+| Legal Counsel | Review pending      | Yesterday     | Notify        |
+| Lender        | Not yet invited     | —             | Invite        |
+
+Do not use large separate cards for every participant unless there are very few participants.
+
+---
+
+## Area 5: Recent activity
+
+Show the latest five events only.
+
+Examples:
+
+* Seller uploaded tax returns
+* AI reviewed financial statements
+* Legal counsel completed document review
+* Buyer approved the due-diligence stage
+* Reminder sent to CPA
+
+Provide:
+
+> View all activity
+
+Do not show an empty activity timeline as a large section.
+
+When there is no activity, show a small empty state:
+
+> Activity will appear here after participants are invited or documents are uploaded.
+
+---
+
+# 10. Replace Morning Brief and Evening Standup
+
+Remove the Morning and Evening toggle.
+
+This terminology adds unnecessary complexity.
+
+Replace it with:
+
+> Operations Summary
+
+The Operations Summary should update continuously.
+
+Optionally provide:
+
+* Today
+* This week
+
+Do not make the user choose morning versus evening.
+
+---
+
+# 11. Simplify the workspace navigation
+
+Use a fixed workspace navigation with no more than six primary items:
+
+* Overview
+* Documents
+* Participants
+* Tasks
+* Activity
+* Settings
+
+## Overview
+
+Operations Manager, progress, blockers, and participant status.
+
+## Documents
+
+Checklist, uploads, AI findings, verification.
+
+## Participants
+
+Invitations, roles, status, access.
+
+## Tasks
+
+Manual and AI-generated action items.
+
+## Activity
+
+Full transaction timeline and audit history.
+
+## Settings
+
+Workspace configuration, stages, documents, roles, permissions, templates, branding, and archival controls.
+
+Do not make “Intelligence” a primary tab.
+
+AI findings should appear inside the relevant document and in the Overview.
+
+---
+
+# 12. Documents page
+
+The current checklist structure is useful and should remain, but it needs clearer grouping.
+
+## Group documents by category
+
+Examples:
+
+* Financial
+* Legal
+* Operational
+* Property or Asset
+* Insurance
+* Closing
+
+## Each document row should show
+
+* Document name
+* Responsible participant
+* Required or optional
+* Status
+* Due date
+* Upload action
+
+Example:
+
+**Financial Statements — 3 years**
+
+Seller · Required · Due August 10 · Missing
+
+Button:
+
+> Upload
+
+Owner actions:
+
+* Request from participant
+* Change assignment
+* Change due date
+* Mark not applicable
+* Remove
+
+## Status terminology
+
+Use:
+
+* Missing
+* Requested
+* Uploaded
+* Under Review
+* Approved
+* Needs Attention
+* Not Applicable
+
+Avoid relying only on blank circles or subtle color differences.
+
+---
+
+# 13. AI findings
+
+Do not separate AI analysis into a generic “Intelligence” page.
+
+When a document is uploaded, its document page should include:
+
+## Summary
+
+Short plain-language overview.
+
+## Key information
+
+Extracted transaction-specific values.
+
+## Issues
+
+Items requiring attention.
+
+## Verification
+
+Cross-document matches and discrepancies.
+
+## Sources
+
+Page-level citations or references.
+
+## Recommended next action
+
+Example:
+
+> Ask the seller to explain the $420,000 difference between reported revenue in the financial statements and tax returns.
+
+The AI should always point to supporting document evidence.
+
+---
+
+# 14. Verification log
+
+Keep verification functionality, but make it secondary.
+
+Place it inside the Documents page under:
+
+> Cross-document checks
+
+Show only checks that have occurred.
+
+Example:
+
+### Revenue mismatch
+
+Financial statements show $4.2 million in revenue. Tax returns show $3.8 million.
+
+Severity:
+
+Needs Attention
+
+Sources:
+
+* Financial Statements, page 8
+* Tax Returns, page 3
+
+Actions:
+
+* Assign to CPA
+* Mark Explained
+* Add Comment
+
+When no checks have run, use a compact message instead of a large empty section.
+
+---
+
+# 15. Legal Intelligence section
+
+The current Harvey and Spellbook section appears to imply a deeper integration than what is actually happening.
+
+Based on the current flow, Kontra is only linking the user to the provider.
+
+Therefore, rename the section:
+
+> Legal Review Tools
+
+Use the following explanation:
+
+> Open legal documents in your preferred review platform. Documents are not sent automatically, and each provider requires a separate account.
+
+Provider cards:
+
+* Harvey
+* Spellbook
+
+Buttons:
+
+* Open Harvey
+* Open Spellbook
+
+Do not use “Featured” unless there is an actual partnership or commercial relationship.
+
+Do not imply that Kontra routes documents to the provider if it does not transfer files directly.
+
+Change:
+
+> Kontra routes documents to the provider of your choice.
+
+to:
+
+> Your attorney can open documents using their preferred legal review platform.
+
+This section should be located in Settings, Integrations, or inside legal document actions. It should not occupy a major portion of the primary transaction experience.
+
+---
+
+# 16. Participants and invitation flow
+
+The current invitation page repeats a full input and button for every role.
+
+Replace it with a participant table.
+
+Example:
+
+| Role          | Participant | Status  | Action |
+| ------------- | ----------- | ------- | ------ |
+| Seller        | Not invited | Pending | Invite |
+| CPA           | Not invited | Pending | Invite |
+| Legal Counsel | Not invited | Pending | Invite |
+| Lender        | Not invited | Pending | Invite |
+| M&A Broker    | Not invited | Pending | Invite |
+
+Clicking Invite opens a small modal.
+
+Fields:
+
+* Name
+* Email
+* Role
+* Message
+* Access expiration
+
+Button:
+
+> Send Invitation
+
+Add a primary button:
+
+> Invite Participant
+
+This allows the owner to invite someone who was not included during setup.
+
+## Invitation status
+
+Use:
+
+* Not invited
+* Invitation sent
+* Opened
+* Joined
+* Expired
+* Revoked
+
+## Participant management
+
+The owner should be able to:
+
+* Resend invitation
+* Copy secure link
+* Change role
+* Revoke access
+* Remove participant
+* View last activity
+
+Do not create a separate “Invite” and “Manage” interface if both can exist on one page.
+
+---
+
+# 17. Tasks
+
+Tasks should be divided into two groups:
+
+## Needs your attention
+
+Actions the workspace owner must take.
+
+Examples:
+
+* Approve seller reminder
+* Resolve revenue discrepancy
+* Invite lender
+* Confirm legal review
+
+## Waiting on others
+
+Actions assigned to participants.
+
+Examples:
+
+* Seller to upload tax returns
+* CPA to review financial statements
+* Attorney to approve purchase agreement
+
+Each task should show:
+
+* Task
+* Owner
+* Due date
+* Status
+* Related document
+* Suggested action
+
+Avoid generic messages such as:
+
+> AI is watching for missing documents.
+
+Show actual work or use a compact empty state.
+
+---
+
+# 18. Transaction risk
+
+The current workspace displays “Low risk” when no documents or participants have completed anything.
+
+That is misleading.
+
+A transaction with no data should not be classified as low risk.
+
+Use these states:
+
+## Not Enough Information
+
+Used when insufficient documents or participant activity exist.
+
+Message:
+
+> Upload documents and invite participants before Kontra can assess transaction risk.
+
+## On Track
+
+No unresolved material blockers.
+
+## Needs Attention
+
+One or more non-critical issues may delay the transaction.
+
+## At Risk
+
+Material blockers are likely to delay or prevent progression.
+
+## Blocked
+
+The transaction cannot move to the next stage.
+
+Never show “Low risk” solely because no blockers have yet been detected.
+
+No data is not equivalent to low risk.
+
+---
+
+# 19. Deal readiness
+
+Replace “Signal Ready” with clearer language.
+
+Possible button labels:
+
+* Mark Stage Complete
+* Approve Due Diligence
+* Advance to Review
+* Confirm Ready for Closing
+
+The button should reflect the active transaction stage.
+
+Do not use a generic “Signal Ready” label because it does not clearly explain what will happen.
+
+Before advancing, show a confirmation modal:
+
+> Advance this transaction to Review?
+
+Include:
+
+* Required documents remaining
+* Open blockers
+* Participants not current
+* Owner acknowledgment
+
+Do not block advancement automatically unless the workspace settings require it.
+
+---
+
+# 20. Verified Transaction Package
+
+Keep this feature, but move it near the closing or completed stage.
+
+Do not show it prominently during an empty Due Diligence workspace.
+
+Show it only when:
+
+* The transaction reaches Closing or Completed
+* The owner manually opens the Closing section
+* The package is being generated
+
+Rename it:
+
+> Closing Package
+
+Inside the package, include:
+
+* Final document index
+* Latest approved versions
+* Participant list
+* Activity and approval history
+* Verification results
+* Outstanding exceptions
+* File hashes
+* Export date
+
+If the package fails to generate, do not display only:
+
+> Failed to generate Verified Transaction Package
+
+Use:
+
+> The closing package could not be generated.
+
+Then explain the reason and provide actions:
+
+* Retry
+* View missing requirements
+* Contact support
+
+---
+
+# 21. Empty states
+
+Replace large empty panels with small, action-oriented empty states.
+
+## Bad
+
+> No briefing available yet.
+
+## Better
+
+> Invite participants or upload documents to generate your first Operations Summary.
+
+Button:
+
+> Invite Participants
+
+## Bad
+
+> No activity yet.
+
+## Better
+
+> Transaction activity will appear here after the first invitation, upload, or update.
+
+## Bad
+
+> No verification checks yet.
+
+## Better
+
+> Cross-document checks begin after two or more related documents are uploaded.
+
+Button:
+
+> Upload Documents
+
+Every empty state should explain:
+
+* Why the section is empty
+* What triggers it
+* What the user can do next
+
+---
+
+# 22. Demo experience
+
+The live demo should never open into an empty workspace.
+
+Create a fully populated demo workspace.
+
+Suggested demo:
+
+**Harbor HVAC Acquisition**
+
+Transaction value:
+
+$6.2 million
+
+Current stage:
+
+Due Diligence
+
+Participants:
+
+* Buyer
+* Seller
+* CPA
+* Legal Counsel
+* Lender
+* M&A Broker
+
+Documents:
+
+* 11 of 14 received
+* 8 reviewed
+* 2 require attention
+* 3 missing
+
+Current blockers:
+
+* Quality-of-earnings report overdue
+* Purchase agreement missing Schedule B
+
+Recent success:
+
+* Seller financial statements reviewed
+* Revenue trend and EBITDA margin extracted
+* Lender confirmed preliminary interest
+
+The demo should show the full benefit of Kontra within ten seconds.
+
+---
+
+# 23. Visual design cleanup
+
+## Reduce blank vertical space
+
+Several sections use excessive spacing between headings and content.
+
+Tighten the layout so users can understand the screen without extensive scrolling.
+
+## Improve text contrast
+
+Some supporting text is too light, especially on white backgrounds.
+
+Use stronger contrast for:
+
+* Descriptions
+* Empty states
+* Labels
+* Secondary values
+
+## Standardize card styles
+
+Use one standard card system.
+
+Avoid mixing:
+
+* Large outlined cards
+* Pills
+* Colored banners
+* Background images
+* Tiny labels
+* Separate nested cards
+
+## Standardize status colors
+
+Use:
+
+* Gray: Not started or neutral
+* Blue: In progress
+* Green: Complete or on track
+* Yellow: Needs attention
+* Red: Blocked or critical
+
+Do not use multiple colors decoratively.
+
+## Limit badges
+
+Only use badges for meaningful status.
+
+Remove decorative badges such as repeated “AI,” “Required,” “Uploads,” “Featured,” and “Template” badges where the same information can be communicated more cleanly.
+
+---
+
+# 24. Language changes
+
+Use consistent terminology across the product.
+
+## Use
+
+* Transaction Workspace
+* Operations Manager
+* Participants
+* Documents
+* Tasks
+* Current Stage
+* Blockers
+* Activity
+* Closing Package
+* Workspace Settings
+
+## Avoid or minimize
+
+* Deal Room
+* Workflow Pack
+* Morning Standup
+* Evening Standup
+* Deal Health
+* Signal Ready
+* Closing Seal
+* Intelligence Module
+* Verified Transaction Package
+* AI-generated suggestions throughout every screen
+
+The interface should explain outcomes instead of internal product architecture.
+
+---
+
+# 25. Progressive disclosure
+
+Advanced configuration should remain available, but it should be moved into Workspace Settings.
+
+## Workspace Settings sections
+
+### General
+
+* Workspace name
+* Description
+* Transaction type
+* Target close date
+* Branding
+
+### Participants and roles
+
+* Roles
+* Permissions
+* Required participants
+* Upload access
+
+### Document checklist
+
+* Add documents
+* Assign roles
+* Required or optional
+* AI review
+* Categories
+
+### Transaction stages
+
+* Add stages
+* Rename stages
+* Reorder stages
+* Completion rules
+
+### Automation
+
+* Reminder frequency
+* Escalation rules
+* Task generation
+* Daily summary settings
+
+### Access and security
+
+* Invitation expiration
+* Session controls
+* Download permissions
+* Revoked users
+
+### Closing and archive
+
+* Closing package
+* Retention period
+* Export
+* Archive workspace
+
+This preserves the power of the current architecture without exposing it during onboarding.
+
+---
+
+# 26. Mobile and responsive behavior
+
+The creation workflow and workspace should work cleanly on tablet and mobile.
+
+On smaller screens:
+
+* Collapse the main navigation into a menu.
+* Show only the primary action.
+* Convert participant tables into stacked rows.
+* Keep the Operations Manager cards full-width.
+* Do not require horizontal scrolling.
+* Keep action buttons visible near the relevant content.
+* Avoid tiny badges and icons.
+
+---
+
+# 27. Suggested implementation order
+
+## Phase 1: Simplify without major backend changes
+
+1. Simplify homepage navigation.
+2. Remove duplicate concepts and labels.
+3. Reduce the creation flow to four steps.
+4. Make AI generation the default setup path.
+5. Collapse participants, documents, and stages on the review screen.
+6. Replace Morning and Evening with Operations Summary.
+7. Rename major sections and buttons.
+8. Fix misleading “Low risk” state.
+9. Hide Closing Package until later stages.
+10. Populate the live demo.
+
+## Phase 2: Workspace redesign
+
+1. Create the new Overview.
+2. Build Operations Manager action cards.
+3. Consolidate participant status.
+4. Consolidate transaction progress and blockers.
+5. Move full activity history to a separate tab.
+6. Move advanced configuration into Settings.
+
+## Phase 3: Interaction improvements
+
+1. Add approve-and-send reminder actions.
+2. Add contextual AI recommendations.
+3. Add document-level findings and sources.
+4. Add stage-advancement confirmation.
+5. Add better invitation management.
+6. Add actionable empty states.
+
+---
+
+# 28. Acceptance criteria
+
+The redesign is complete when a first-time user can answer the following within ten seconds of entering a workspace:
+
+* What transaction is this?
+* What stage is it in?
+* What is currently blocking it?
+* Who needs to act?
+* What should I do next?
+
+A new user should be able to create a workspace without understanding:
+
+* Workflow packs
+* Role permission architecture
+* AI modules
+* Cross-document verification configuration
+* Legal-provider routing
+* Closing-package structure
+
+The creation process should take no more than four screens before payment.
+
+The primary workspace screen should contain no more than five major visible sections.
+
+The live demo must contain realistic populated data.
+
+No transaction should be labeled low risk when there is insufficient information to make that determination.
+
+---
+
+# Final design principle
+
+Do not remove the powerful architecture.
+
+Hide it until the user needs it.
+
+Kontra should feel simple at the surface and powerful underneath. The user should experience an intelligent coordinator telling them what matters next, not a system asking them to manage every configuration detail themselves.

@@ -1,0 +1,22 @@
+2026-08-21T20:11:50.529381429Z ==> Deploying...
+2026-08-21T20:11:53.698582688Z ==> Cause of failure could not be determined
+2026-08-21T20:11:53.701814277Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+2026-08-21T20:12:49.773491237Z ==> Running 'npm run start'
+2026-08-21T20:12:51.569959479Z 
+2026-08-21T20:12:51.56999414Z > kontra-api@1.0.0 start
+2026-08-21T20:12:51.56999869Z > node index.js
+2026-08-21T20:12:51.57000161Z 
+2026-08-21T20:12:56.484646136Z [db] Connected to Supabase: https://jfhojgtnmcfqretrrxam.supabase.co
+2026-08-21T20:12:57.57055408Z Redis package not installed, falling back to memory cache
+2026-08-21T20:12:57.681582651Z [WARN] Optional env var not set: SENTRY_DSN — related features disabled
+2026-08-21T20:12:57.681605372Z [WARN] Optional env var not set: STRIPE_SECRET_KEY — related features disabled
+2026-08-21T20:12:57.681615492Z [WARN] Optional env var not set: ENCRYPTION_KEY — related features disabled
+2026-08-21T20:12:57.681789947Z [WARN] Optional env var not set: PII_ENCRYPTION_KEY — related features disabled
+2026-08-21T20:13:06.682224664Z [tokenRegistry] MOCK_DISABLED — in-memory token registry is not available in production. Routes that depend on this module will return 503. Use POST /api/tokenization/assess for production tokenization readiness.
+2026-08-21T20:13:07.28735781Z Kontra API listening on port 10000
+2026-08-21T20:13:07.678119354Z [startup] workflow_pack_id column ensure skipped: 
+2026-08-21T20:13:08.766194737Z [score-assets] analyzed 0 records
+2026-08-21T20:13:08.968253288Z [score-loans] analyzed 0 records
+2026-08-21T20:13:09.367647452Z [score-troubled] analyzed 0 records
+2026-08-21T20:26:55.983907126Z ==> Port scan timeout reached, no open ports detected. Bind your service to at least one port. If you don't need to receive traffic on any port, create a background worker instead.
+2026-08-21T20:26:56.125337378Z ==> Docs on specifying a port: https://render.com/docs/web-services#port-binding

@@ -1,0 +1,20 @@
+This is NOT a commit/deployment audit. Do not inspect the cutoff, recent commits, deployments, or tracked QA findings.
+I need a current architecture/data-lifecycle audit of uploaded documents in the existing Kontra codebase. Do not change code.
+Pick the normal Deal Room document upload flow and trace it through the source code from beginning to end.
+Report:
+Original file storage: Where do the actual PDF/DOCX bytes go immediately after upload? Give the exact storage provider/service, bucket/container/path logic, and relevant code files/functions.
+Persistence: After extraction and AI analysis finish, do those original bytes still exist? If yes, where and for how long? If no, identify the exact deletion mechanism.
+Open/download: Can a user currently retrieve, view, reopen, or download the original file after processing? Identify the route/function if one exists.
+Re-upload/replacement: When a document is replaced, what happens to the previous original file and previous extracted data?
+Deletion: When a document or Deal Room is deleted, exactly which original and derived data is deleted versus retained?
+Derived data: Identify where Kontra retains extracted text, AI summaries, structured document facts, canonical Transaction Record values, provenance/evidence lineage, verification results, embeddings if any, and logs.
+Third parties: List every external provider that receives any portion of an uploaded document or its extracted content. For each, state whether it receives original bytes, extracted text, structured data, or metadata.
+AI providers: Identify the exact model/API path receiving document information and whether the application configures provider retention/training controls.
+Security: State the encryption-at-rest, encryption-in-transit, authentication/authorization, and access-control mechanisms protecting originals and derived data, based on actual implementation/configuration.
+Current retention policy: Is there any TTL, scheduled deletion, lifecycle policy, or configurable retention period? Give the implementation evidence.
+Architecture capability: Without implementing anything, explain what would need to change to support:
+Process and delete original after extraction
+Retain original for X days
+Organization-controlled retention
+Authorized source-document viewing/download
+Do not answer from git history. Trace the current upload/storage/extraction/deletion code and current configured services. Clearly distinguish confirmed implementation from anything you cannot verify.

@@ -1,0 +1,194 @@
+I reviewed this latest build against the prior screenshots and the changes we were trying to achieve. **This version has regressed in a few places.** I would not move to upload testing quite yet.
+
+The biggest issue is that the developer appears to have partially reverted to an older configuration.
+
+### What I see now
+
+**1. Transaction Readiness is still not fixed.** It still shows **8% / Needs Attention**, while directly underneath it says **0 of 30 required fields confirmed**. The old description is also still there: “Operational readiness across documents, workspace facts, activity, and compliance signals.”
+
+So the primary logic correction from the last round was not implemented.
+
+**2. The NDA contradiction is still present.** The room says **NDA Signed** at the top and in the lifecycle, while Documents says **Non-Disclosure Agreement — Missing**. There is also no “evidence missing” or “unsupported” indicator next to NDA Signed.
+
+So that requirement also wasn't implemented.
+
+**3. Role terminology regressed.** We're back to:
+
+* Deal Coordinator
+* Buyer Representative
+* Seller Representative
+
+instead of the simpler Buyer/Seller model from the prior iteration. More importantly, the owner is again labeled **Deal Coordinator**, despite being tagged Owner.
+
+I would use **Deal Owner** for the creator, and **Buyer / Seller / Legal Advisor / Financial Advisor** for participants. “Representative” should only exist when the workflow specifically needs a representative role.
+
+**4. Lifecycle changed to `LOI Submitted`.** This is better than “LOI Sent,” but I still prefer **LOI Executed** if the lifecycle is intended to represent completed milestones:
+
+**NDA Signed → LOI Executed → Due Diligence → Financing → Closing**
+
+If the intent is instead to track process states before acceptance, `LOI Submitted` is defensible. This isn't a blocker.
+
+**5. Documents actually looks pretty good.** I would leave this layout alone. Required/Missing, responsible party, Upload and Request all coexist clearly. Don't redesign this screen again.
+
+**6. Settings needs attention.** The settings page itself is clean, but it currently contains only:
+
+* Deal Room Name
+* Transaction Value
+* Target Closing Date
+* Notes
+
+That's really **Transaction Details**, not “Settings.”
+
+And there's a more important architectural opportunity here: **Transaction Value and Target Closing Date are exactly the type of facts that should feed the Transaction Record.**
+
+If I enter:
+
+> Transaction Value: $25,000,000
+> Target Closing Date: December 15, 2026
+
+Kontra should create/update those structured facts with a provenance such as:
+
+> Source: Deal Owner input
+> Status: User provided
+
+That would legitimately increase Transaction Readiness.
+
+This is exactly why the readiness number should be based on structured facts rather than miscellaneous activity.
+
+---
+
+### Send this to the developer
+
+> **Correction pass — do not redesign the UI.**
+>
+> The latest deployment appears to have retained/reintroduced several behaviors that were specifically supposed to be corrected. Please make only the following changes:
+>
+> **1. Fix Transaction Readiness calculation**
+>
+> Current state displays `8% Needs Attention` while also displaying `0 of 30 required fields confirmed`.
+>
+> This is incorrect.
+>
+> Transaction Readiness must be derived from required Transaction Record facts.
+>
+> If 0 of 30 required facts are confirmed/provided, display:
+>
+> `0% — Getting Started`
+>
+> `0 of 30 required facts confirmed`
+>
+> Replace:
+>
+> `Operational readiness across documents, workspace facts, activity, and compliance signals.`
+>
+> with:
+>
+> `Completeness and confirmation of the structured transaction record.`
+>
+> Do not award readiness percentage for room creation, lifecycle position, participant placeholders, activity, or generic workspace state.
+>
+> **2. Separate lifecycle position from evidence**
+>
+> Current UI shows `NDA Signed` while Documents shows the Non-Disclosure Agreement as `Missing`.
+>
+> Lifecycle position is operational state, not verified evidence.
+>
+> When the selected lifecycle milestone lacks supporting evidence, show a subtle secondary indicator such as:
+>
+> `NDA Signed`
+>
+> `Supporting evidence missing`
+>
+> Do not mark documents uploaded or Transaction Record facts confirmed merely because a lifecycle stage was selected.
+>
+> **3. Restore universal participant terminology**
+>
+> Use:
+>
+> `Deal Owner`
+>
+> `Buyer`
+>
+> `Seller`
+>
+> `Legal Advisor`
+>
+> `Financial Advisor`
+>
+> The room creator should display as `Deal Owner`, not `Deal Coordinator`.
+>
+> Deal Coordinator may exist as an optional workflow role where applicable, but must not automatically describe the workspace owner.
+>
+> Avoid `Buyer Representative` and `Seller Representative` unless the workflow specifically requires representative roles.
+>
+> Ensure the same role names propagate consistently across People, Documents responsibility chips, Next Actions, requests and Transaction Record.
+>
+> **4. Connect Transaction Details to Transaction Record**
+>
+> The Settings/Transaction Details page contains structured information including Transaction Value and Target Closing Date.
+>
+> Saving these values must update corresponding Transaction Record fields.
+>
+> Example:
+>
+> User enters Transaction Value = `$25,000,000`
+>
+> Transaction Record should show:
+>
+> `Transaction Value — $25,000,000`
+>
+> `Source: Deal Owner input`
+>
+> User-provided structured facts should be distinguishable from AI-extracted facts and confirmed document-derived facts.
+>
+> Readiness should recalculate accordingly.
+>
+> **5. Rename Settings concept**
+>
+> The current gear page is primarily `Transaction Details`, not application settings.
+>
+> Either label the page/section `Transaction Details`, or provide a tooltip on the gear icon indicating `Transaction Details`.
+>
+> Do not add unnecessary settings.
+>
+> **6. Preserve the current Documents UI**
+>
+> Do not redesign the Documents screen.
+>
+> Keep Required/Missing indicators, responsibility chips, Upload, Request, optional documents and Cross-document checks.
+>
+> **7. Lifecycle**
+>
+> Preferred acquisition lifecycle:
+>
+> `NDA Signed → LOI Executed → Due Diligence → Financing → Closing`
+>
+> `LOI Submitted` is acceptable only if the workflow intentionally tracks submission rather than execution.
+>
+> **8. Regression requirement**
+>
+> Changes to workflow packs must not silently revert previously approved terminology or behavior.
+>
+> Role names, document assignments, lifecycle configuration and Transaction Record schema should come from one canonical workflow-pack configuration rather than separate hard-coded definitions across screens.
+>
+> **Do not make additional visual changes after this pass.**
+>
+> Once complete, test synchronization specifically:
+>
+> Transaction Details → Transaction Record → Readiness
+>
+> Document upload → AI extraction → Transaction Record → Readiness
+>
+> Participant invite → People → Next Actions
+>
+> Lifecycle selection → operational position only
+>
+> Confirmed fact → Transaction Record → Readiness
+>
+> All screens must derive their state from the same underlying transaction data.
+
+The **last point is especially important**. The repeated changing between Buyer, Acquirer, Buyer Representative, Deal Owner and Deal Coordinator across deployments suggests this may no longer be primarily a copy problem. It looks like **multiple parts of the application may be deriving their workflow definitions independently**.
+
+That's exactly how regressions keep happening.
+
+At this point I would tell the developer: **one canonical pack → one state model → every screen consumes it.** Then stop touching the visual design and test the actual transaction flow.

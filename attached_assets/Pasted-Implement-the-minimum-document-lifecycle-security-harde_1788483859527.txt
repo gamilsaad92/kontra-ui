@@ -1,0 +1,46 @@
+Implement the minimum document lifecycle/security hardening for Kontra before real institutional documents are used. Do not build a full enterprise retention-management system or redesign the Documents UI.
+1. Define the current retention model
+For now:
+Source documents are retained while the Deal Room exists.
+Do not add configurable 30/90/365-day retention, organization policies, legal holds, or archival features yet.
+2. Make Deal Room deletion complete
+When an owner deletes a Deal Room, securely clean up the room's associated operational data, including:
+original objects in deal-documents
+active and superseded document records
+Transaction Record data/history as appropriate
+conflicts, tasks, events, submissions, invites and notifications
+readiness/preparation artifacts and generated PDFs
+Design deletion intentionally around any immutable audit/snapshot records that legally/product-wise need preservation rather than accidentally orphaning data.
+Storage deletion failures must be detectable/retriable. Do not report successful complete deletion while source objects remain unintentionally stored.
+3. Harden original-document retrieval
+Replace the client-supplied storage_path authorization pattern.
+Retrieval should use a document/analysis ID:
+load the document record server-side
+establish its Deal Room
+verify owner/participant authorization
+enforce participant section visibility
+obtain the authoritative storage_path from that record
+generate a short-lived signed URL
+The client must not choose an arbitrary storage object path to be signed.
+Remove/resolve the duplicate shadowed document-url route.
+4. Add controlled source access
+Once authorization is hardened, expose simple actions on uploaded documents:
+View original
+Download original
+Keep Supabase Storage private. Do not create public document URLs.
+Record source-document access in the audit trail.
+5. Review AI data handling
+Audit the current OpenAI document-processing calls and determine the appropriate API configuration for minimizing provider-side retention/training exposure.
+Do not guess configuration parameters. Use the current official OpenAI API requirements/capabilities and report exactly what is supported before changing this portion.
+Preserve existing DOCX/PDF extraction, Transaction Record hydration, verification, provenance, cross-document reconciliation, and Verified Asset behavior.
+Acceptance tests
+Prove:
+authorized owner can view/download own source document
+properly authorized participant can access only permitted document sections
+unauthorized/cross-room document access fails
+manipulated storage paths cannot be used for retrieval
+superseded documents follow the intended access rules
+deleting a test room removes its intended source objects and operational records
+failed storage deletion is surfaced/retried rather than silently orphaned
+existing document extraction and verification regression tests remain green
+Before deployment, report exactly what data is deleted versus intentionally preserved when a room is deleted.

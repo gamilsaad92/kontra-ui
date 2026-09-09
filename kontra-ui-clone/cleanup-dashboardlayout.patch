@@ -1,0 +1,10 @@
+diff --git a/src/components/DashboardLayout.jsx b/src/components/DashboardLayout.jsx
+index abcdef0..1234567 100644
+--- a/src/components/DashboardLayout.jsx
++++ b/src/components/DashboardLayout.jsx
+@@ -1,4 +1,2 @@
+-/ src/components/DashboardLayout.jsx
+-
+ import React, { useState } from 'react';
+ import PhotoValidation from './PhotoValidation';
+ // …the rest of your file…

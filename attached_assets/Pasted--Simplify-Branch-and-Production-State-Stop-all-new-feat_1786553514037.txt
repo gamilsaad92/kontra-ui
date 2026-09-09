@@ -1,0 +1,77 @@
+# Simplify Branch and Production State
+
+Stop all new feature work.
+
+The `launch-publish` branch was not intentionally part of the product workflow and has created unnecessary divergence. From this point forward, `main` must be the only canonical development and Production branch.
+
+## 1. Restore Production consistency first
+
+Confirm Production frontend and API are both running the reverted/current `main` tree.
+
+If Vercel is still serving the failed merge revision, restore Vercel Production to the current reverted `main` state.
+
+Do not make product code changes until frontend and API are aligned.
+
+Return the exact Vercel and Render commit SHAs after alignment.
+
+## 2. Do not merge `launch-publish`
+
+Do not perform another full branch merge.
+
+Do not create another branch.
+
+Do not delete `launch-publish` yet.
+
+Treat it only as a reference containing previous work.
+
+## 3. Compare current `main` to the desired validated functionality
+
+At the file and behavior level, identify only the meaningful functionality that exists on `launch-publish` but is missing from current `main`.
+
+Ignore:
+
+* duplicate commits
+* patch-equivalent commits
+* temporary validation routing
+* staging-only changes
+* branch-management changes
+* already-existing functionality on `main`
+
+Focus only on these validated product behaviors:
+
+* Transaction Readiness based on confirmed required Transaction Record facts
+* canonical AI extraction key mapping
+* extracted vs verified fact states
+* Transaction Details → Transaction Record synchronization
+* Deal Owner provenance
+* owner document visibility
+* Deal Owner / participant semantics
+* Next Actions task persistence and idempotency
+* lifecycle/evidence separation
+* document responsibility / Request behavior
+* settlement capability
+* atomic completion and Transaction Seal
+* post-completion records
+
+## 4. Produce a minimal patch plan
+
+Before writing code, return:
+
+* behavior currently missing from `main`
+* exact files that need changes
+* whether each change can be cherry-picked cleanly or should be manually ported
+* dependencies between changes
+* any Production deployment-path issue that must be corrected
+* specifically how `transaction_record_requirements.json` will be packaged so Production cannot fail again
+
+The goal is the smallest possible set of changes to bring `main` to the validated desired state.
+
+Do not use commit count as the scope.
+
+Do not recreate the full divergent branch history.
+
+## 5. No implementation yet
+
+Do not cherry-pick, merge, deploy, or modify code until I approve the minimal patch plan.
+
+After we approve and apply the minimal changes directly to `main`, validate `main` itself and then retire `launch-publish`.
