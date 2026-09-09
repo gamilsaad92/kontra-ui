@@ -4237,41 +4237,11 @@ async function scopeChecklistItemsForAccess(items, access, packId, propertyType)
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
 async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
-  // A browser can retain a participant session after the room owner returns
-  // through My Deal Rooms or refreshes a tab. Owner authorization is stronger
-  // and must win whenever both credentials are present and valid.
-  const ownerToken = (
-    (req.headers['x-owner-write-token'] || '').trim()
-    || String(ownerTokenOverride || '').trim()
-  );
-  if (ownerToken) {
-    const { data: owner } = await supabase
-      .from('deal_rooms')
-      .select('id, owner_write_token, customer_email')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
-      return {
-        mode: 'owner',
-        role: 'owner',
-        actorId: owner.customer_email || 'owner',
-        email: owner.customer_email || null,
-        roomId: owner.id || null,
-        actorType: 'owner',
-        permissions: {
-          viewOverview: true,
-          viewAssignedDocuments: true,
-          uploadAssignedDocuments: true,
-          viewAllDocuments: true,
-          manageStages: true,
-          manageParticipants: true,
-          manageSettings: true,
-          updateOwnSubmission: true,
-        },
-      };
-    }
-  }
-
+  // A browser can retain a same-room owner token after opening a participant
+  // invitation. A valid participant session is the more specific credential
+  // for that request and must determine the stored role. The owner token is
+  // only a fallback when there is no valid participant session, preserving
+  // owner re-entry after a participant session is stale, expired, or revoked.
   const sessionToken = (req.headers['x-kontra-session'] || '').trim();
   if (sessionToken) {
     const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
@@ -4307,6 +4277,37 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
           },
         };
       }
+    }
+  }
+const ownerToken = (
+    (req.headers['x-owner-write-token'] || '').trim()
+    || String(ownerTokenOverride || '').trim()
+  );
+  if (ownerToken) {
+    const { data: owner } = await supabase
+      .from('deal_rooms')
+      .select('id, owner_write_token, customer_email')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
+      return {
+        mode: 'owner',
+        role: 'owner',
+        actorId: owner.customer_email || 'owner',
+        email: owner.customer_email || null,
+        roomId: owner.id || null,
+        actorType: 'owner',
+        permissions: {
+          viewOverview: true,
+          viewAssignedDocuments: true,
+          uploadAssignedDocuments: true,
+          viewAllDocuments: true,
+          manageStages: true,
+          manageParticipants: true,
+          manageSettings: true,
+          updateOwnSubmission: true,
+        },
+      };
     }
   }
 
@@ -7367,7 +7368,7 @@ app.get('/api/public/deal-room/:transactionId/settlement/seal', async (req, res)
 app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => {
   const { propertyId } = req.params;
   const access = await getRoomAccessContext(req, propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   const { data: room, error } = await supabase
     .from('deal_rooms')
     .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
@@ -7417,7 +7418,7 @@ app.get('/api/public/deal-room/:propertyId/asset-passport', async (req, res) => 
 app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => {
   const { propertyId } = req.params;
   const access = await getRoomAccessContext(req, propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   const { data: room, error } = await supabase
     .from('deal_rooms')
     .select('property_id, property_name, workflow_pack_id, deal_type, jurisdiction, metadata_values, created_at, first_name, last_name')
@@ -7482,7 +7483,7 @@ app.get('/api/public/deal-room/:propertyId/asset-metadata', async (req, res) => 
 app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
   const { propertyId } = req.params;
   const access = await getRoomAccessContext(req, propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   const transactionState = await readTransactionState(propertyId);
   const room = transactionState.room;
   if (!room) return res.status(404).json({ error: 'room not found' });
@@ -7912,6 +7913,17 @@ app.use('/api/ai', aiDealReviewRouter);
 // requireOrgContext (same property-scoped access model as the other public
 // deal-room routes above). See lib/taskEngine.js for the Observe Mode rules.
 app.use('/api/public', tasksRouter);
+app.use('/api/public/deal-room/:propertyId/verification', async (req, res, next) => {
+  try {
+    const access = await getRoomAccessContext(req, req.params.propertyId);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+    req.roomAccess = access;
+    return next();
+  } catch (err) {
+    console.error('[verification access]', err.message);
+    return accessDenied(res, 'Owner access required');
+  }
+});
 app.use('/api/public', verificationRouter);
 
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
@@ -9709,7 +9721,7 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
   const { propertyId } = req.params;
   try {
     const access = await getRoomAccessContext(req, propertyId);
-    if (access.mode === 'anonymous') return accessDenied(res);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
     const transactionState = await readTransactionState(propertyId);
     res.json({
       fields: transactionState.recordFields || [],
@@ -9726,7 +9738,7 @@ app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/hi
   const { propertyId, fieldId } = req.params;
   try {
     const access = await getRoomAccessContext(req, propertyId);
-    if (access.mode === 'anonymous') return accessDenied(res);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
     const { data, error } = await supabase
       .from('transaction_record_history')
       .select('*')
@@ -10406,6 +10418,9 @@ function presentStoredVerifiedAssetSnapshot(row) {
 }
 
 app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
   try {
     const { data, error } = await supabase
       .from('verified_asset_snapshots')
@@ -10426,6 +10441,9 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req
 });
 
 app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots/:version', async (req, res) => {
+
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   const version = Number(req.params.version);
   if (!Number.isInteger(version) || version < 1) {
     return res.status(400).json({ error: 'Snapshot version must be a positive integer.' });
@@ -10454,6 +10472,9 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/snapshots/:version', a
 // Live status for the existing transaction experience. This does not create a
 // snapshot: creation is an explicit, immutable append operation.
 app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
   try {
     const context = await getVerifiedAssetSnapshotContext(req.params.propertyId);
     if (!context) return res.status(404).json({ error: 'room not found' });
@@ -10505,6 +10526,9 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/readiness', async (req
 // is derived live from the canonical Transaction Record and its existing
 // evidence tables; it does not create a snapshot or call an external provider.
 app.get('/api/public/deal-room/:propertyId/verified-asset/readiness/export', async (req, res) => {
+  const access = await getRoomAccessContext(req, req.params.propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
   try {
     const context = await getVerifiedAssetSnapshotContext(req.params.propertyId);
     if (!context) return res.status(404).json({ error: 'room not found' });
@@ -11005,842 +11029,6 @@ function normalizePreparationUpdates(fields) {
 
 app.get('/api/public/deal-room/:propertyId/digital-asset-packages', async (req, res) => {
   const access = await getRoomAccessContext(req, req.params.propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data, error } = await supabase
-      .from('digital_asset_preparation_packages')
-      .select(DIGITAL_ASSET_PACKAGE_SELECT)
-      .eq('property_id', req.params.propertyId)
-      .order('created_at', { ascending: false });
-    if (error) {
-      if (digitalAssetPackagesUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PACKAGES_UNAVAILABLE',
-          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
-        });
-      }
-      throw error;
-    }
-    const packages = await Promise.all(
-      (data || []).map(presentStoredDigitalAssetPackageWithLatestRevision),
-    );
-    return res.json({ packages });
-  } catch (err) {
-    console.error('[digital-asset-packages GET]', err.message);
-    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Packages' });
-  }
-});
-
-app.get('/api/public/deal-room/:propertyId/digital-asset-packages/by-snapshot/:snapshotId', async (req, res) => {
-  const access = await getRoomAccessContext(req, req.params.propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data, error } = await supabase
-      .from('digital_asset_preparation_packages')
-      .select(DIGITAL_ASSET_PACKAGE_SELECT)
-      .eq('property_id', req.params.propertyId)
-      .eq('source_snapshot_id', req.params.snapshotId)
-      .maybeSingle();
-    if (error) {
-      if (digitalAssetPackagesUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PACKAGES_UNAVAILABLE',
-          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
-        });
-      }
-      throw error;
-    }
-    if (!data) {
-      return res.status(404).json({
-        error: 'PACKAGE_NOT_FOUND',
-        message: 'No Digital Asset Preparation Package has been generated from this snapshot.',
-      });
-    }
-    return res.json({ package: await presentStoredDigitalAssetPackageWithLatestRevision(data) });
-  } catch (err) {
-    console.error('[digital-asset-package by snapshot GET]', err.message);
-    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package' });
-  }
-});
-
-app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId', async (req, res) => {
-  const access = await getRoomAccessContext(req, req.params.propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data, error } = await supabase
-      .from('digital_asset_preparation_packages')
-      .select(DIGITAL_ASSET_PACKAGE_SELECT)
-      .eq('property_id', req.params.propertyId)
-      .eq('id', req.params.packageId)
-      .maybeSingle();
-    if (error) {
-      if (digitalAssetPackagesUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PACKAGES_UNAVAILABLE',
-          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
-        });
-      }
-      throw error;
-    }
-    if (!data) return res.status(404).json({ error: 'Digital Asset Preparation Package not found.' });
-    return res.json({ package: await presentStoredDigitalAssetPackageWithLatestRevision(data) });
-  } catch (err) {
-    console.error('[digital-asset-package GET]', err.message);
-    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package' });
-  }
-});
-
-app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/revisions', async (req, res) => {
-  const access = await getRoomAccessContext(req, req.params.propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data, error } = await supabase
-      .from('digital_asset_preparation_package_revisions')
-      .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
-      .eq('package_id', req.params.packageId)
-      .eq('property_id', req.params.propertyId)
-      .order('revision', { ascending: false });
-    if (error) {
-      if (digitalAssetPackageRevisionsUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PACKAGE_REVISIONS_UNAVAILABLE',
-          message: 'Package editing is not available until migration 026 is applied.',
-        });
-      }
-      throw error;
-    }
-    return res.json({
-      revisions: (data || []).map(revision => ({
-        id: revision.id,
-        package_id: revision.package_id,
-        revision: revision.revision,
-        source_snapshot_id: revision.source_snapshot_id,
-        source_snapshot_version: revision.source_snapshot_version,
-        source_snapshot_hash: revision.source_snapshot_hash,
-        package_hash: revision.package_hash,
-        changed_fields: revision.changed_fields || [],
-        created_by: revision.created_by,
-        created_at: revision.created_at,
-        package_status: revision.package?.package_status || 'needs_information',
-      })),
-    });
-  } catch (err) {
-    console.error('[digital-asset-package revisions GET]', err.message);
-    return res.status(500).json({ error: 'Failed to load Digital Asset Preparation Package revisions' });
-  }
-});
-
-app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/artifacts', async (req, res) => {
-  const { propertyId, packageId } = req.params;
-  const access = await getRoomAccessContext(req, propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data: packageRow, error: packageError } = await supabase
-      .from('digital_asset_preparation_packages')
-      .select('id')
-      .eq('property_id', propertyId)
-      .eq('id', packageId)
-      .maybeSingle();
-    if (packageError) {
-      if (digitalAssetPackagesUnavailable(packageError)) {
-        return res.status(503).json({
-          error: 'PACKAGES_UNAVAILABLE',
-          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
-        });
-      }
-      throw packageError;
-    }
-    if (!packageRow) return res.status(404).json({ error: 'PACKAGE_NOT_FOUND', message: 'The package was not found.' });
-
-    const { data, error } = await supabase
-      .from('digital_asset_preparation_pdf_artifacts')
-      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
-      .eq('property_id', propertyId)
-      .eq('package_id', packageId)
-      .order('source_revision', { ascending: false });
-    if (error) {
-      if (digitalAssetPreparationPdfArtifactsUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PDF_ARTIFACTS_UNAVAILABLE',
-          message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
-        });
-      }
-      throw error;
-    }
-    return res.json({
-      artifacts: (data || []).map(row => ({
-        ...presentDigitalAssetPreparationPdfArtifact(row),
-        view_path: `/api/public/deal-room/${encodeURIComponent(propertyId)}/digital-asset-packages/${encodeURIComponent(packageId)}/artifacts/${encodeURIComponent(row.id)}`,
-        download_path: `/api/public/deal-room/${encodeURIComponent(propertyId)}/digital-asset-packages/${encodeURIComponent(packageId)}/artifacts/${encodeURIComponent(row.id)}?download=1`,
-      })),
-    });
-  } catch (err) {
-    console.error('[digital-asset-preparation-pdf artifacts GET]', err.message);
-    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
-    return res.status(500).json({ error: 'Failed to load preparation PDF artifacts' });
-  }
-});
-
-app.post('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/revisions/:revisionId/artifacts', async (req, res) => {
-  const { propertyId, packageId, revisionId } = req.params;
-  const { ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
-  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can generate a preparation PDF.');
-
-  try {
-    const {
-      revision: requestedRevision,
-      sourceSnapshotId,
-      sourceSnapshotVersion,
-      sourceSnapshotHash,
-      packageHash,
-    } = req.body || {};
-    const resolved = await getPreparationRevisionForPdf(
-      propertyId,
-      packageId,
-      revisionId,
-      requestedRevision,
-    );
-    const { packageRow, revision } = resolved;
-
-    if (
-      sourceSnapshotId !== packageRow.source_snapshot_id
-      || Number(sourceSnapshotVersion) !== Number(packageRow.source_snapshot_version)
-      || sourceSnapshotHash !== packageRow.source_snapshot_hash
-      || packageHash !== revision.package_hash
-    ) {
-      throw packageRouteError(
-        409,
-        'PREPARATION_ARTIFACT_REFERENCE_MISMATCH',
-        'The requested PDF references do not match the exact package revision and readiness snapshot.',
-      );
-    }
-
-    const existing = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
-    if (existing) {
-      return res.json({
-        created: false,
-        idempotent: true,
-        artifact: presentDigitalAssetPreparationPdfArtifact(existing),
-      });
-    }
-
-    const pdfArguments = {
-      propertyId,
-      packageId,
-      packagePayload: revision.package,
-      revisionId: revision.id,
-      revisionNumber: revision.revision,
-      revisionCreatedAt: revision.created_at,
-      revisionHash: revision.package_hash,
-    };
-    // The displayed hash is a self-reference. Hash a fixed-width placeholder
-    // projection, then render the final PDF with that digest. Verification
-    // normalizes the same display field before hashing.
-    const hashTemplate = await buildPreparationPdfBuffer({
-      ...pdfArguments,
-      artifactHash: ARTIFACT_HASH_PLACEHOLDER,
-    });
-    const artifactHash = hashPreparationPdf(hashTemplate);
-    const pdfBuffer = await buildPreparationPdfBuffer({
-      ...pdfArguments,
-      artifactHash,
-    });
-    const filename = `digital-asset-preparation-${propertyId}-revision-${revision.revision}.pdf`
-      .replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = artifactStoragePath(propertyId, packageId, revision.revision, revision.package_hash);
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(PREPARATION_PDF_BUCKET)
-      .upload(storagePath, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: false,
-      });
-    if (uploadError) {
-      const afterUploadError = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
-      if (afterUploadError) {
-        return res.json({
-          created: false,
-          idempotent: true,
-          artifact: presentDigitalAssetPreparationPdfArtifact(afterUploadError),
-        });
-      }
-      throw uploadError;
-    }
-
-    const { data: created, error: insertError } = await supabase
-      .from('digital_asset_preparation_pdf_artifacts')
-      .insert({
-        package_id: packageRow.id,
-        property_id: propertyId,
-        source_snapshot_id: revision.source_snapshot_id,
-        source_snapshot_version: revision.source_snapshot_version,
-        source_snapshot_hash: revision.source_snapshot_hash,
-        source_revision_id: revision.id,
-        source_revision: revision.revision,
-        source_revision_hash: revision.package_hash,
-        artifact_hash: artifactHash,
-        storage_bucket: PREPARATION_PDF_BUCKET,
-        storage_path: uploadData?.path || storagePath,
-        filename,
-        content_type: 'application/pdf',
-        generated_by: access.email || null,
-      })
-      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
-      .single();
-    if (insertError) {
-      if (/duplicate key|unique constraint/i.test(insertError.message || '')) {
-        const concurrent = await getStoredDigitalAssetPreparationPdfArtifact(propertyId, packageId, revision.id);
-        if (concurrent) {
-          return res.json({
-            created: false,
-            idempotent: true,
-            artifact: presentDigitalAssetPreparationPdfArtifact(concurrent),
-          });
-        }
-      }
-      throw insertError;
-    }
-    logEvent(
-      propertyId,
-      'digital_asset_preparation_pdf_generated',
-      'owner',
-      access.email || null,
-      `Preparation PDF generated for package revision ${revision.revision}`,
-      {
-        artifact_id: created.id,
-        package_id: packageRow.id,
-        source_snapshot_id: revision.source_snapshot_id,
-        source_snapshot_version: revision.source_snapshot_version,
-        source_snapshot_hash: revision.source_snapshot_hash,
-        source_revision_id: revision.id,
-        source_revision: revision.revision,
-        artifact_hash: artifactHash,
-      },
-    ).catch(() => {});
-    return res.status(201).json({
-      created: true,
-      artifact: presentDigitalAssetPreparationPdfArtifact(created),
-    });
-  } catch (err) {
-    console.error('[digital-asset-preparation-pdf POST]', err.message);
-    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
-    if (digitalAssetPreparationPdfArtifactsUnavailable(err)) {
-      return res.status(503).json({
-        error: 'PDF_ARTIFACTS_UNAVAILABLE',
-        message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
-      });
-    }
-    return res.status(500).json({ error: 'Failed to generate preparation PDF artifact' });
-  }
-});
-
-app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/artifacts/:artifactId', async (req, res) => {
-  const { propertyId, packageId, artifactId } = req.params;
-  const access = await getRoomAccessContext(req, propertyId);
-  if (access.mode === 'anonymous') return accessDenied(res);
-  try {
-    const { data: artifact, error } = await supabase
-      .from('digital_asset_preparation_pdf_artifacts')
-      .select(DIGITAL_ASSET_PREPARATION_PDF_ARTIFACT_SELECT)
-      .eq('property_id', propertyId)
-      .eq('package_id', packageId)
-      .eq('id', artifactId)
-      .maybeSingle();
-    if (error) {
-      if (digitalAssetPreparationPdfArtifactsUnavailable(error)) {
-        return res.status(503).json({
-          error: 'PDF_ARTIFACTS_UNAVAILABLE',
-          message: 'Preparation PDF artifacts are not available until migration 027 is applied.',
-        });
-      }
-      throw error;
-    }
-    if (!artifact) return res.status(404).json({ error: 'PDF_ARTIFACT_NOT_FOUND', message: 'The preparation PDF artifact was not found.' });
-
-    const { data: file, error: downloadError } = await supabase.storage
-      .from(artifact.storage_bucket || PREPARATION_PDF_BUCKET)
-      .download(artifact.storage_path);
-    if (downloadError || !file) {
-      console.error('[digital-asset-preparation-pdf download]', downloadError?.message || 'storage object missing');
-      return res.status(404).json({ error: 'PDF_ARTIFACT_FILE_NOT_FOUND', message: 'The stored preparation PDF is not available.' });
-    }
-    const buffer = Buffer.isBuffer(file)
-      ? file
-      : Buffer.from(await file.arrayBuffer());
-    const digest = hashPreparationPdf(buffer, artifact.artifact_hash);
-    if (digest !== artifact.artifact_hash) {
-      return res.status(409).json({ error: 'PDF_ARTIFACT_HASH_MISMATCH', message: 'The stored preparation PDF failed integrity verification.' });
-    }
-    res.set({
-      'Content-Type': artifact.content_type || 'application/pdf',
-      'Content-Disposition': `${req.query.download === '1' ? 'attachment' : 'inline'}; filename="${artifact.filename}"`,
-      'Content-Length': String(buffer.length),
-      'Cache-Control': 'private, max-age=31536000, immutable',
-      ETag: `"${artifact.artifact_hash}"`,
-    });
-    return res.send(buffer);
-  } catch (err) {
-    console.error('[digital-asset-preparation-pdf GET]', err.message);
-    if (err.statusCode) return res.status(err.statusCode).json({ error: err.code, message: err.message, details: err.details });
-    return res.status(500).json({ error: 'Failed to load preparation PDF artifact' });
-  }
-});
-
-app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/preparation-fields', async (req, res) => {
-  const { propertyId, packageId } = req.params;
-  const { ownerWriteToken, fields } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
-
   try {
-    const saveRequestId = normalizePreparationSaveRequestId(
-      req.get('Idempotency-Key')
-        || req.get('X-Idempotency-Key')
-        || req.body?.saveRequestId,
-    );
-    const updates = normalizePreparationUpdates(fields);
-    const { data: packageRow, error: packageError } = await supabase
-      .from('digital_asset_preparation_packages')
-      .select(DIGITAL_ASSET_PACKAGE_SELECT)
-      .eq('id', packageId)
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (packageError) {
-      if (digitalAssetPackagesUnavailable(packageError)) {
-        return res.status(503).json({
-          error: 'PACKAGES_UNAVAILABLE',
-          message: 'Digital Asset Preparation Packages are not available until migration 025 is applied.',
-        });
-      }
-      throw packageError;
-    }
-    if (!packageRow) return res.status(404).json({ error: 'Digital Asset Preparation Package not found.' });
-
-    const existingRequestRevision = await getDigitalAssetPackageRevisionByRequestId(packageId, saveRequestId);
-    if (existingRequestRevision) {
-      return res.json({
-        ok: true,
-        created: false,
-        idempotent: true,
-        package: presentStoredDigitalAssetPackageRevision(packageRow, existingRequestRevision),
-        revision: {
-          id: existingRequestRevision.id,
-          revision: existingRequestRevision.revision,
-          changed_fields: existingRequestRevision.changed_fields || [],
-          created_by: existingRequestRevision.created_by,
-          created_at: existingRequestRevision.created_at,
-          package_status: existingRequestRevision.package?.package_status || 'needs_information',
-        },
-      });
-    }
-
-    const sourceSnapshot = await getSelectedVerifiedAssetSnapshot(
-      propertyId,
-      packageRow.source_snapshot_id,
-      packageRow.source_snapshot_version,
-    );
-    if (sourceSnapshot.snapshot_hash !== packageRow.source_snapshot_hash) {
-      throw packageRouteError(
-        409,
-        'SOURCE_SNAPSHOT_CHANGED',
-        'The package source snapshot no longer matches its persisted source hash.',
-      );
-    }
-
-    const appendResult = await appendDigitalAssetPreparationRevision({
-      packageRow,
-      updates,
-      saveRequestId,
-      createdBy: access.email || null,
-      getLatestRevision: getLatestDigitalAssetPackageRevision,
-      getRevisionByRequestId: getDigitalAssetPackageRevisionByRequestId,
-      insertRevision: values => supabase
-        .from('digital_asset_preparation_package_revisions')
-        .insert(values)
-        .select(DIGITAL_ASSET_PACKAGE_REVISION_SELECT)
-        .single(),
-    });
-    const { created, idempotent, revision, packagePayload } = appendResult;
-    if (!created) {
-      return res.json({
-        ok: true,
-        created: false,
-        idempotent,
-        package: presentStoredDigitalAssetPackageRevision(packageRow, revision),
-        revision: {
-          id: revision.id,
-          revision: revision.revision,
-          changed_fields: revision.changed_fields || [],
-          created_by: revision.created_by,
-          created_at: revision.created_at,
-          package_status: revision.package?.package_status || 'needs_information',
-        },
-      });
-    }
-
-    logEvent(
-      propertyId,
-      'digital_asset_preparation_package_updated',
-      'owner',
-      access.email || null,
-      `Digital Asset Preparation Package revision ${revision.revision} saved`,
-      {
-        package_id: packageId,
-        revision: revision.revision,
-        changed_fields: Object.keys(updates),
-        package_status: packagePayload.package_status,
-      },
-    );
-    return res.status(201).json({
-      ok: true,
-      created: true,
-      package: presentStoredDigitalAssetPackageRevision(packageRow, revision),
-      revision: {
-        id: revision.id,
-        revision: revision.revision,
-        changed_fields: revision.changed_fields || [],
-        created_by: revision.created_by,
-        created_at: revision.created_at,
-        package_status: packagePayload.package_status,
-      },
-    });
-  } catch (err) {
-    console.error('[digital-asset-prep update]', err.message);
-    if (err.statusCode) {
-      return res.status(err.statusCode).json({
-        error: err.code,
-        message: err.message,
-        ...err.details,
-      });
-    }
-    return res.status(500).json({ error: 'Failed to save Digital Asset Preparation Package fields' });
-  }
-});
-
-app.post('/api/public/deal-room/:propertyId/digital-asset-packages', async (req, res) => {
-  const { propertyId } = req.params;
-  const { ownerWriteToken, snapshotId, snapshotVersion } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
-  if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
-
-  try {
-    const result = await createDigitalAssetPreparationPackage(propertyId, access, {
-      snapshotId,
-      snapshotVersion,
-    });
-    return res.status(result.created ? 201 : 200).json({
-      ok: true,
-      ...result,
-    });
-  } catch (err) {
-    console.error('[digital-asset-prep]', err.message);
-    if (err.statusCode) {
-      return res.status(err.statusCode).json({
-        error: err.code,
-        message: err.message,
-        ...err.details,
-      });
-    }
-    return res.status(500).json({ error: 'Failed to generate Digital Asset Preparation Package' });
-  }
-});
-
-app.use((err, req, res, next) => {
-  if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'File too large — maximum size is 20MB. Please compress the file and try again.' });
-  }
-  if (err.message?.includes('File type not allowed')) {
-    return res.status(415).json({ error: 'Unsupported file type. Accepted formats: PDF, Word, Excel, CSV, JPEG, PNG.' });
-  }
-  console.error('[unhandled error]', err.message);
-  res.status(500).json({ error: err.message || 'Server error' });
-});
-
-// ── Startup migration: ensure workflow_pack_id column exists ─────────────────
-// Migration 005 is manual-only; run it automatically here so Render/production
-// gets the column on first boot without a manual Supabase SQL editor step.
-async function ensureWorkflowPackIdColumn() {
-  try {
-    const { Pool } = require('pg');
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
-      ssl: { rejectUnauthorized: false },
-    });
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_revenue NUMERIC`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_ebitda NUMERIC`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS checklist_items JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS owner_write_token TEXT`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stages_config JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS metadata_values JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(64)`
-    );
-    // transaction_record_fields and transaction_record_approvals are NOT created
-    // here. They must be applied via the committed Supabase migration:
-    //   kontra-ui-clone/api/migrations/015_transaction_record.sql
-    // Startup checks are kept read-only beyond the deal_rooms column additions above.
-    // analytics_events — created here so it's always present when first event arrives
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS analytics_events (
-        id           BIGSERIAL PRIMARY KEY,
-        session_id   TEXT NOT NULL,
-        event_name   TEXT NOT NULL,
-        workspace_id TEXT,
-        properties   JSONB DEFAULT '{}',
-        created_at   TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at DESC)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_event_name_idx ON analytics_events (event_name)`);
-    await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values, jurisdiction)');
-  } catch (err) {
-    // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
-    console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
-  }
-}
-
-const PORT = process.env.PORT || 3000;
-if (require.main === module) {
-  if (process.env.NODE_ENV === 'production') {
-    startJobSchedulers();
-  }
-  const server = http.createServer(app);
-  attachChatServer(server);
-  attachCollabServer(server);
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Kontra API listening on port ${PORT}`);
-    void ensureWorkflowPackIdColumn();
-    if (process.env.NODE_ENV !== 'production') {
-      void logBaselineSchemaHealth();
-    }
-  });
-}
-
-// ── Generic Deal Room — AI Assistant (/brain/ask) ────────────────────────────
-// Context-aware assistant that reasons from the actual room state.
-// Registered BEFORE the static demo overrides so dynamic rooms hit this route.
-app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
-  const { propertyId } = req.params;
-  const { question } = req.body || {};
-  if (!question) return res.status(400).json({ error: 'question required' });
-
-  // Keep this legacy route aligned with the canonical Operations Manager
-  // handler. Without this delegation, dynamic rooms could fall through to the
-  // older fact-count prompt and invent participants from generic CRE context.
-  try {
-    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
-    if (access.mode === 'anonymous') return accessDenied(res);
-    return res.json(await askQuestion(propertyId, String(question).slice(0, 2000)));
-  } catch (err) {
-    console.error('[brain/ask]', err.message);
-    return res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
-  }
-
-  try {
-    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
-    if (access.mode === 'anonymous') return accessDenied(res);
-
-    const [
-      transactionState,
-      { count: docCount },
-      { data: invites },
-    ] = await Promise.all([
-      readTransactionState(propertyId),
-      supabase.from('deal_analyses')
-        .select('id', { count: 'exact', head: true })
-        .eq('property_id', propertyId),
-      supabase.from('deal_room_invites')
-        .select('role_key, status')
-        .eq('property_id', propertyId),
-    ]);
-    const room = transactionState.room;
-    const fields = transactionState.recordState.fields || [];
-
-    const populated = fields.filter(f => f.value !== null && f.value !== undefined
-      && String(f.value).trim() && f.status !== 'not_applicable');
-    const conflicts = fields.filter(f => f.status === 'conflict' || f.attention === 'source_changed');
-    const needsReview = fields.filter(f => f.status === 'awaiting' && f.value !== null && f.value !== undefined);
-    const inviteCount = (invites || []).length;
-
-    const CAT_PREFIXES = {
-      'Identity & Parties': ['parties.', 'ownership.owner_name'],
-      'Asset / Company': ['asset.'],
-      'Transaction Terms': ['transaction.'],
-      'Financial Information': ['financial.'],
-      'Legal & Diligence': ['legal.', 'ownership.cap_table', 'ownership.beneficial_owners', 'ownership.liens'],
-    };
-    const catStatus = Object.entries(CAT_PREFIXES).map(([label, prefixes]) => {
-      const count = populated.filter(f => prefixes.some(p => f.field_key?.startsWith(p) || f.field_key === p)).length;
-      return `${label}: ${count === 0 ? 'Not started' : count >= 2 ? 'Building' : 'Needs information'}`;
-    }).join('\n');
-
-    const systemPrompt = `You are Kontra AI, a transaction-aware assistant embedded in a deal room called Kontra. You reason specifically from the current room state below. Never give generic advice — always tie your answer to the specific room context.
-
-ROOM NAME: ${room?.property_name || 'Unnamed transaction'}
-TYPE: ${transactionState.packId || transactionState.schemaKey || room?.deal_type || 'General transaction'}
-DOCUMENTS UPLOADED: ${docCount || 0}
-PARTICIPANTS INVITED: ${inviteCount}
-EXTRACTED FACTS: ${populated.length}
-CONFLICTING / CHANGED FIELDS: ${conflicts.length}
-NEEDS REVIEW: ${needsReview.length}
-
-DIGITAL ASSET READINESS BY CATEGORY:
-${catStatus}
-
-${populated.length > 0 ? `KNOWN FACTS (up to 20):\n${populated.slice(0, 20).map(f => `• ${f.label || f.key}: ${f.value}`).join('\n')}` : '(No facts have been extracted yet — no documents have been uploaded or analyzed.)'}
-
-${conflicts.length > 0 ? `CONFLICTS TO RESOLVE:\n${conflicts.map(f => `• ${f.label || f.key}: conflicting sources — needs coordinator review`).join('\n')}` : ''}
-
-RULES:
-- If the room is empty (0 documents, 0 facts): clearly state this room has not started, recommend uploading the most relevant first document (e.g. Letter of Intent or Purchase Agreement), and explain what Kontra will extract from it.
-- If asked about digital-asset readiness or tokenization: describe which categories have facts vs. which are still empty. Never quote a percentage. Never say "eligible for tokenization", "approved", or "issuance ready".
-- If there are conflicts or needs-review fields: name them specifically.
-- Keep answers concise (3–6 sentences), factual, and actionable.
-- Do not provide legal, regulatory, or financial advice.
-- Kontra organizes and prepares transaction information — it does not issue, sell, recommend, custody, or settle digital assets.`;
-
-    const aiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await aiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question },
-      ],
-      max_tokens: 450,
-      temperature: 0.3,
-    });
-
-    res.json({ answer: completion.choices[0]?.message?.content || 'I could not answer from the current transaction record.' });
-  } catch (err) {
-    console.error('[brain/ask]', err.message);
-    res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });
-  }
-});
-
-// ── Generic Deal Room — Transaction-Record Fact Summary (/brain/facts) ───────
-// Distinct from /brain/briefing (which is served by the operationsManager
-// router for deal health / chain status). This endpoint returns a machine-
-// readable summary of extracted transaction facts plus a document count so the
-// CoordinatorOverview can show "N documents uploaded" and known transaction
-// values without a separate /transaction-record fetch.
-// Returns a lightweight computed briefing from live room data.
-// Static demo rooms register their own routes above and override this.
-app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
-  const { propertyId } = req.params;
-  const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
-  if (access.mode === 'anonymous') return accessDenied(res, 'A verified deal-room invitation or owner access token is required');
-  try {
-    const [transactionState, analysesResult] = await Promise.all([
-      readTransactionState(propertyId),
-      supabase.from('deal_analyses')
-        .select('id, section, filename, analysis, processing_status, created_at, is_active, superseded_at')
-        .eq('property_id', propertyId),
-    ]);
-    let analysisRows = analysesResult.data || [];
-    if (analysesResult.error) {
-      // Keep the facts endpoint usable while older workspaces are upgraded;
-      // the legacy projection still deduplicates by section and timestamp.
-      const legacyResult = await supabase.from('deal_analyses')
-        .select('id, section, filename, analysis, created_at')
-        .eq('property_id', propertyId);
-      if (legacyResult.error) throw legacyResult.error;
-      analysisRows = legacyResult.data || [];
-    }
-    const activeAnalyses = selectActiveDocumentVersions(analysisRows);
-    const docCount = activeAnalyses.length;
-    const fields = transactionState.recordState.fields || [];
-
-    const conflicts   = fields.filter(f => f.status === 'conflict' || f.attention === 'source_changed');
-    const needsReview = fields.filter(f => f.status === 'awaiting' && f.value !== null && f.value !== undefined);
-
-    // Return null only when truly nothing has been uploaded or extracted yet
-    if (docCount === 0 && (fields || []).length === 0) {
-      return res.json(null);
-    }
-
-    const risks = conflicts.map(f => ({
-      text: `${f.label || f.key} has conflicting values from different sources`,
-      field_key: f.key,
-    }));
-    const actions = needsReview.slice(0, 4).map(f => ({
-      text: `Confirm "${f.label || f.key}" extracted as "${f.value}"`,
-      field_key: f.key,
-    }));
-
-    res.json({
-      actions,
-      risks,
-      open_items: [],
-      snapshot: {
-        document_count: docCount,
-        active_document_count: docCount,
-        fact_count: (fields || []).length,
-      },
-      active_documents: activeAnalyses.map(analysis => ({
-        id: analysis.id,
-        section: analysis.section,
-        filename: analysis.filename,
-        processing_status: analysis.processing_status || 'complete',
-      })),
-      record_state: transactionState.recordState,
-      // Surface the most important known values for the Overview snapshot row
-      known_values: Object.fromEntries(
-        (fields || [])
-          .filter(f => f.value !== null && f.value !== undefined && f.status !== 'not_applicable')
-          .map(f => [f.key, f.value])
-      ),
-    });
-  } catch (err) {
-    console.error('[brain/facts]', err.message);
-    res.json(null);
-  }
-});
-
-// ── 404 catch-all — MUST remain after all route registrations ─────────────────
-// Placed here so that routes registered later in this file (transaction-record,
-// brain/facts, extract, etc.) are not swallowed by the catch-all before they
-// can be matched. Express evaluates handlers in registration order.
-app.use('/api', (req, res) => {
-  res.status(404).json({
-    code: 'NOT_FOUND',
-    message: `${req.method} ${req.originalUrl} not found`
-  });
-});
-if (Sentry.Handlers?.errorHandler) {
-  app.use(Sentry.Handlers.errorHandler());
-} else if (Sentry.errorHandler) {
-  app.use(Sentry.errorHandler());
-}
-app.use(errorHandler);
-
-// Kept on the Express app for focused authorization/checklist regression tests;
-// these helpers do not change the public HTTP surface.
-app.getRoomAccessContext = getRoomAccessContext;
-app.filterChecklistItemsByRole = filterChecklistItemsByRole;
-app.getChecklistItemAssignedRoles = getChecklistItemAssignedRoles;
-app.getAssignedSectionsForAccess = getAssignedSectionsForAccess;
-app.buildCreationMetadata = buildCreationMetadata;
-app.isTokenizationTransaction = isTokenizationTransaction;
-if (process.env.NODE_ENV === 'test') {
-  app.setMyRoomsOtpForTest = (email, code) => {
-    otpStore.set(email, { code, expiresAt: Date.now() + 60_000 });
-  };
-}
-
-module.exports = app;
+    const { data, error } = await supab

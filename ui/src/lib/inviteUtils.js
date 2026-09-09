@@ -49,9 +49,12 @@ export function getRoomAuthHeaders(propertyId, extra = {}) {
   const headers = { ...extra };
   try {
     const sessionToken = getInviteSession(propertyId);
-    if (sessionToken) headers['x-kontra-session'] = sessionToken;
-    const ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`);
-    if (ownerToken) headers['x-owner-write-token'] = ownerToken;
+    if (sessionToken) {
+      headers['x-kontra-session'] = sessionToken;
+    } else {
+      const ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`);
+      if (ownerToken) headers['x-owner-write-token'] = ownerToken;
+    }
   } catch { /* storage unavailable */ }
   return headers;
 }

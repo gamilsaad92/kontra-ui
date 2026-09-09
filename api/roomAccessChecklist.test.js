@@ -2,6 +2,7 @@ const mockOwnerToken = 'owner-token';
 const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
 let mockFieldSourceDocId = null;
+let mockParticipantSessionAvailable = true;
 
 jest.mock('./db', () => {
   const owner = {
@@ -63,10 +64,16 @@ jest.mock('./db', () => {
       gt: () => chain,
       is: () => chain,
       maybeSingle: async () => {
-        if (table === 'deal_rooms') return { data: owner, error: null };
+        if (table === 'deal_rooms') {
+          return state.filters.property_id === 'room-1'
+            ? { data: owner, error: null }
+            : { data: null, error: null };
+        }
         if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
         if (table === 'deal_room_access_sessions') {
-          return state.filters.session_token_hash === sessionHash
+          return state.filters.property_id === 'room-1'
+            && state.filters.session_token_hash === sessionHash
+            && mockParticipantSessionAvailable
             ? { data: session, error: null }
             : { data: null, error: null };
         }
@@ -101,9 +108,10 @@ describe('room access and checklist scoping', () => {
   beforeEach(() => {
     mockInsertedRows.length = 0;
     mockFieldSourceDocId = null;
+    mockParticipantSessionAvailable = true;
   });
 
-  it('gives a valid owner token precedence over a valid participant session', async () => {
+  it('gives a valid participant session precedence over a valid same-room owner token', async () => {
     const access = await app.getRoomAccessContext({
       headers: {
         'x-owner-write-token': mockOwnerToken,
@@ -111,8 +119,9 @@ describe('room access and checklist scoping', () => {
       },
     }, 'room-1');
 
-    expect(access.mode).toBe('owner');
-    expect(access.permissions.viewAllDocuments).toBe(true);
+    expect(access.mode).toBe('participant');
+    expect(access.role).toBe('seller');
+    expect(access.permissions.viewAllDocuments).toBe(false);
   });
 
   it('resolves an owner-only direct room URL to coordinator access', async () => {
@@ -125,7 +134,7 @@ describe('room access and checklist scoping', () => {
     expect(response.body.access).toEqual({ mode: 'owner' });
   });
 
-  it('keeps owner coordinator access across repeated room loads', async () => {
+  it('keeps participant access across repeated room loads when both credentials are present', async () => {
     for (let i = 0; i < 2; i += 1) {
       const response = await request(app)
         .get('/api/public/deal-room/room-1?role=seller')
@@ -133,23 +142,74 @@ describe('room access and checklist scoping', () => {
         .set('x-kontra-session', mockParticipantToken);
 
       expect(response.status).toBe(200);
-      expect(response.body.role).toBe('deal_coordinator');
-      expect(response.body.access).toEqual({ mode: 'owner' });
+      expect(response.body.role).toBe('seller');
+      expect(response.body.access).toEqual({ mode: 'participant', role: 'seller' });
     }
   });
 
-  it('does not reject the owner room lookup when a stale participant session is also present', async () => {
+  it('falls back to owner access when the participant session is expired or revoked', async () => {
+    mockParticipantSessionAvailable = false;
     const response = await request(app)
       .get('/api/public/deal-room/room-1')
       .set('x-owner-write-token', mockOwnerToken)
       .set('x-kontra-session', mockParticipantToken);
 
-    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(200);
+    expect(response.body.role).toBe('deal_coordinator');
+    expect(response.body.access).toEqual({ mode: 'owner' });
+  });
+
+  it('does not accept an owner token from a different room', async () => {
+    const access = await app.getRoomAccessContext({
+      headers: {
+        'x-owner-write-token': mockOwnerToken,
+        'x-kontra-session': mockParticipantToken,
+      },
+    }, 'room-2');
+
+    expect(access.mode).toBe('anonymous');
   });
 
   it('blocks anonymous access to transaction metadata', async () => {
     const response = await request(app)
       .get('/api/public/deal-room/room-1/asset-metadata');
+
+    expect(response.status).toBe(403);
+  });
+
+  it.each([
+    '/api/public/deal-room/room-1/transaction-record',
+    '/api/public/deal-room/room-1/transaction-record/fields/field-1/history',
+    '/api/public/deal-room/room-1/asset-passport',
+    '/api/public/deal-room/room-1/asset-metadata',
+    '/api/public/deal-room/room-1/readiness',
+    '/api/public/deal-room/room-1/verified-asset/snapshots',
+    '/api/public/deal-room/room-1/verified-asset/snapshots/1',
+    '/api/public/deal-room/room-1/verified-asset/readiness',
+    '/api/public/deal-room/room-1/verified-asset/readiness/export',
+    '/api/public/deal-room/room-1/digital-asset-packages',
+    '/api/public/deal-room/room-1/verification',
+  ])('blocks participant access to owner-only sensitive read %s', async path => {
+    const response = await request(app)
+      .get(path)
+      .set('x-kontra-session', mockParticipantToken);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('blocks anonymous access to the verification run endpoint', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/verification/run')
+      .send({});
+
+    expect(response.status).toBe(403);
+  });
+
+  it.each([
+    '/api/public/deal-room/room-1/verified-asset/snapshots',
+    '/api/public/deal-room/room-1/verification',
+  ])('blocks anonymous access to %s', async path => {
+    const response = await request(app).get(path);
 
     expect(response.status).toBe(403);
   });
