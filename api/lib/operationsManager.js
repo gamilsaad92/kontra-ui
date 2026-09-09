@@ -853,6 +853,32 @@ optional digital-asset preparation gaps.
 This is coordination and preparation guidance, not legal, regulatory, investment, settlement,
 issuance, custody, or eligibility advice. Keep every factual statement tied to a provided source.`;
 
+function isDocumentStatusQuestion(question) {
+  const text = String(question || '');
+  return /\b(?:document|documents|file|files|paperwork|checklist)\b/i.test(text)
+    && /\b(?:missing|required|received|uploaded|processing|submitted|status|have|need)\b/i.test(text);
+}
+
+function buildDocumentStatusAnswer(ctx) {
+  const missing = Array.isArray(ctx.missingDocuments) ? ctx.missingDocuments : [];
+  const received = ctx.transactionContext?.evidence?.activeDocumentState?.documents || [];
+  const receivedLabels = received
+    .map(document => document.filename || document.section)
+    .filter(Boolean);
+
+  if (missing.length === 0) {
+    return receivedLabels.length > 0
+      ? `No required documents are currently missing. The live room shows received evidence for: ${receivedLabels.join(', ')}.`
+      : 'No required documents are currently missing, and no active document evidence is recorded in the live room.';
+  }
+
+  const missingLabels = missing.map(document => document.label || document.section || 'Required document');
+  const receivedNote = receivedLabels.length > 0
+    ? ` The live room also shows received evidence for: ${receivedLabels.join(', ')}.`
+    : '';
+  return `Currently missing required documents: ${missingLabels.join(', ')}.${receivedNote}`;
+}
+
 // ── Morning briefing ──────────────────────────────────────────────────────────
 async function getBriefing(propertyId) {
   const cached = getCached(propertyId);
@@ -1082,6 +1108,12 @@ async function askQuestion(propertyId, question) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
   const ctx = await buildGroundedContext(propertyId);
+  if (isDocumentStatusQuestion(question)) {
+    return {
+      answer: buildDocumentStatusAnswer(ctx),
+      citedTaskIds: [],
+    };
+  }
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)
     ? buildTokenizationGuidance({

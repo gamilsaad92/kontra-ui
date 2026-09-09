@@ -644,6 +644,131 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       .toEqual(['Damage Assessment Report', 'Insurance Claim Form']);
   });
 
+  test('answers document-status questions from live evidence without asking the LLM to infer missing files', async () => {
+    const checklist = [
+      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
+      { id: 'insurance_policy', section: 'insurance_policy', label: 'Insurance Policy', required: true, status: 'missing' },
+      { id: 'damage_assessment', section: 'damage_assessment', label: 'Damage Assessment Report', required: true, status: 'missing' },
+      { id: 'repair_estimate', section: 'repair_estimate', label: 'Repair Estimate', required: true, status: 'missing' },
+      { id: 'claim_form', section: 'claim_form', label: 'Insurance Claim Form', required: true, status: 'missing' },
+    ];
+    const analyses = [
+      { id: 'loss-upload', section: 'loss_report', filename: '01_Loss_Documentation.docx', processing_status: 'complete', analysis: { summary: 'Loss report received.' }, created_at: '2026-09-03T01:29:35.077Z' },
+      { id: 'policy-upload', section: 'insurance_policy', filename: '02_Insurance_Coverage.docx', processing_status: 'complete', analysis: { summary: 'Insurance coverage received.' }, created_at: '2026-09-03T01:29:48.715Z' },
+      { id: 'repair-upload', section: 'repair_estimate', filename: '03_Repair_Estimate.docx', processing_status: 'complete', analysis: { summary: 'Repair estimate received.' }, created_at: '2026-09-03T01:30:09.233Z' },
+    ];
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_name: 'Hazard Loss Grounding Room',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'other',
+        deal_stage: 'claim_filing',
+        checklist_items: checklist,
+      },
+      recordState: {
+        schemaKey: 'cre_acquisition',
+        fields: [],
+        requiredFields: [],
+        requiredCount: 0,
+        confirmedCount: 0,
+        awaitingRequiredCount: 0,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses'
+        ? analyses
+        : table === 'party_submissions'
+          ? completedParticipants('cre_acquisition')
+          : [];
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const result = await askQuestion(
+      'hazard-loss-grounding-room',
+      'Which required documents are currently missing? List only documents that are genuinely absent.',
+    );
+
+    expect(result.answer).toBe(
+      'Currently missing required documents: Damage Assessment Report, Insurance Claim Form. '
+        + 'The live room also shows received evidence for: 01_Loss_Documentation.docx, '
+        + '02_Insurance_Coverage.docx, 03_Repair_Estimate.docx.',
+    );
+    expect(result.citedTaskIds).toEqual([]);
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
+  test('does not invent missing documents when all required evidence is live', async () => {
+    const checklist = [
+      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
+      { id: 'insurance_policy', section: 'insurance_policy', label: 'Insurance Policy', required: true, status: 'missing' },
+      { id: 'repair_estimate', section: 'repair_estimate', label: 'Repair Estimate', required: true, status: 'missing' },
+    ];
+    const analyses = [
+      { id: 'loss-upload', section: 'loss_report', filename: 'loss-report.pdf', processing_status: 'complete', analysis: { summary: 'Loss report received.' }, created_at: '2026-09-03T01:29:35.077Z' },
+      { id: 'policy-upload', section: 'insurance_policy', filename: 'insurance-policy.pdf', processing_status: 'complete', analysis: { summary: 'Insurance policy received.' }, created_at: '2026-09-03T01:29:48.715Z' },
+      { id: 'repair-upload', section: 'repair_estimate', filename: 'repair-estimate.pdf', processing_status: 'complete', analysis: { summary: 'Repair estimate received.' }, created_at: '2026-09-03T01:30:09.233Z' },
+    ];
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'cre_acquisition',
+      room: {
+        property_name: 'Complete Evidence Room',
+        workflow_pack_id: 'cre_acquisition',
+        deal_type: 'other',
+        deal_stage: 'claim_filing',
+        checklist_items: checklist,
+      },
+      recordState: {
+        schemaKey: 'cre_acquisition',
+        fields: [],
+        requiredFields: [],
+        requiredCount: 0,
+        confirmedCount: 0,
+        awaitingRequiredCount: 0,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses'
+        ? analyses
+        : table === 'party_submissions'
+          ? completedParticipants('cre_acquisition')
+          : [];
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const result = await askQuestion('complete-evidence-room', 'What documents are currently missing?');
+
+    expect(result.answer).toBe(
+      'No required documents are currently missing. The live room shows received evidence for: '
+        + 'loss-report.pdf, insurance-policy.pdf, repair-estimate.pdf.',
+    );
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {
     const propertyId = 'briefing-cache-room';
     const checklist = [
