@@ -188,6 +188,11 @@ describe('room access and checklist scoping', () => {
     '/api/public/deal-room/room-1/verified-asset/readiness',
     '/api/public/deal-room/room-1/verified-asset/readiness/export',
     '/api/public/deal-room/room-1/digital-asset-packages',
+    '/api/public/deal-room/room-1/digital-asset-packages/by-snapshot/snapshot-1',
+    '/api/public/deal-room/room-1/digital-asset-packages/package-1',
+    '/api/public/deal-room/room-1/digital-asset-packages/package-1/revisions',
+    '/api/public/deal-room/room-1/digital-asset-packages/package-1/artifacts',
+    '/api/public/deal-room/room-1/digital-asset-packages/package-1/artifacts/artifact-1',
     '/api/public/deal-room/room-1/verification',
   ])('blocks participant access to owner-only sensitive read %s', async path => {
     const response = await request(app)
