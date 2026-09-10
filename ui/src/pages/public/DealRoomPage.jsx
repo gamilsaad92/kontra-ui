@@ -4629,27 +4629,6 @@ function DigitalAssetReadinessSection({
         </p>
       )}
 
-      {/* Footer — DA prep available (only when tokenization/DA is explicitly enabled) */}
-      {digitalAssetEnabled && allReady ? (
-        <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Optional Digital Asset Preparation</p>
-          <p className="text-xs font-semibold text-gray-800">Required preparation inputs captured</p>
-          <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
-            Select an eligible immutable readiness snapshot in the Verified Asset Readiness card to assemble a frozen package for external professional or provider review. This is not legal, regulatory, or issuance approval.
-          </p>
-        </div>
-      ) : digitalAssetEnabled ? (
-        <div className="border-t border-gray-100 bg-indigo-50/30 px-5 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-0.5">Optional Digital Asset Preparation</p>
-          <p className="text-[10px] text-gray-400">
-            {tokenizationGaps.length} tokenization-specific input{tokenizationGaps.length === 1 ? '' : 's'} still need to be recorded or confirmed. General transaction completeness does not replace these inputs.
-          </p>
-        </div>
-      ) : (
-        <p className="border-t border-gray-100 px-5 py-3 text-[10px] text-gray-400">
-          Transaction readiness reflects the completeness and organization of transaction information across all parties, documents, and verified facts.
-        </p>
-      )}
     </div>
   );
 }
