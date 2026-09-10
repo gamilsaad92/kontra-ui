@@ -9027,14 +9027,6 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
          <KeyTransactionFacts facts={keyFacts} onTabChange={onTabChange} onOverviewAction={overviewAction} />
         </div>
 
-        <TransactionDetailsPanel
-          propertyId={propertyId}
-          property={property}
-          pack={pack}
-          recordFields={recordFields}
-          recordState={canonicalRecordState}
-          onSaved={load}
-        />
         <StageLifecycleBar
           stages={effectiveStages}
           currentStageKey={currentStageKey}
