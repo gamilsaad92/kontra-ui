@@ -7,6 +7,7 @@ const {
   getPackRoleLabel,
   resolvePackIdFromRoom,
 } = require('./dealRoomHelpers');
+const { normalizeAssignmentRole } = require('./documentAssignmentEvents');
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
 const INACTIVE_STATUSES = new Set(['revoked', 'expired', 'removed', 'inactive', 'declined']);
@@ -106,6 +107,45 @@ function lifecycleRecipients(room, participants) {
     seen.add(recipient.email);
     return true;
   });
+}
+
+function participantRecipientsForRoles(participants, roles) {
+  const normalizedRoles = new Set(
+    (Array.isArray(roles) ? roles : []).map(normalizeAssignmentRole),
+  );
+  const seenEmails = new Set();
+  return participants
+    .filter(participant =>
+      normalizedRoles.has(normalizeAssignmentRole(participant.role)),
+    )
+    .map(participant => ({
+      email: normalizedEmail(participant.email),
+      name: participant.name || participant.role || 'there',
+      role: participant.role,
+    }))
+    .filter(recipient => {
+      if (!recipient.email || seenEmails.has(recipient.email)) return false;
+      seenEmails.add(recipient.email);
+      return true;
+    });
+}
+
+async function getRoomRoleLabel(room, role) {
+  if (room?.workflow_pack_id?.startsWith('ws_')) {
+    try {
+      const { data } = await supabase.from('custom_workflow_packs')
+        .select('config')
+        .eq('id', room.workflow_pack_id)
+        .maybeSingle();
+      const customRole = data?.config?.roles?.find(item =>
+        normalizeAssignmentRole(item?.key) === normalizeAssignmentRole(role),
+      );
+      if (customRole?.label) return customRole.label;
+    } catch (error) {
+      console.warn('[deal-notifications] custom role label lookup skipped:', error.message);
+    }
+  }
+  return getPackRoleLabel(resolvePackIdFromRoom(room), role);
 }
 
 async function getOpenActions(propertyId, role) {
@@ -253,6 +293,56 @@ async function dispatchTransactionEvent(event) {
   if (!context.room) return;
   const { room, participants } = context;
   const propName = room.property_name || propertyId;
+
+  if (eventType === 'participant_assignment_changed') {
+    const assignments = Array.isArray(data.metadata?.assignments)
+      ? data.metadata.assignments
+      : [];
+    const recipients = participantRecipientsForRoles(
+      participants,
+      data.metadata?.newlyAssignedRoles,
+    );
+    if (assignments.length === 0 || recipients.length === 0) return;
+
+    await deliverToRecipients({
+      propertyId,
+      event,
+      recipients,
+      type: 'participant_assignment',
+      subject: `New document assignment — ${propName}`,
+      bodyForRecipient: async recipient => {
+        const recipientRole = normalizeAssignmentRole(recipient.role);
+        const relevantAssignments = assignments.filter(item =>
+          (item.newlyAssignedRoles || []).some(role =>
+            normalizeAssignmentRole(role) === recipientRole,
+          ),
+        );
+        if (relevantAssignments.length === 0) return {
+          title: 'New document assignment',
+          html: '',
+          link: buildRoomLink(propertyId, recipient.role, { tab: 'documents' }),
+          metadata: { assignment_count: 0 },
+        };
+        const roleLabel = await getRoomRoleLabel(room, recipient.role);
+        const documentsHtml = relevantAssignments.map(item =>
+          `<li><strong>${escapeHtml(item.label)}</strong>${item.required ? ' <span>(Required)</span>' : ' <span>(Optional)</span>'}</li>`,
+        ).join('');
+        return {
+          title: 'New document assignment',
+          html: `<p>A document has been assigned to you as <strong>${escapeHtml(roleLabel)}</strong> in <strong>${escapeHtml(propName)}</strong>.</p><ul>${documentsHtml}</ul><p>Please open your restricted workspace to review or upload the assigned document.</p>`,
+          link: buildRoomLink(propertyId, recipient.role, { tab: 'documents' }),
+          ctaLabel: 'Open Documents',
+          metadata: {
+            assignments: relevantAssignments.map(item => ({
+              section: item.section,
+              required: item.required === true,
+            })),
+          },
+        };
+      },
+    });
+    return;
+  }
 
   if (eventType === 'stage_advanced') {
     const stageLabel = data.metadata?.stageLabel || data.metadata?.stage || 'a new stage';
@@ -409,4 +499,5 @@ module.exports = {
   buildIdempotencyKey,
   isActiveParticipant,
   isMaterialReadinessRegression,
+  participantRecipientsForRoles,
 };

@@ -4,12 +4,15 @@ const {
   buildIdempotencyKey,
   isActiveParticipant,
   isMaterialReadinessRegression,
+  participantRecipientsForRoles,
 } = require('./lib/dealNotificationDispatcher');
 
 describe('deal notification dispatcher policy', () => {
   it('keeps role-scoped links inside the authorized deal-room route', () => {
     expect(buildRoomLink('room/with spaces', 'participant', { task: 'task-1' }))
       .toBe('https://kontraplatform.com/deal-room/room%2Fwith%20spaces?role=participant&task=task-1');
+    expect(buildRoomLink('room-1', 'buyer', { tab: 'documents' }))
+      .toBe('https://kontraplatform.com/deal-room/room-1?role=buyer&tab=documents');
     expect(buildPackageLink('room-1', 'owner', 'package-1'))
       .toBe('https://kontraplatform.com/deal-room/room-1?role=owner&package=package-1');
   });
@@ -23,6 +26,16 @@ describe('deal notification dispatcher policy', () => {
     expect(isActiveParticipant({ email: 'active@example.com', status: 'submitted' })).toBe(true);
     expect(isActiveParticipant({ email: 'revoked@example.com', status: 'revoked' })).toBe(false);
     expect(isActiveParticipant({ status: 'submitted' })).toBe(false);
+  });
+
+  it('targets only active participants in newly assigned roles', () => {
+    expect(participantRecipientsForRoles([
+      { email: 'buyer@example.com', name: 'Buyer', role: 'buyer' },
+      { email: 'seller@example.com', name: 'Seller', role: 'seller' },
+      { email: 'counsel@example.com', name: 'Counsel', role: 'counsel' },
+    ], ['Seller'])).toEqual([
+      { email: 'seller@example.com', name: 'Seller', role: 'seller' },
+    ]);
   });
 
   it('only treats material readiness transitions as regressions', () => {

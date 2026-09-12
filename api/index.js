@@ -128,6 +128,7 @@ const {
   getChecklistItemAssignedRoles,
   getAssignedSectionsFromChecklist,
 } = require('./lib/documentAssignmentAccess');
+const { getNewlyAssignedChecklistEntries } = require('./lib/documentAssignmentEvents');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -5350,7 +5351,7 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   try {
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token')
+      .select('owner_write_token, checklist_items')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (roomErr) throw roomErr;
@@ -5368,6 +5369,35 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
       .update({ checklist_items: clean })
       .eq('property_id', propertyId);
     if (error) throw error;
+
+    const newlyAssigned = getNewlyAssignedChecklistEntries(room.checklist_items, clean, {
+      onlyExplicitCustomOnEmptyBaseline: true,
+    });
+    if (newlyAssigned.length > 0) {
+      const assignedRoles = [...new Set(
+        newlyAssigned.flatMap(item => item.newlyAssignedRoles),
+      )];
+      await logEvent(
+        propertyId,
+        'participant_assignment_changed',
+        access.role,
+        null,
+        `Participant document assignment changed for ${newlyAssigned.length} document${newlyAssigned.length === 1 ? '' : 's'}`,
+        {
+          source: 'checklist',
+          assignmentChange: true,
+          blocking: newlyAssigned.some(item => item.required),
+          assignments: newlyAssigned.map(item => ({
+            id: item.id,
+            section: item.section,
+            label: item.label,
+            required: item.required,
+            newlyAssignedRoles: item.newlyAssignedRoles,
+          })),
+          newlyAssignedRoles: assignedRoles,
+        },
+      );
+    }
     clearBriefingCache(propertyId);
     recalculateTransactionState(propertyId, {
       source: 'checklist_updated',

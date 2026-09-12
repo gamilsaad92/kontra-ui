@@ -10317,6 +10317,7 @@ export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedRole = searchParams.get("role") || "owner";
+  const requestedTab = searchParams.get("tab") || "";
   const from = searchParams.get("from") || "";
 
   const inviteToken = searchParams.get("invite") || null;
@@ -10351,6 +10352,11 @@ export default function DealRoomPage() {
     setActiveTabRaw(tab);
     trackEvent('workspace_tab_viewed', { tab, workspace_id: propertyId });
   }, [propertyId]);
+  useEffect(() => {
+    if (['overview', 'documents', 'people', 'settings'].includes(requestedTab)) {
+      setActiveTabRaw(requestedTab);
+    }
+  }, [requestedTab]);
   // Pack correction: set when AI thinks the stored pack is wrong for this room
   const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
   const [repackLoading, setRepackLoading] = useState(false);
