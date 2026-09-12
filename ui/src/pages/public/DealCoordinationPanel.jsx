@@ -34,6 +34,42 @@ const STAGE_META_DEFAULTS = {
 };
 const DEFAULT_STAGE_ICON = '📌';
 
+function normalizeChecklistRole(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+// Saved checklist rows are authoritative once a coordinator edits the room.
+// The pack schema remains a fallback for legacy rows and older rooms. Custom
+// rows have no schema counterpart, so they stay in the progress calculation.
+function getEffectiveChecklistItems(checklistItems = [], documentSchema = []) {
+  const schemaByKey = new Map(
+    (documentSchema || []).flatMap(item => [
+      [item.id, item],
+      [item.section, item],
+    ].filter(([key]) => key)),
+  );
+  const source = Array.isArray(checklistItems) && checklistItems.length > 0
+    ? checklistItems
+    : (documentSchema || []);
+
+  return source.map(item => {
+    const configured = schemaByKey.get(item.id) || schemaByKey.get(item.section);
+    const assignedTo = Array.isArray(item.assignedTo) && item.assignedTo.length > 0
+      ? item.assignedTo
+      : (configured?.assignedTo || []);
+    return configured ? { ...configured, ...item, assignedTo } : { ...item, assignedTo };
+  });
+}
+
+function getChecklistItemsForRole(checklistItems, role, documentSchema = []) {
+  const normalizedRole = normalizeChecklistRole(role);
+  return getEffectiveChecklistItems(checklistItems, documentSchema).filter(item =>
+    (item.assignedTo || []).some(assignedRole =>
+      normalizeChecklistRole(assignedRole) === normalizedRole
+    )
+  );
+}
+
 function enrichStage(s) {
   const meta = STAGE_META_DEFAULTS[s.key] || {};
   return {
@@ -279,6 +315,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   // Custom stages state
   const [customStages, setCustomStages] = useState(null); // null = use pack default
   const [showManage, setShowManage] = useState(false);
+  const [checklistItems, setChecklistItems] = useState([]);
 
   const fetchCoordination = useCallback(async () => {
     try {
@@ -312,12 +349,29 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     }
   }, [propertyId]);
 
+  const fetchChecklist = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
+        headers: getRoomAuthHeaders(propertyId),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      setChecklistItems(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      // Keep the workflow-pack schema as the fallback for older rooms.
+    }
+  }, [propertyId]);
+
   useEffect(() => {
     fetchCoordination();
     fetchStages();
-    const interval = setInterval(fetchCoordination, 20000);
+    fetchChecklist();
+    const interval = setInterval(() => {
+      fetchCoordination();
+      fetchChecklist();
+    }, 20000);
     return () => clearInterval(interval);
-  }, [fetchCoordination, fetchStages]);
+  }, [fetchCoordination, fetchStages, fetchChecklist]);
 
   // Effective stages: custom (if saved) or pack default
   const effectiveStages = customStages || PACK_STAGES;
@@ -403,13 +457,15 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
 
   // Context-aware Signal Ready subtext: does this role have assigned documents?
   const documentSchema = workflowPack.getDocumentSchema?.(propertyType) || [];
-  const myAssignedDocs = documentSchema.filter(d => (d.assignedTo || []).includes(role));
+  const effectiveChecklist = getEffectiveChecklistItems(checklistItems, documentSchema);
+  const myAssignedDocs = getChecklistItemsForRole(effectiveChecklist, role);
 
   // Per-party upload progress — "X/Y docs" in each party card
   const assignedCountByRole = {};
-  for (const doc of documentSchema) {
+  for (const doc of effectiveChecklist) {
     for (const r of (doc.assignedTo || [])) {
-      assignedCountByRole[r] = (assignedCountByRole[r] || 0) + 1;
+      const normalizedRole = normalizeChecklistRole(r);
+      assignedCountByRole[normalizedRole] = (assignedCountByRole[normalizedRole] || 0) + 1;
     }
   }
 
@@ -690,3 +746,9 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     </div>
   );
 }
+
+export {
+  getEffectiveChecklistItems,
+  getChecklistItemsForRole,
+  normalizeChecklistRole,
+};

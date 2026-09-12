@@ -816,6 +816,9 @@ export default function DocumentChecklistPanel({
       aiExtraction: null,
     };
     updateItems(prev => [...prev, newItem]);
+    // Open the editor immediately so a custom document can be assigned and
+    // marked required before the coordinator leaves the checklist.
+    setEditingId(newItem.id);
     setAddDocLabel("");
     setAddDocOpen(false);
   }
