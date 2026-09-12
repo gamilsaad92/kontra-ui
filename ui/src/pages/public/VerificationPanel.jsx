@@ -191,30 +191,33 @@ export default function VerificationPanel({
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(!defaultCollapsed);
   const [triggering, setTriggering] = useState(false);
+  const [runError, setRunError] = useState("");
   const autoTriggered = React.useRef(false);
+
+  function applyVerificationState(json) {
+    const runs = Array.isArray(json?.runs)
+      ? json.runs
+      : json?.checks
+        ? [json]
+        : [];
+    setData({
+      summary: json?.summary || { verified: 0, discrepancies: 0, pending: 0 },
+      runs,
+    });
+  }
 
   async function runAndReload() {
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
         method: "POST",
         headers: getRoomAuthHeaders(propertyId),
       });
-    } catch { /* best effort */ }
-    // Wait briefly then reload to pick up results
-    await new Promise(r => setTimeout(r, 2500));
-    try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
-        headers: getRoomAuthHeaders(propertyId, { "Cache-Control": "no-store" }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const runs = json.runs || [];
-        setData({
-          summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 },
-          runs,
-        });
-      }
-    } catch { /* ignore */ }
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "Verification could not be run");
+      applyVerificationState(json);
+    } catch (error) {
+      setRunError(error.message || "Verification could not be run");
+    }
   }
 
   useEffect(() => {
@@ -256,26 +259,21 @@ export default function VerificationPanel({
 
   async function triggerRun() {
     setTriggering(true);
+    setRunError("");
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification/run`, {
         method: "POST",
         headers: getRoomAuthHeaders(propertyId),
       });
-      // Reload after short delay to pick up results
-      setTimeout(async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verification`, {
-            headers: getRoomAuthHeaders(propertyId, { "Cache-Control": "no-store" }),
-          });
-          if (res.ok) {
-            const json = await res.json();
-            const runs = json.runs || [];
-            setData({ summary: json.summary || { verified: 0, discrepancies: 0, pending: 0 }, runs });
-          }
-        } catch {}
-        setTriggering(false);
-      }, 2000);
-    } catch {
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "Verification could not be run");
+      // The POST returns the immutable run just persisted. Consume it
+      // immediately instead of waiting for a delayed GET that can show the
+      // previous snapshot through a proxy/cache.
+      applyVerificationState(json);
+    } catch (error) {
+      setRunError(error.message || "Verification could not be run");
+    } finally {
       setTriggering(false);
     }
   }
@@ -465,6 +463,11 @@ export default function VerificationPanel({
           >
             {triggering ? "Running verification…" : "Re-run verification checks"}
           </button>
+          {runError && (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#b91c1c", textAlign: "center" }}>
+              {runError}
+            </p>
+          )}
         </div>
       )}
     </div>

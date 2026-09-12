@@ -10,6 +10,7 @@ const {
   getVerificationState,
   buildChecks,
   extractFacts,
+  latestDocuments,
 } = require('./lib/verificationEngine');
 
 function builder(result) {
@@ -34,6 +35,7 @@ describe('verification upload compatibility', () => {
         error: { message: 'column deal_analyses.is_active does not exist', code: '42703' },
       }))
       .mockReturnValueOnce(builder({ data: [], error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
       .mockReturnValueOnce(builder({
         data: [{
           id: `${propertyId}-doc`,
@@ -49,7 +51,7 @@ describe('verification upload compatibility', () => {
       propertyId,
       documents_considered: [section],
     }));
-    expect(supabase.from).toHaveBeenCalledTimes(4);
+    expect(supabase.from).toHaveBeenCalledTimes(5);
   });
 
   test('reconciles only semantic matches and detects threshold breaches', () => {
@@ -247,6 +249,7 @@ describe('verification upload compatibility', () => {
         ],
         error: null,
       }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
       .mockReturnValueOnce(builder({ data: { id: 'hydrated-verification' }, error: null }));
 
     const result = await runVerification('hydrated-hazard-room');
@@ -301,6 +304,7 @@ describe('verification upload compatibility', () => {
         ],
         error: null,
       }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
       .mockReturnValueOnce(builder({ data: { id: 'hydrated-json-verification' }, error: null }));
 
     const result = await runVerification('hydrated-json-room');
@@ -384,6 +388,7 @@ describe('verification upload compatibility', () => {
       }))
        .mockReturnValueOnce(builder({ data: documents, error: null }))
        .mockReturnValueOnce(builder({ data: [], error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
        .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
 
     const state = await getVerificationState('room-with-stale-verification');
@@ -406,7 +411,7 @@ describe('verification upload compatibility', () => {
       expect.objectContaining({ semantic_key: 'financial.cash_variance' }),
       expect.objectContaining({ semantic_key: 'financial.revenue' }),
     ]));
-    expect(supabase.from).toHaveBeenCalledTimes(4);
+    expect(supabase.from).toHaveBeenCalledTimes(5);
 
     // A second hydration with the same active evidence reuses the current
     // immutable run instead of creating another snapshot.
@@ -419,10 +424,11 @@ describe('verification upload compatibility', () => {
         analysis: currentRun,
       }], error: null }))
        .mockReturnValueOnce(builder({ data: documents, error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
        .mockReturnValueOnce(builder({ data: [], error: null }));
     const secondState = await getVerificationState('room-with-stale-verification');
     expect(secondState.runs[0].source_signature).toBe(currentRun.source_signature);
-    expect(supabase.from).toHaveBeenCalledTimes(3);
+    expect(supabase.from).toHaveBeenCalledTimes(4);
   });
 
   test('ignores superseded document evidence when hydrating verification', async () => {
@@ -455,6 +461,7 @@ describe('verification upload compatibility', () => {
       .mockReturnValueOnce(builder({ data: [], error: null }))
        .mockReturnValueOnce(builder({ data: documents, error: null }))
        .mockReturnValueOnce(builder({ data: [], error: null }))
+       .mockReturnValueOnce(builder({ data: [], error: null }))
        .mockReturnValueOnce(builder({ data: { id: 'fresh-verification' }, error: null }));
 
     const state = await getVerificationState('room-with-replacement');
@@ -464,5 +471,109 @@ describe('verification upload compatibility', () => {
     expect(state.runs[0].checks).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ value_a: 6000000 }),
     ]));
+  });
+
+  test('keeps independently active documents under one section in the evidence set', () => {
+    expect(latestDocuments([
+      {
+        id: 'first',
+        section: 'supporting_documents',
+        created_at: '2026-08-01T00:00:00.000Z',
+        is_active: true,
+      },
+      {
+        id: 'second',
+        section: 'supporting_documents',
+        created_at: '2026-08-02T00:00:00.000Z',
+        is_active: true,
+      },
+      {
+        id: 'replaced',
+        section: 'supporting_documents',
+        created_at: '2026-08-03T00:00:00.000Z',
+        is_active: false,
+        superseded_at: '2026-08-04T00:00:00.000Z',
+      },
+    ]).map(document => document.id)).toEqual(['first', 'second']);
+  });
+
+  test('compares text and date synonyms through the shared taxonomy', () => {
+    const checks = buildChecks([
+      {
+        id: 'agreement',
+        section: 'purchase_agreement',
+        analysis: {
+          normalized_facts: [
+            { key: 'parties.seller', label: 'Seller', value: 'Meridian Software Group' },
+            { key: 'transaction.closing_date', label: 'Target Closing Date', value: '2026-10-15' },
+            { key: 'transaction.value', label: 'Transaction Value', value: '$4,200,000' },
+          ],
+        },
+      },
+      {
+        id: 'schedule',
+        section: 'disclosure_schedule',
+        analysis: {
+          normalized_facts: [
+            { key: 'parties.seller_entity', label: 'Seller Entity', value: 'Meridian Software Group' },
+            { key: 'transaction.target_closing_date', label: 'Scheduled Closing Date', value: '2026-10-15' },
+            { key: 'transaction.scheduled_purchase_price', label: 'Scheduled Purchase Price', value: '$4,200,000' },
+          ],
+        },
+      },
+    ], '2026-08-29T00:00:00.000Z');
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fact_key: 'parties.seller', status: 'verified' }),
+      expect.objectContaining({ fact_key: 'transaction.closing_date', status: 'verified' }),
+      expect.objectContaining({ comparison_key: 'transaction.value', status: 'verified' }),
+    ]));
+  });
+
+  test('uses source-linked extraction history when one canonical field has multiple sources', async () => {
+    supabase.from
+      .mockReturnValueOnce(builder({
+        data: [
+          { id: 'seller-a', section: 'purchase_agreement', analysis: { summary: 'Agreement' } },
+          { id: 'seller-b', section: 'disclosure_schedule', analysis: { summary: 'Schedule' } },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({
+        data: [{
+          id: 'seller-field',
+          field_key: 'parties.seller',
+          display_label: 'Seller Entity',
+          value_text: 'Meridian Software Group',
+          source_doc_id: 'seller-b',
+        }],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({
+        data: [
+          {
+            field_id: 'seller-field',
+            event_type: 'extracted',
+            new_value: 'Meridian Software Group',
+            source_doc_id: 'seller-a',
+          },
+          {
+            field_id: 'seller-field',
+            event_type: 'extracted',
+            new_value: 'Meridian Software Group',
+            source_doc_id: 'seller-b',
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({ data: { id: 'history-verification' }, error: null }));
+
+    const result = await runVerification('history-room');
+    expect(result.checks).toEqual([
+      expect.objectContaining({
+        status: 'verified',
+        fact_key: 'parties.seller',
+      }),
+    ]);
   });
 });

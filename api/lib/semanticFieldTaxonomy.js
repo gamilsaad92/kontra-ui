@@ -7,6 +7,9 @@ const ACTUAL_WORDS = /\b(actual|current|reported|observed|measured|as\s+of|is|wa
 // narrow fields before broader patterns so "servicing fee rate" never lands in
 // the generic fee/amount bucket.
 const SEMANTIC_FIELD_DEFINITIONS = [
+  { key: 'parties.seller', pattern: /\b(?:seller|seller\s+entity|seller\s+name|vendor|transferor)\b/i, type: 'text', recordKey: 'parties.seller' },
+  { key: 'parties.buyer', pattern: /\b(?:buyer|buyer\s+entity|buyer\s+name|acquirer|transferee)\b/i, type: 'text', recordKey: 'parties.buyer' },
+  { key: 'transaction.closing_date', pattern: /\b(?:(?:target|scheduled|expected|estimated|proposed)\s+)?(?:closing|close)\s+date\b|\btarget\s+closing\b/i, type: 'period', recordKey: 'transaction.closing_date' },
   { key: 'financial.reporting_period', pattern: /\b(?:reporting|statement|coverage|period)\s+(?:period|covered|ending|ended|of)|\b(?:month|quarter|year)\s+ended\b|\b(?:monthly|quarterly|annually|annual)\b/i, type: 'period', recordKey: 'financial.reporting_period' },
   { key: 'financial.outstanding_principal', pattern: /\b(?:certified\s+)?outstanding\s+(?:loan\s+)?principal\b|\bprincipal\s+balance\b|\bunpaid\s+principal\s+balance\b|\bupb\b/i, type: 'amount', recordKey: 'financial.outstanding_principal' },
   { key: 'financial.servicing_fee_rate', pattern: /\bservicing[_\s-]+fee\b.{0,24}\b(?:rate|percentage|percent)\b|\b(?:rate|percentage|percent)\b.{0,24}\bservicing[_\s-]+fee\b|\bservicing[_\s-]+fee[_\s-]+rate\b/i, type: 'percent', recordKey: 'financial.servicing_fee_rate' },
@@ -26,8 +29,9 @@ const SEMANTIC_FIELD_DEFINITIONS = [
   { key: 'financial.equity', pattern: /\b(?:owner|borrower|investor)?\s*equity\b/i, type: 'amount', recordKey: 'financial.equity' },
   { key: 'financial.repair_costs', pattern: /\b(?:repair|restoration)\s+(?:cost|costs|amount|estimate)\b|\btotal\s+repair\b/i, type: 'amount', recordKey: 'financial.repair_costs', comparisonKey: 'financial.repair_claim_amount' },
   { key: 'financial.claim_amount', pattern: /\b(?:insurance\s+)?claim\s+(?:amount|value)\b|\bamount\s+of\s+(?:the\s+)?claim\b|\btotal\s+claim\b/i, type: 'amount', recordKey: 'financial.claim_amount', comparisonKey: 'financial.repair_claim_amount' },
-  { key: 'transaction.purchase_price', pattern: /\b(?:purchase|sale)\s+price\b|\bconsideration\b/i, type: 'amount', recordKey: 'transaction.purchase_price' },
-  { key: 'transaction.value', pattern: /\btransaction\s+value\b|\bdeal\s+value\b|\bvaluation\b/i, type: 'amount', recordKey: 'transaction.value' },
+  { key: 'transaction.value', pattern: /\bscheduled\s+purchase\s+price\b/i, type: 'amount', recordKey: 'transaction.value', comparisonKey: 'transaction.value' },
+  { key: 'transaction.purchase_price', pattern: /\b(?:purchase|sale)\s+price\b|\bconsideration\b/i, type: 'amount', recordKey: 'transaction.purchase_price', comparisonKey: 'transaction.value' },
+  { key: 'transaction.value', pattern: /\btransaction\s+value\b|\bdeal\s+value\b|\bvaluation\b|\b(?:agreed|total)\s+(?:purchase|sale)\s+price\b/i, type: 'amount', recordKey: 'transaction.value', comparisonKey: 'transaction.value' },
   { key: 'transaction.loss_type', pattern: /\bloss\s+type\b|\bincident\s+type\b|\bevent\s+type\b/i, type: 'text', recordKey: 'transaction.loss_type', comparisonMode: 'hierarchical_text' },
   { key: 'covenant.delinquency_rate', pattern: /\bdelinquen(?:cy|t)\b/i, type: 'percent', recordKey: 'financial.delinquency_rate', relationship: 'delinquency_rate' },
   { key: 'covenant.occupancy_rate', pattern: /\boccupancy\b/i, type: 'percent', recordKey: 'financial.occupancy_rate', relationship: 'occupancy_rate' },
@@ -109,13 +113,39 @@ function amountParts(value) {
 }
 
 function normalizePeriod(value) {
-  const text = normalizedText(value);
+  // Preserve date separators so ISO dates remain one comparable interval.
+  // normalizedText intentionally turns hyphens into spaces for entity names,
+  // but that would truncate "2026-10-15" to the year below.
+  const text = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ');
   if (!text) return null;
   const frequency = text.match(/\b(monthly|quarterly|annual(?:ly)?|weekly|daily)\b/);
-  const concrete = text.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}\b|\b\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?\b|\bq[1-4]\s+\d{4}\b|\b\d{4}\b/i);
+  const iso = text.match(/\b(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?\b/);
+  const namedDate = text.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,)?\s+\d{4}\b/i);
+  const namedMonth = text.match(/\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}\b/i);
+  const quarter = text.match(/\bq[1-4]\s+\d{4}\b/i);
+  const year = text.match(/\b\d{4}\b/);
+  let interval = null;
+  if (iso) {
+    interval = `${iso[1]}-${String(iso[2]).padStart(2, '0')}${iso[3] ? `-${String(iso[3]).padStart(2, '0')}` : ''}`;
+  } else if (namedDate) {
+    const parsed = new Date(namedDate[0].replace(/(\d{1,2})(?:,)?\s+(\d{4})/i, '$1, $2'));
+    interval = Number.isNaN(parsed.getTime())
+      ? normalizedText(namedDate[0])
+      : parsed.toISOString().slice(0, 10);
+  } else if (namedMonth) {
+    interval = normalizedText(namedMonth[0]);
+  } else if (quarter) {
+    interval = normalizedText(quarter[0]);
+  } else if (year) {
+    interval = year[0];
+  }
   return {
     frequency: frequency ? frequency[1].replace(/ly$/, '') : null,
-    interval: concrete ? normalizedText(concrete[0]) : null,
+    interval,
   };
 }
 

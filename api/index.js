@@ -5862,6 +5862,12 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           extractedFieldCount: extractionResult.savedCount || 0,
           impact, correlationId,
         }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+        // Lightweight sections do not pass through the AI-analysis branch,
+        // so they must explicitly refresh the shared cross-document
+        // verification snapshot after Transaction Record extraction.
+        getRoomPackId(propertyId)
+          .then(packId => runVerification(propertyId, packId))
+          .catch(error => console.warn('[verification] non-AI trigger failed:', error.message));
       })().catch(() => {});
     }
 

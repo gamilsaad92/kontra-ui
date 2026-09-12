@@ -8,3 +8,9 @@ When the package firewall blocks a direct dependency tarball during `npm ci`, up
 **Why:** The API preview cannot boot after its nested `node_modules` is cleared if the lockfile still points at a blocked vulnerable tarball.
 
 **How to apply:** Keep the root API mirror and `kontra-ui-clone` API mirror manifests and lockfiles identical, then reinstall and restart the workflow before declaring the runtime healthy.
+
+The firewall can also return a missing-tarball 404 for a transitive test dependency such as `npm-run-path`; in that case dependency installation is not a valid test result, so use targeted dependency-free smoke checks and report the blocked full suite rather than changing application code to work around it.
+
+**Why:** A failed package fetch can leave the source and lockfiles correct while making the local Jest binary unavailable.
+
+**How to apply:** Treat the firewall error as an environment limitation, preserve the lockfile, and distinguish syntax/smoke verification from the unavailable full test run.

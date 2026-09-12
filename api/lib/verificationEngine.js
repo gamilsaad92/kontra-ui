@@ -9,6 +9,8 @@ const crypto = require('crypto');
 const { supabase } = require('../db');
 const {
   inferSemanticDefinition,
+  normalizeComparableValue,
+  compareComparableValues,
   isSemanticallyValidValue,
 } = require('./semanticFieldTaxonomy');
 
@@ -155,25 +157,37 @@ function sourcePageFor(document, rawValue) {
 function makeFact(document, key, rawValue, explicitLabel = '', fallbackExcerpt = null) {
   const definition = inferFactDefinition(key, rawValue, explicitLabel);
   if (!definition) return null;
-  // Periods and references are Transaction Record metadata. They are typed by
-  // the shared taxonomy for record conflict handling, but are not numeric facts
-  // that belong in cross-document amount/rate verification.
-  if (!['amount', 'percent', 'ratio'].includes(definition.valueType)) return null;
+  if (!['amount', 'percent', 'ratio', 'text', 'period'].includes(definition.valueType)) return null;
+  // Reporting periods are metadata, not duplicate transaction facts. Closing
+  // dates are the date identity that belongs in cross-document checks.
+  if (definition.valueType === 'period' && definition.recordKey !== 'transaction.closing_date') return null;
   if (!isSemanticallyValidValue(rawValue, definition)) return null;
-  const numeric = extractNumeric(rawValue, `${key} ${explicitLabel}`);
-  if (!numeric || numeric.value < 0) return null;
+  const numeric = ['amount', 'percent', 'ratio'].includes(definition.valueType)
+    ? extractNumeric(rawValue, `${key} ${explicitLabel}`)
+    : null;
+  const comparable = normalizeComparableValue(rawValue, definition);
+  if (numeric && numeric.value < 0) return null;
+  if (!numeric && (
+    comparable?.value == null
+    || (typeof comparable.value === 'string' && !comparable.value.trim())
+    || (typeof comparable.value === 'object'
+      && !comparable.value.interval
+      && !comparable.value.frequency)
+  )) return null;
+  const displayValue = rawValue && typeof rawValue === 'object'
+    ? (rawValue.display_value ?? rawValue.value ?? rawValue.amount ?? rawValue.number ?? rawValue.text)
+    : rawValue;
   return {
     key: definition.semanticKey,
     semantic_key: definition.semanticKey,
     comparison_key: definition.comparisonKey,
     value_type: definition.valueType,
-    unit: numeric.unit,
+    unit: numeric?.unit || null,
+    comparison_mode: definition.comparisonMode || 'value',
     role: definition.role,
     relationship: definition.relationship,
-    value: numeric.value,
-    raw_value: rawValue && typeof rawValue === 'object'
-      ? (rawValue.display_value ?? rawValue.value ?? rawValue.amount ?? rawValue.number)
-      : rawValue,
+    value: numeric ? numeric.value : comparable.value,
+    raw_value: displayValue,
     source_doc_id: document.id || null,
     source_section: document.section,
     source_filename: document.filename || null,
@@ -244,16 +258,28 @@ function extractFacts(document) {
 }
 
 function latestDocuments(rows) {
+  const hasExplicitVersionState = (rows || []).some(row =>
+    row && Object.prototype.hasOwnProperty.call(row, 'is_active')
+  );
   const bySection = new Map();
+  const activeDocuments = [];
   for (const row of rows || []) {
     if (!row?.section || row.section === VERIFICATION_SECTION) continue;
     if (row.is_active === false || row.superseded_at) continue;
+    if (hasExplicitVersionState) {
+      activeDocuments.push(row);
+      continue;
+    }
     const existing = bySection.get(row.section);
     if (!existing || new Date(row.created_at || 0) > new Date(existing.created_at || 0)) {
       bySection.set(row.section, row);
     }
   }
-  return [...bySection.values()];
+  // Versioned installations explicitly mark replacements as inactive. Keep
+  // every remaining active row: custom checklists can legitimately contain
+  // multiple independent documents under one section. Legacy installations
+  // still use the historical one-row-per-section projection.
+  return hasExplicitVersionState ? activeDocuments : [...bySection.values()];
 }
 
 function unwrapTransactionRecordValue(value) {
@@ -309,9 +335,43 @@ function transactionRecordFieldDocuments(fields = []) {
   });
 }
 
-function withTransactionRecordEvidence(documents = [], fields = []) {
+function transactionRecordHistoryDocuments(fields = [], history = [], documents = []) {
+  const fieldById = new Map((fields || []).map(field => [field.id, field]));
+  const sourceDocuments = new Map((documents || []).map(document => [document.id, document]));
+  const bySource = new Map();
+
+  for (const entry of history || []) {
+    if (!['extracted', 'conflict'].includes(entry?.event_type)) continue;
+    if (!entry.source_doc_id || entry.new_value == null) continue;
+    const field = fieldById.get(entry.field_id);
+    const key = field?.field_key || field?.definition_key;
+    if (!key) continue;
+    const sourceDocument = sourceDocuments.get(entry.source_doc_id);
+    if (!sourceDocument) continue;
+    const document = bySource.get(entry.source_doc_id) || {
+      ...sourceDocument,
+      analysis: { normalized_facts: [] },
+    };
+    document.analysis.normalized_facts.push({
+      key,
+      semantic_key: key,
+      label: field.display_label || key,
+      value: entry.new_value,
+      source_page: entry.source_page ?? field.source_page ?? null,
+      source_excerpt: entry.source_excerpt || field.source_excerpt || null,
+    });
+    bySource.set(entry.source_doc_id, document);
+  }
+
+  return [...bySource.values()];
+}
+
+function withTransactionRecordEvidence(documents = [], fields = [], history = []) {
   const existingFacts = (documents || []).flatMap(extractFacts);
+  const historyDocuments = transactionRecordHistoryDocuments(fields, history, documents);
+  const historySourceIds = new Set(historyDocuments.map(document => document.id));
   const recordDocuments = transactionRecordFieldDocuments(fields).filter(document => {
+    if (document.id && historySourceIds.has(document.id)) return false;
     const recordFact = extractFacts(document)[0];
     if (!recordFact) return false;
     // If the original analysis already contains the same source fact, avoid
@@ -325,7 +385,7 @@ function withTransactionRecordEvidence(documents = [], fields = []) {
         && existing.value === recordFact.value
     );
   });
-  return [...(documents || []), ...recordDocuments];
+  return [...(documents || []), ...historyDocuments, ...recordDocuments];
 }
 
 function formatAmount(value) {
@@ -335,6 +395,11 @@ function formatAmount(value) {
 function formatFactValue(fact) {
   if (fact.value_type === 'percent') return `${Number(fact.value).toFixed(2).replace(/\.?0+$/, '')}%`;
   if (fact.value_type === 'ratio') return Number(fact.value).toFixed(2);
+  if (fact.value_type === 'period') {
+    const period = fact.value || {};
+    return period.interval || period.frequency || String(fact.raw_value || '');
+  }
+  if (fact.value_type === 'text') return String(fact.raw_value ?? fact.value ?? '');
   return formatAmount(fact.value);
 }
 
@@ -376,25 +441,49 @@ function buildChecks(documents, runAt) {
 
   const checks = [];
   for (const [factKey, facts] of factGroups.entries()) {
-    const uniqueSections = new Set(facts.map(fact => fact.section));
-    if (uniqueSections.size < 2) continue;
+    const uniqueSources = new Set(facts.map(fact =>
+      fact.source_doc_id || `${fact.section}:${fact.source_filename || ''}`
+    ));
+    if (uniqueSources.size < 2) continue;
 
     // Compare each later document to the first document reporting this fact.
     // This produces a useful audit trail while avoiding duplicate pair rows.
     const baseline = facts[0];
+    const baselineSource = baseline.source_doc_id || `${baseline.section}:${baseline.source_filename || ''}`;
     for (const candidate of facts.slice(1)) {
-      const deltaPct = baseline.value === 0
-        ? 0
-        : Math.abs(candidate.value - baseline.value) / Math.abs(baseline.value) * 100;
-      const matches = deltaPct <= 1;
+      const candidateSource = candidate.source_doc_id || `${candidate.section}:${candidate.source_filename || ''}`;
+      if (candidateSource === baselineSource) continue;
+      const isNumeric = ['amount', 'percent', 'ratio'].includes(baseline.value_type)
+        && Number.isFinite(baseline.value)
+        && Number.isFinite(candidate.value);
+      const deltaPct = isNumeric
+        ? (baseline.value === 0
+          ? 0
+          : Math.abs(candidate.value - baseline.value) / Math.abs(baseline.value) * 100)
+        : null;
+      const comparison = compareComparableValues(
+        normalizeComparableValue(baseline.raw_value, {
+          valueType: baseline.value_type,
+          comparisonMode: baseline.comparison_mode,
+        }),
+        normalizeComparableValue(candidate.raw_value, {
+          valueType: candidate.value_type,
+          comparisonMode: candidate.comparison_mode,
+        }),
+        {
+          valueType: baseline.value_type,
+          comparisonMode: baseline.comparison_mode,
+        },
+      );
+      const matches = isNumeric ? deltaPct <= 1 : comparison.comparable && comparison.equivalent;
       checks.push({
-        id: `fact:${factKey}:${baseline.section}:${candidate.section}`,
+        id: `fact:${factKey}:${baselineSource}:${candidateSource}`,
         type: 'fact_consistency',
         status: matches ? 'verified' : 'discrepancy',
         ...(matches ? {} : { severity: 'warning' }),
         description: matches
           ? `${baseline.label} and ${candidate.label} report the same ${baseline.semantic_key}: ${formatFactValue(baseline)}.`
-          : `${baseline.label} reports ${formatFactValue(baseline)} for ${baseline.semantic_key} while ${candidate.label} reports ${formatFactValue(candidate)}.`,
+         : `${baseline.label} reports ${formatFactValue(baseline)} for ${baseline.semantic_key} while ${candidate.label} reports ${formatFactValue(candidate)}.`,
         doc_section_a: baseline.section,
         doc_section_b: candidate.section,
         value_a: baseline.value,
@@ -431,10 +520,13 @@ function buildChecks(documents, runAt) {
     };
     const threshold = thresholds.find(candidate =>
       actuals.some(actual =>
-        actual.section !== candidate.section && matches(candidate, actual)
+        (actual.source_doc_id || actual.section) !== (candidate.source_doc_id || candidate.section)
+          && matches(candidate, actual)
       )
     ) || thresholds[0];
-    const actual = actuals.find(candidate => candidate.section !== threshold.section) || actuals[0];
+    const actual = actuals.find(candidate =>
+      (candidate.source_doc_id || candidate.section) !== (threshold.source_doc_id || threshold.section)
+    ) || actuals[0];
     if (!threshold.relationship) {
       const deltaPct = threshold.value === 0
         ? 0
@@ -545,10 +637,12 @@ function buildVerificationResult(
   comparableDocuments,
   runAt = new Date().toISOString(),
   transactionRecordFields = [],
+  transactionRecordHistory = [],
 ) {
   const evidenceDocuments = withTransactionRecordEvidence(
     comparableDocuments,
     transactionRecordFields,
+    transactionRecordHistory,
   );
   const checks = buildChecks(evidenceDocuments, runAt);
   const summary = summarizeChecks(checks);
@@ -582,14 +676,14 @@ async function loadVerificationRows(propertyId) {
 async function loadComparableDocuments(propertyId) {
   let { data: documents, error: documentError } = await supabase
     .from('deal_analyses')
-    .select('id, section, analysis, created_at, source_hash, is_active, superseded_at')
+    .select('id, section, filename, analysis, created_at, source_hash, is_active, superseded_at')
     .eq('property_id', propertyId)
     .neq('section', VERIFICATION_SECTION)
     .order('created_at', { ascending: true });
   if (documentError && /source_hash|is_active|superseded_at|superseded_by|schema cache|column .* does not exist/i.test(documentError.message || '')) {
     ({ data: documents, error: documentError } = await supabase
       .from('deal_analyses')
-      .select('id, section, analysis, created_at')
+      .select('id, section, filename, analysis, created_at')
       .eq('property_id', propertyId)
       .neq('section', VERIFICATION_SECTION)
       .order('created_at', { ascending: true }));
@@ -611,6 +705,17 @@ async function loadTransactionRecordFields(propertyId) {
   }
   if (error) throw error;
   return fields || [];
+}
+
+async function loadTransactionRecordHistory(propertyId) {
+  let { data: history, error } = await supabase
+    .from('transaction_record_history')
+    .select('field_id, event_type, new_value, source_doc_id, source_page, source_excerpt, created_at')
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: true });
+  if (error && /relation|column|schema cache/i.test(error.message || '')) return [];
+  if (error) throw error;
+  return history || [];
 }
 
 async function persistVerificationResult(result) {
@@ -642,10 +747,11 @@ function verificationStateFromAnalysis(analysis, createdAt = null) {
 }
 
 async function getVerificationState(propertyId) {
-  const [rows, comparableDocuments, transactionRecordFields] = await Promise.all([
+  const [rows, comparableDocuments, transactionRecordFields, transactionRecordHistory] = await Promise.all([
     loadVerificationRows(propertyId),
     loadComparableDocuments(propertyId),
     loadTransactionRecordFields(propertyId),
+    loadTransactionRecordHistory(propertyId),
   ]);
   const latestRow = rows[0] || null;
   const latest = latestRow?.analysis || null;
@@ -655,6 +761,7 @@ async function getVerificationState(propertyId) {
     comparableDocuments,
     undefined,
     transactionRecordFields,
+    transactionRecordHistory,
   );
 
   // Existing rooms may have a verification row created before semantic
@@ -674,9 +781,10 @@ async function getVerificationState(propertyId) {
 }
 
 async function runVerification(propertyId, packId = null) {
-  const [comparableDocuments, transactionRecordFields] = await Promise.all([
+  const [comparableDocuments, transactionRecordFields, transactionRecordHistory] = await Promise.all([
     loadComparableDocuments(propertyId),
     loadTransactionRecordFields(propertyId),
+    loadTransactionRecordHistory(propertyId),
   ]);
   const result = buildVerificationResult(
     propertyId,
@@ -684,6 +792,7 @@ async function runVerification(propertyId, packId = null) {
     comparableDocuments,
     undefined,
     transactionRecordFields,
+    transactionRecordHistory,
   );
   await persistVerificationResult(result);
   return result;
