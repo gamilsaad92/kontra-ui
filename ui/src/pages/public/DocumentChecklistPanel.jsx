@@ -374,7 +374,7 @@ function ItemEditor({ item, roles, onSave, onCancel }) {
             style={required ? { background: "#800020" } : {}}>
             <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${required ? "translate-x-3.5" : "translate-x-0.5"}`} />
           </button>
-          <span className="text-xs text-gray-600">Required</span>
+          <span className="text-xs text-gray-600">{required ? "Required" : "Optional"}</span>
         </label>
 
         {/* AI analysis toggle */}
@@ -558,6 +558,8 @@ export default function DocumentChecklistPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [addDocOpen, setAddDocOpen] = useState(false);
   const [addDocLabel, setAddDocLabel] = useState("");
+  const [addDocAssignedRole, setAddDocAssignedRole] = useState("");
+  const [addDocRequired, setAddDocRequired] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -807,19 +809,18 @@ export default function DocumentChecklistPanel({
       id: uid(),
       section: `custom_${slugify(addDocLabel)}_${Date.now().toString(36)}`,
       label: addDocLabel.trim(),
-      required: false,
+      required: addDocRequired,
       ai: false,
-      assignedTo: [],
+      assignedTo: addDocAssignedRole ? [addDocAssignedRole] : [],
       category: "General",
       isCustom: true,
       sortOrder: 9999,
       aiExtraction: null,
     };
     updateItems(prev => [...prev, newItem]);
-    // Open the editor immediately so a custom document can be assigned and
-    // marked required before the coordinator leaves the checklist.
-    setEditingId(newItem.id);
     setAddDocLabel("");
+    setAddDocAssignedRole("");
+    setAddDocRequired(false);
     setAddDocOpen(false);
   }
 
@@ -990,6 +991,8 @@ export default function DocumentChecklistPanel({
     const isAiSection = item.ai && AI_UPLOAD_ENDPOINTS?.[item.section];
     const isEditing = editingId === item.id;
     const notApplicable = !!item.notApplicable;
+    const isCustomItem = item.isCustom === true
+      || (!schemaItemByKey.has(item.id) && !schemaItemByKey.has(item.section));
 
     // ── Status vocabulary ────────────────────────────────────────────────
     const itemStatus = notApplicable ? "Not Applicable"
@@ -1006,7 +1009,11 @@ export default function DocumentChecklistPanel({
         : { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" };
 
     // Responsible party (coordinator view)
-    const assignedRoleMetas = packRoles.filter(r => item.assignedTo?.includes(r.key));
+    const assignedRoleMetas = packRoles.filter(r =>
+      (item.assignedTo || []).some(assignedRole =>
+        normalizeRoleKey(assignedRole) === normalizeRoleKey(r.key)
+      )
+    );
 
     // Can the row expand?
     const canExpand = done && !isPending && (issues.length > 0 || analysis?.summary || facts.length > 0);
@@ -1164,6 +1171,18 @@ export default function DocumentChecklistPanel({
 
           {/* Actions */}
           <div className="shrink-0 flex items-center gap-1">
+            {/* Custom checklist rows expose assignment editing directly. The
+                previous hover-only menu made existing custom documents appear
+                impossible to assign. */}
+            {isCoordinator && !isDemo && isCustomItem && !isEditing && (
+              <button
+                type="button"
+                onClick={() => setEditingId(item.id)}
+                className="px-2 py-0.5 rounded text-[10px] font-semibold border border-[#800020]/20 text-[#800020] hover:bg-[#800020]/5 transition"
+              >
+                {item.assignedTo?.length ? "Edit assignment" : "Assign role"}
+              </button>
+            )}
             {/* Reorder arrows — coordinator, on hover */}
             {isCoordinator && !isDemo && (() => {
               const globalIdx = allItems.findIndex(i => i.id === item.id);
@@ -1412,28 +1431,73 @@ export default function DocumentChecklistPanel({
                 {!isDemo && isCoordinator && (
                   <div className="pt-3 mt-1 border-t border-gray-100 space-y-2">
                     {addDocOpen ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Document name (e.g. Environmental Indemnity)"
-                          value={addDocLabel}
-                          onChange={e => setAddDocLabel(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter") handleAddInline();
-                            if (e.key === "Escape") { setAddDocOpen(false); setAddDocLabel(""); }
+                      <div className="p-3 rounded-xl border border-[#800020]/15 bg-[#800020]/[0.03] space-y-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-[#800020]/70">
+                          Add document and assign responsibility
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Document name (e.g. Environmental Indemnity)"
+                            value={addDocLabel}
+                            onChange={e => setAddDocLabel(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") handleAddInline();
+                              if (e.key === "Escape") {
+                                setAddDocOpen(false);
+                                setAddDocLabel("");
+                                setAddDocAssignedRole("");
+                                setAddDocRequired(false);
+                              }
+                            }}
+                            className="flex-1 min-w-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+                          <label className="min-w-0">
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                              Assign to participant / role
+                            </span>
+                            <select
+                              value={addDocAssignedRole}
+                              onChange={e => setAddDocAssignedRole(e.target.value)}
+                              className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
+                            >
+                              <option value="">— unassigned —</option>
+                              {packRoles.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                            </select>
+                          </label>
+                          <label className="min-w-0">
+                            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                              Requirement
+                            </span>
+                            <select
+                              value={addDocRequired ? "required" : "optional"}
+                              onChange={e => setAddDocRequired(e.target.value === "required")}
+                              className="w-full text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#800020]/20"
+                            >
+                              <option value="optional">Optional</option>
+                              <option value="required">Required</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={handleAddInline} disabled={!addDocLabel.trim()}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition disabled:opacity-40"
+                            style={{ background: "#800020" }}>
+                            Add document
+                          </button>
+                          <button onClick={() => {
+                            setAddDocOpen(false);
+                            setAddDocLabel("");
+                            setAddDocAssignedRole("");
+                            setAddDocRequired(false);
                           }}
-                          className="flex-1 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40 placeholder-gray-300"
-                        />
-                        <button onClick={handleAddInline} disabled={!addDocLabel.trim()}
-                          className="px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition disabled:opacity-40"
-                          style={{ background: "#800020" }}>
-                          Add
-                        </button>
-                        <button onClick={() => { setAddDocOpen(false); setAddDocLabel(""); }}
-                          className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
-                          Cancel
-                        </button>
+                            className="px-2.5 py-1.5 rounded-lg text-[11px] text-gray-400 hover:text-gray-600 border border-gray-200 transition">
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : confirmReset ? (
                       <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
