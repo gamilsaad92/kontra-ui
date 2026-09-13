@@ -31,6 +31,20 @@ describe('document assignment event diffs', () => {
     )[0].newlyAssignedRoles).toEqual(['seller']);
   });
 
+  it('treats a reassignment back to the original role as a new event', () => {
+    const sellerAssignment = getNewlyAssignedChecklistEntries(
+      [{ section: 'custom_questionnaire', assignedTo: ['buyer'] }],
+      [{ section: 'custom_questionnaire', assignedTo: ['seller'] }],
+    );
+    const buyerAssignment = getNewlyAssignedChecklistEntries(
+      [{ section: 'custom_questionnaire', assignedTo: ['seller'] }],
+      [{ section: 'custom_questionnaire', assignedTo: ['buyer'] }],
+    );
+
+    expect(sellerAssignment[0].newlyAssignedRoles).toEqual(['seller']);
+    expect(buyerAssignment[0].newlyAssignedRoles).toEqual(['buyer']);
+  });
+
   it('supports multiple generic workflow roles and preserves normalized keys', () => {
     expect(normalizeAssignmentRole('Lead Investor')).toBe('lead_investor');
     expect(getNewlyAssignedChecklistEntries(

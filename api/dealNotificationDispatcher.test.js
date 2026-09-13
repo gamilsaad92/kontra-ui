@@ -20,6 +20,8 @@ describe('deal notification dispatcher policy', () => {
   it('normalizes recipient addresses for deterministic idempotency keys', () => {
     expect(buildIdempotencyKey('event-1', ' Participant@Example.com '))
       .toBe('event-1:participant@example.com');
+    expect(buildIdempotencyKey('event-2', 'participant@example.com'))
+      .not.toBe(buildIdempotencyKey('event-1', 'participant@example.com'));
   });
 
   it('excludes revoked or address-less participants', () => {

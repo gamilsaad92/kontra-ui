@@ -5,8 +5,14 @@ const crypto = require('crypto');
 const PARTICIPANT_ACCESS_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function tokenSecret() {
-  const secret = String(process.env.SESSION_SECRET || '').trim();
-  if (!secret) throw new Error('SESSION_SECRET is required for participant access links');
+  // SESSION_SECRET is the primary signing key. Older Render environments may
+  // have the service-role key configured before the newer session secret was
+  // added; it is still server-only high-entropy material and keeps notification
+  // delivery from failing before Resend is reached.
+  const secret = String(
+    process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  ).trim();
+  if (!secret) throw new Error('SESSION_SECRET or SUPABASE_SERVICE_ROLE_KEY is required for participant access links');
   return secret;
 }
 

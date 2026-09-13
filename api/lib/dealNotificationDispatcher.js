@@ -355,17 +355,26 @@ async function deliverNotification({ propertyId, event, recipient, type, subject
 
 async function deliverToRecipients({ propertyId, event, recipients, type, subject, bodyForRecipient }) {
   await Promise.allSettled(recipients.map(async recipient => {
-    const payload = await bodyForRecipient(recipient);
-    return deliverNotification({
-      propertyId,
-      event,
-      recipient,
-      type,
-      subject: typeof subject === 'function' ? subject(recipient) : subject,
-      body: payload,
-      link: payload.link,
-      metadata: payload.metadata,
-    });
+    try {
+      const payload = await bodyForRecipient(recipient);
+      return deliverNotification({
+        propertyId,
+        event,
+        recipient,
+        type,
+        subject: typeof subject === 'function' ? subject(recipient) : subject,
+        body: payload,
+        link: payload.link,
+        metadata: payload.metadata,
+      });
+    } catch (error) {
+      console.warn(
+        `[deal-notifications] recipient preparation failed for ${type} ` +
+        `event=${event?.id || 'unknown'} property=${propertyId} ` +
+        `recipient=${recipient?.email || 'unknown'}: ${error.message}`,
+      );
+      return { delivered: false, error: error.message };
+    }
   }));
 }
 

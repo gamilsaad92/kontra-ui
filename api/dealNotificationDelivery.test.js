@@ -51,7 +51,7 @@ function mockQueryResult(table) {
               id: 'invite-buyer',
               role_key: 'buyer',
               invited_email: 'buyer@example.com',
-              status: 'pending',
+              status: 'accepted',
               expires_at: '2099-01-01T00:00:00.000Z',
               revoked_at: null,
             },
@@ -99,6 +99,30 @@ const { sendResendEmail } = require('./lib/dealRoomHelpers');
 const { verifyParticipantAccessToken } = require('./lib/participantAccessTokens');
 
 describe('event-driven participant assignment delivery', () => {
+  function assignmentEvent(id, role, section = 'custom_questionnaire') {
+    return {
+      id,
+      type: 'transaction.event',
+      data: {
+        propertyId: 'room-1',
+        eventType: 'participant_assignment_changed',
+        metadata: {
+          newlyAssignedRoles: [role],
+          assignments: [{
+            section,
+            label: 'Buyer Due Diligence Questionnaire',
+            required: false,
+            newlyAssignedRoles: [role],
+          }],
+        },
+      },
+    };
+  }
+
+  async function flushDispatch() {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+
   beforeEach(() => {
     mockInsertedNotifications.length = 0;
     mockSentEmails.length = 0;
@@ -161,5 +185,59 @@ describe('event-driven participant assignment delivery', () => {
       inviteId: 'invite-seller',
       role: 'seller',
     }));
+  });
+
+  it('delivers Buyer → Seller → Buyer as three distinct assignment events', async () => {
+    const handler = mockEventHandlers['transaction.event'];
+
+    handler(assignmentEvent('event-buyer-1', 'buyer'));
+    await flushDispatch();
+    handler(assignmentEvent('event-seller-1', 'seller'));
+    await flushDispatch();
+    handler(assignmentEvent('event-buyer-2', 'buyer'));
+    await flushDispatch();
+
+    expect(sendResendEmail).toHaveBeenCalledTimes(3);
+    expect(mockSentEmails.map(email => email.to)).toEqual([
+      'buyer@example.com',
+      'seller@example.com',
+      'buyer@example.com',
+    ]);
+    expect(mockInsertedNotifications).toHaveLength(3);
+    expect(new Set(mockInsertedNotifications.map(notification => notification.idempotency_key)).size)
+      .toBe(3);
+
+    const ctas = mockInsertedNotifications.map(notification => new URL(notification.link));
+    expect(ctas.map(url => url.searchParams.get('role'))).toEqual(['buyer', 'seller', 'buyer']);
+    expect(ctas.every(url => url.searchParams.get('tab') === 'documents')).toBe(true);
+    expect(ctas.map(url => verifyParticipantAccessToken(
+      url.searchParams.get('participant_access'),
+      { propertyId: 'room-1' },
+    )?.inviteId)).toEqual([
+      'invite-buyer',
+      'invite-seller',
+      'invite-buyer',
+    ]);
+  });
+
+  it('does not send when the saved assignment is unchanged', async () => {
+    const handler = mockEventHandlers['transaction.event'];
+
+    handler({
+      id: 'event-unchanged',
+      type: 'transaction.event',
+      data: {
+        propertyId: 'room-1',
+        eventType: 'participant_assignment_changed',
+        metadata: {
+          newlyAssignedRoles: [],
+          assignments: [],
+        },
+      },
+    });
+    await flushDispatch();
+
+    expect(sendResendEmail).not.toHaveBeenCalled();
+    expect(mockInsertedNotifications).toHaveLength(0);
   });
 });
