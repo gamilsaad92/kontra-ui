@@ -10321,6 +10321,7 @@ export default function DealRoomPage() {
   const from = searchParams.get("from") || "";
 
   const inviteToken = searchParams.get("invite") || null;
+  const participantAccessToken = searchParams.get("participant_access") || null;
   const [participantSession, setParticipantSession] = useState(() => getInviteSession(propertyId));
   const [accessRole, setAccessRole] = useState(null);
   const [participantRole, setParticipantRole] = useState(null);
@@ -10385,7 +10386,7 @@ export default function DealRoomPage() {
       setLoadingApi(false);
       return;
     }
-    if (inviteToken && !participantSession) return;
+    if ((inviteToken || participantAccessToken) && !participantSession) return;
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}`, {
       headers: getRoomAuthHeaders(propertyId),
     })
@@ -10425,7 +10426,7 @@ export default function DealRoomPage() {
         setPackReady(false);
         setLoadingApi(false);
       });
-  }, [propertyId, inviteToken, participantSession]);
+  }, [propertyId, inviteToken, participantAccessToken, participantSession]);
 
   // Checkout success stores the owner credential before redirecting here. Keep
   // the coordinator boundary tied to that credential, not to ?role=owner.
@@ -10632,12 +10633,13 @@ export default function DealRoomPage() {
   // ("Rendered more hooks than during the previous render").
   usePageTitle(property?.name || property?.property_name);
 
-  if (inviteToken && !participantSession) {
+  if ((inviteToken || participantAccessToken) && !participantSession) {
     return (
       <DealRoomPinGate
         propertyId={propertyId}
         role={requestedRole}
         inviteToken={inviteToken}
+        accessToken={participantAccessToken}
         onUnlocked={handleParticipantUnlocked}
       />
     );

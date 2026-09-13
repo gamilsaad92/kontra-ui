@@ -10,7 +10,7 @@
  * This means old PIN-based invites still work without any migration.
  */
 import { useState, useEffect } from 'react';
-import { getInviteStatus, verifyInvitePin, verifyInviteLink, storeInviteSession, touchSession } from '../../lib/inviteUtils';
+import { getInviteStatus, verifyInvitePin, verifyInviteLink, verifyParticipantAccess, storeInviteSession, touchSession } from '../../lib/inviteUtils';
 
 function Spinner({ label = 'Loading…' }) {
   return (
@@ -104,9 +104,9 @@ function PinScreen({ pin, setPin, errMsg, setErrMsg, working, attemptsLeft, onSu
   );
 }
 
-export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnlocked }) {
+export default function DealRoomPinGate({ propertyId, role, inviteToken, accessToken, onUnlocked }) {
   // phases: loading | no_token | not_found | expired | revoked | locked | pin_entry | unlocking | error
-  const [phase, setPhase]               = useState(inviteToken ? 'loading' : 'no_token');
+  const [phase, setPhase]               = useState(inviteToken || accessToken ? 'loading' : 'no_token');
   const [pin, setPin]                   = useState('');
   const [errMsg, setErrMsg]             = useState('');
   const [working, setWorking]           = useState(false);
@@ -114,6 +114,31 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnloc
   const [lockedUntil, setLockedUntil]   = useState(null);
 
   useEffect(() => {
+    if (accessToken && !inviteToken) {
+      verifyParticipantAccess(propertyId, accessToken).then(result => {
+        if (result.success) {
+          storeInviteSession(propertyId, result.session_token, result.expires_at);
+          touchSession(result.session_token).catch(() => {});
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('participant_access');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+          } catch {}
+          onUnlocked({ sessionToken: result.session_token, roleKey: result.role_key });
+          return;
+        }
+        if (result.error === 'expired' || result.error === 'invalid_or_expired_access') {
+          setPhase('expired');
+          return;
+        }
+        if (result.error === 'revoked') {
+          setPhase('revoked');
+          return;
+        }
+        setPhase('error');
+      }).catch(() => setPhase('error'));
+      return;
+    }
     if (!inviteToken) return;
     // Try token-only (link-auth) verification first. If this invite was created
     // with verificationMethod='link', it auto-authenticates and we never show
@@ -146,7 +171,7 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, onUnloc
       if (result.error === 'locked')     { setLockedUntil(result.locked_until); setPhase('locked'); return; }
       setPhase('error');
     }).catch(() => setPhase('error'));
-  }, [inviteToken, propertyId, onUnlocked]);
+  }, [accessToken, inviteToken, propertyId, onUnlocked]);
 
   async function handleVerifyPin(e) {
     e.preventDefault();

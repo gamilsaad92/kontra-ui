@@ -21,10 +21,13 @@ jest.mock('./db', () => {
     deal_stage: 'uploading',
   };
   const invite = {
+    id: 'invite-1',
     property_id: 'room-1',
     role_key: 'seller',
     invited_email: 'seller@example.com',
     status: 'accepted',
+    expires_at: '2999-01-01T00:00:00.000Z',
+    revoked_at: null,
   };
   const session = {
     invite_id: 'invite-1',
@@ -51,6 +54,7 @@ jest.mock('./db', () => {
         mockInsertedRows.push({ table, values });
         return chain;
       },
+      update: () => chain,
       eq: (key, value) => {
         state.filters[key] = value;
         return chain;
@@ -71,8 +75,7 @@ jest.mock('./db', () => {
         }
         if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
         if (table === 'deal_room_access_sessions') {
-          return state.filters.property_id === 'room-1'
-            && state.filters.session_token_hash === sessionHash
+          return state.filters.session_token_hash === sessionHash
             && mockParticipantSessionAvailable
             ? { data: session, error: null }
             : { data: null, error: null };
@@ -101,6 +104,8 @@ jest.mock('./lib/transactionState', () => ({
   }),
 }));
 
+process.env.SESSION_SECRET = 'test-session-secret';
+const { createParticipantAccessToken } = require('./lib/participantAccessTokens');
 const app = require('./index');
 const request = require('supertest');
 
@@ -124,6 +129,28 @@ describe('room access and checklist scoping', () => {
     expect(access.permissions.viewAllDocuments).toBe(false);
   });
 
+  it('exchanges a signed notification CTA for the invite role session', async () => {
+    const accessToken = createParticipantAccessToken({
+      propertyId: 'room-1',
+      inviteId: 'invite-1',
+      role: 'seller',
+    });
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/participant-access/verify')
+      .send({ accessToken });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      success: true,
+      role_key: 'seller',
+    }));
+    expect(mockInsertedRows).toContainEqual(expect.objectContaining({
+      table: 'deal_room_access_sessions',
+      values: expect.objectContaining({ invite_id: 'invite-1' }),
+    }));
+  });
+
   it('resolves an owner-only direct room URL to coordinator access', async () => {
     const response = await request(app)
       .get('/api/public/deal-room/room-1?role=seller')
@@ -142,8 +169,11 @@ describe('room access and checklist scoping', () => {
         .set('x-kontra-session', mockParticipantToken);
 
       expect(response.status).toBe(200);
-      expect(response.body.role).toBe('seller');
-      expect(response.body.access).toEqual({ mode: 'participant', role: 'seller' });
+      expect(response.body.access.role).toBe('seller');
+      expect(response.body.access).toEqual(expect.objectContaining({
+        mode: 'participant',
+        role: 'seller',
+      }));
     }
   });
 

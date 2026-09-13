@@ -14,7 +14,10 @@ function mockQueryResult(table) {
       if (table === 'deal_notifications') mockInsertedNotifications.push(payload);
       return query;
     },
-    update() {
+    update(patch) {
+      if (table === 'deal_notifications' && patch?.link && mockInsertedNotifications.length > 0) {
+        Object.assign(mockInsertedNotifications[mockInsertedNotifications.length - 1], { link: patch.link });
+      }
       return query;
     },
     then(resolve, reject) {
@@ -37,6 +40,7 @@ function mockQueryResult(table) {
         result = {
           data: [
             {
+              id: 'invite-seller',
               role_key: 'seller',
               invited_email: 'seller@example.com',
               status: 'accepted',
@@ -44,6 +48,7 @@ function mockQueryResult(table) {
               revoked_at: null,
             },
             {
+              id: 'invite-buyer',
               role_key: 'buyer',
               invited_email: 'buyer@example.com',
               status: 'pending',
@@ -87,9 +92,11 @@ jest.mock('./lib/dealRoomHelpers', () => ({
 }));
 
 process.env.RESEND_API_KEY = 'test-resend-key';
+process.env.SESSION_SECRET = 'test-session-secret';
 
 const { startDealNotificationDispatcher } = require('./lib/dealNotificationDispatcher');
 const { sendResendEmail } = require('./lib/dealRoomHelpers');
+const { verifyParticipantAccessToken } = require('./lib/participantAccessTokens');
 
 describe('event-driven participant assignment delivery', () => {
   beforeEach(() => {
@@ -142,5 +149,17 @@ describe('event-driven participant assignment delivery', () => {
     expect(mockSentEmails[0].to).toBe('seller@example.com');
     expect(mockSentEmails[0].html).toContain('Buyer Due Diligence Questionnaire');
     expect(mockSentEmails[0].html).not.toContain('buyer@example.com');
+    const notificationUrl = new URL(mockInsertedNotifications[0].link);
+    expect(notificationUrl.searchParams.get('tab')).toBe('documents');
+    expect(notificationUrl.searchParams.get('role')).toBe('seller');
+    expect(
+      verifyParticipantAccessToken(notificationUrl.searchParams.get('participant_access'), {
+        propertyId: 'room-1',
+      }),
+    ).toEqual(expect.objectContaining({
+      propertyId: 'room-1',
+      inviteId: 'invite-seller',
+      role: 'seller',
+    }));
   });
 });

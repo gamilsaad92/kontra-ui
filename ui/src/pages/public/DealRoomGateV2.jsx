@@ -107,7 +107,9 @@ export default function DealRoomGateV2({ roomId, inviteToken, onVerified }) {
           room_name:    data.room_name,
         });
         // Replace URL immediately — remove token from browser history and Referer
-        window.history.replaceState({}, '', `/deal-room/${roomId}/verify`);
+        const currentUrl = new URL(window.location.href);
+        currentUrl.pathname = `/deal-room/${roomId}/verify`;
+        window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
         setRawToken(inviteToken); // keep in state (not URL) for subsequent calls
         setPhase('request_otp');
       })

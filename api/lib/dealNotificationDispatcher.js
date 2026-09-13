@@ -8,6 +8,7 @@ const {
   resolvePackIdFromRoom,
 } = require('./dealRoomHelpers');
 const { normalizeAssignmentRole } = require('./documentAssignmentEvents');
+const { createParticipantAccessToken } = require('./participantAccessTokens');
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
 const INACTIVE_STATUSES = new Set(['revoked', 'expired', 'removed', 'inactive', 'declined']);
@@ -56,6 +57,7 @@ function hydrateActiveParticipants({ submissions = [], invites = [], now = Date.
   for (const invite of invites) {
     if (!isActiveInvite(invite, now)) continue;
     const participant = {
+      inviteId: invite.id,
       email: normalizedEmail(invite.invited_email),
       name: invite.name || invite.role_key || 'there',
       role: invite.role_key,
@@ -95,6 +97,21 @@ function buildRoomLink(propertyId, role, params = {}) {
   return `${FRONTEND_URL}/deal-room/${encodeURIComponent(propertyId)}?${query.toString()}`;
 }
 
+function buildParticipantRoomLink(propertyId, recipient, params = {}) {
+  if (!recipient?.inviteId) {
+    return buildRoomLink(propertyId, recipient?.role, params);
+  }
+  const participantAccess = createParticipantAccessToken({
+    propertyId,
+    inviteId: recipient.inviteId,
+    role: recipient.role,
+  });
+  return buildRoomLink(propertyId, recipient.role, {
+    ...params,
+    participant_access: participantAccess,
+  });
+}
+
 function buildPackageLink(propertyId, role, packageId) {
   return buildRoomLink(propertyId, role, { package: packageId });
 }
@@ -124,7 +141,7 @@ async function getRoomContext(propertyId) {
       .select('email, name, role')
       .eq('property_id', propertyId),
     supabase.from('deal_room_invites')
-      .select('role_key, invited_email, status, expires_at, revoked_at')
+      .select('id, role_key, invited_email, status, expires_at, revoked_at')
       .eq('property_id', propertyId),
   ]);
   if (roomResult?.error) throw roomResult.error;
@@ -153,7 +170,12 @@ function roleRecipient(room, participants, role) {
     String(item.role || '').trim().toLowerCase() === normalizedRole,
   );
   return participant
-    ? { email: normalizedEmail(participant.email), name: participant.name || normalizedRole, role: participant.role }
+    ? {
+      email: normalizedEmail(participant.email),
+      name: participant.name || normalizedRole,
+      role: participant.role,
+      inviteId: participant.inviteId,
+    }
     : null;
 }
 
@@ -162,6 +184,7 @@ function lifecycleRecipients(room, participants) {
     email: normalizedEmail(participant.email),
     name: participant.name || participant.role || 'there',
     role: participant.role,
+    inviteId: participant.inviteId,
   }))].filter(Boolean);
   const seen = new Set();
   return recipients.filter(recipient => {
@@ -184,6 +207,7 @@ function participantRecipientsForRoles(participants, roles) {
       email: normalizedEmail(participant.email),
       name: participant.name || participant.role || 'there',
       role: participant.role,
+      inviteId: participant.inviteId,
     }))
     .filter(recipient => {
       if (!recipient.email || seenEmails.has(recipient.email)) return false;
@@ -382,7 +406,7 @@ async function dispatchTransactionEvent(event) {
         if (relevantAssignments.length === 0) return {
           title: 'New document assignment',
           html: '',
-          link: buildRoomLink(propertyId, recipient.role, { tab: 'documents' }),
+          link: buildParticipantRoomLink(propertyId, recipient, { tab: 'documents' }),
           metadata: { assignment_count: 0 },
         };
         const roleLabel = await getRoomRoleLabel(room, recipient.role);
@@ -392,7 +416,7 @@ async function dispatchTransactionEvent(event) {
         return {
           title: 'New document assignment',
           html: `<p>A document has been assigned to you as <strong>${escapeHtml(roleLabel)}</strong> in <strong>${escapeHtml(propName)}</strong>.</p><ul>${documentsHtml}</ul><p>Please open your restricted workspace to review or upload the assigned document.</p>`,
-          link: buildRoomLink(propertyId, recipient.role, { tab: 'documents' }),
+          link: buildParticipantRoomLink(propertyId, recipient, { tab: 'documents' }),
           ctaLabel: 'Open Documents',
           metadata: {
             assignments: relevantAssignments.map(item => ({
@@ -425,7 +449,7 @@ async function dispatchTransactionEvent(event) {
         return {
           title: 'Deal stage updated',
           html: `<p>The transaction <strong>${escapeHtml(propName)}</strong> advanced from <strong>${escapeHtml(previousStage)}</strong> to <strong>${escapeHtml(stageLabel)}</strong>.</p>${actionHtml}`,
-          link: buildRoomLink(propertyId, recipient.role, { stage: data.metadata?.stage }),
+          link: buildParticipantRoomLink(propertyId, recipient, { stage: data.metadata?.stage }),
           metadata: { previous_stage: previousStage, new_stage: data.metadata?.stage || stageLabel },
         };
       },
@@ -444,7 +468,7 @@ async function dispatchTransactionEvent(event) {
       bodyForRecipient: recipient => ({
         title: 'Verified Asset milestone reached',
         html: `<p>The transaction <strong>${escapeHtml(propName)}</strong> reached a meaningful verified state. The eligible readiness snapshot is now available for authorized review.</p>`,
-        link: buildRoomLink(propertyId, recipient.role, { tab: 'overview' }),
+         link: buildParticipantRoomLink(propertyId, recipient, { tab: 'overview' }),
         metadata: { snapshot_version: data.metadata?.version || null },
       }),
     });
@@ -463,7 +487,7 @@ async function dispatchTransactionEvent(event) {
       bodyForRecipient: recipient => ({
         title: 'Preparation package ready',
         html: `<p>A provider-neutral preparation package for <strong>${escapeHtml(propName)}</strong> was generated from an immutable readiness snapshot. It does not issue, sell, custody, or settle digital assets.</p>`,
-        link: buildPackageLink(propertyId, recipient.role, packageId),
+         link: buildParticipantRoomLink(propertyId, recipient, { package: packageId }),
         ctaLabel: 'Open Package',
         metadata: { package_id: packageId || null, source_snapshot_version: data.metadata?.source_snapshot_version || null },
       }),
@@ -482,7 +506,7 @@ async function dispatchTransactionEvent(event) {
       bodyForRecipient: recipient => ({
         title: 'Transaction completed',
         html: `<p>The transaction <strong>${escapeHtml(propName)}</strong> has reached its major completion milestone. The sealed record is available to authorized workspace participants.</p>`,
-        link: buildRoomLink(propertyId, recipient.role, { tab: 'overview' }),
+         link: buildParticipantRoomLink(propertyId, recipient, { tab: 'overview' }),
         metadata: { seal_id: data.metadata?.seal_id || null },
       }),
     });
@@ -509,7 +533,7 @@ async function dispatchBlockingTask(event) {
       html: `<p>A blocking action was assigned to you as <strong>${escapeHtml(roleLabel)}</strong> in <strong>${escapeHtml(propName)}</strong>.</p><p><strong>${escapeHtml(data.title || 'Review the assigned action')}</strong></p>`,
       ctaLabel: 'Open Action',
     },
-    link: buildRoomLink(data.propertyId, recipient.role, { task: data.taskId }),
+     link: buildParticipantRoomLink(data.propertyId, recipient, { task: data.taskId }),
     metadata: { task_id: data.taskId, task_type: data.taskType, owner_role: data.ownerRole },
   });
 }
@@ -531,7 +555,7 @@ async function dispatchReadinessRegression(event) {
     bodyForRecipient: recipient => ({
       title: 'Readiness regression detected',
       html: `<p>Previously satisfied readiness state for <strong>${escapeHtml(propName)}</strong> materially changed: <strong>${escapeHtml(labels)}</strong> now requires attention.</p><p>Review the current evidence and assigned actions before relying on the earlier status.</p>`,
-      link: buildRoomLink(data.propertyId, recipient.role, { tab: 'overview' }),
+       link: buildParticipantRoomLink(data.propertyId, recipient, { tab: 'overview' }),
       metadata: { regressions: regressions.map(item => item.key), source: data.source || null },
     }),
   });
@@ -557,6 +581,7 @@ function startDealNotificationDispatcher() {
 module.exports = {
   startDealNotificationDispatcher,
   buildRoomLink,
+  buildParticipantRoomLink,
   buildPackageLink,
   buildIdempotencyKey,
   isActiveParticipant,

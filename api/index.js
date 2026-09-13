@@ -82,6 +82,7 @@ const {
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
 const { startDealNotificationDispatcher } = require('./lib/dealNotificationDispatcher');
+const { verifyParticipantAccessToken } = require('./lib/participantAccessTokens');
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
@@ -6361,6 +6362,73 @@ app.post('/api/public/deal-room/:propertyId/invite/verify-link', async (req, res
   } catch (e) {
     console.error('[verify-link]', e.message);
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// Notification CTAs carry a short-lived, signed capability tied to one
+// invitation. Exchange it for the same server-side participant session used by
+// normal invitation links. The URL role is never used as authorization.
+app.post('/api/public/deal-room/:propertyId/participant-access/verify', async (req, res) => {
+  const { propertyId } = req.params;
+  const { accessToken } = req.body || {};
+  const token = verifyParticipantAccessToken(accessToken, { propertyId });
+  if (!token) return res.status(403).json({ error: 'invalid_or_expired_access' });
+
+  try {
+    const { data: invite, error: inviteErr } = await supabase
+      .from('deal_room_invites')
+      .select('id, property_id, role_key, status, expires_at, revoked_at')
+      .eq('id', token.inviteId)
+      .maybeSingle();
+
+    if (inviteErr) throw inviteErr;
+    if (!invite || invite.property_id !== propertyId || invite.id !== token.inviteId) {
+      return res.status(403).json({ error: 'invalid_access' });
+    }
+    if (invite.role_key !== token.role) {
+      return res.status(403).json({ error: 'role_mismatch' });
+    }
+    if (invite.status !== 'accepted' || invite.status === 'revoked' || invite.status === 'expired' || invite.revoked_at) {
+      return res.status(403).json({ error: 'revoked' });
+    }
+    if (invite.expires_at && new Date(invite.expires_at) <= new Date()) {
+      return res.status(403).json({ error: 'expired' });
+    }
+
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { error: sessionErr } = await supabase
+      .from('deal_room_access_sessions')
+      .insert({
+        invite_id: invite.id,
+        session_token_hash: sessionHash,
+        expires_at: expiresAt,
+      });
+    if (sessionErr) throw sessionErr;
+
+    const now = new Date().toISOString();
+    await supabase
+      .from('deal_room_invites')
+      .update({ status: 'accepted', accepted_at: now, last_used_at: now })
+      .eq('id', invite.id);
+
+    logEvent(
+      propertyId,
+      'participant_authenticated',
+      invite.role_key,
+      null,
+      `${invite.role_key} accessed from a notification link`,
+    ).catch(() => {});
+    return res.json({
+      success: true,
+      session_token: sessionToken,
+      expires_at: expiresAt,
+      role_key: invite.role_key,
+    });
+  } catch (error) {
+    console.error('[participant-access-verify]', error.message);
+    return res.status(500).json({ error: 'participant_access_failed' });
   }
 });
 

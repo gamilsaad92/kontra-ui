@@ -129,6 +129,23 @@ export async function verifyInviteLink(propertyId, inviteToken) {
   }
 }
 
+/** Exchange a signed notification CTA for the normal participant session. */
+export async function verifyParticipantAccess(propertyId, accessToken) {
+  const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+  try {
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/participant-access/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}` };
+    return { success: true, ...data };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 // ── PIN verification ──────────────────────────────────────────────────────────
 
 /**

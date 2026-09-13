@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useContext } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import PortalSelectPage from "./pages/PortalSelectPage";
 import RequireAuth from "./app/guards/RequireAuth";
@@ -68,7 +68,8 @@ import AppWorkspace from "./pages/app/AppWorkspace";
 // returning participants who bookmarked that URL land in the room itself.
 function VerifyRedirect() {
   const { propertyId } = useParams();
-  return <Navigate to={`/deal-room/${propertyId}`} replace />;
+  const location = useLocation();
+  return <Navigate to={`/deal-room/${propertyId}${location.search || ''}`} replace />;
 }
 
 function AuthedOrgProvider({ children }) {
