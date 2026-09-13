@@ -194,6 +194,22 @@ function lifecycleRecipients(room, participants) {
   });
 }
 
+function readinessRecipients(room, participants, affectedRoles) {
+  if (!Array.isArray(affectedRoles) || affectedRoles.length === 0) {
+    return lifecycleRecipients(room, participants);
+  }
+  const recipients = [
+    ownerRecipient(room),
+    ...participantRecipientsForRoles(participants, affectedRoles),
+  ].filter(Boolean);
+  const seen = new Set();
+  return recipients.filter(recipient => {
+    if (seen.has(recipient.email)) return false;
+    seen.add(recipient.email);
+    return true;
+  });
+}
+
 function participantRecipientsForRoles(participants, roles) {
   const normalizedRoles = new Set(
     (Array.isArray(roles) ? roles : []).map(normalizeAssignmentRole),
@@ -558,14 +574,18 @@ async function dispatchReadinessRegression(event) {
   await deliverToRecipients({
     propertyId: data.propertyId,
     event,
-    recipients: lifecycleRecipients(context.room, context.participants),
+    recipients: readinessRecipients(context.room, context.participants, data.affectedRoles),
     type: 'readiness_regression',
     subject: `Readiness requires attention — ${propName}`,
     bodyForRecipient: recipient => ({
       title: 'Readiness regression detected',
       html: `<p>Previously satisfied readiness state for <strong>${escapeHtml(propName)}</strong> materially changed: <strong>${escapeHtml(labels)}</strong> now requires attention.</p><p>Review the current evidence and assigned actions before relying on the earlier status.</p>`,
        link: buildParticipantRoomLink(data.propertyId, recipient, { tab: 'overview' }),
-      metadata: { regressions: regressions.map(item => item.key), source: data.source || null },
+       metadata: {
+         regressions: regressions.map(item => item.key),
+         source: data.source || null,
+         affected_roles: data.affectedRoles || [],
+       },
     }),
   });
 }
@@ -597,5 +617,6 @@ module.exports = {
   isActiveInvite,
   hydrateActiveParticipants,
   isMaterialReadinessRegression,
+  readinessRecipients,
   participantRecipientsForRoles,
 };

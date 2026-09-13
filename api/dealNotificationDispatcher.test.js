@@ -4,6 +4,7 @@ const {
   buildIdempotencyKey,
   isActiveParticipant,
   isMaterialReadinessRegression,
+  readinessRecipients,
   participantRecipientsForRoles,
 } = require('./lib/dealNotificationDispatcher');
 
@@ -53,5 +54,23 @@ describe('deal notification dispatcher policy', () => {
       { key: 'approvalReady', label: 'Transaction approval readiness' },
       { key: 'digitalAssetSufficient', label: 'Digital Asset readiness' },
     ]);
+
+    expect(isMaterialReadinessRegression(
+      { approvalReady: true, fundReleaseReady: true, overall: 100, confirmedCount: 10 },
+      { approvalReady: true, fundReleaseReady: true, overall: 90, confirmedCount: 9, unresolvedConflictCount: 1 },
+    )).toEqual([]);
+  });
+
+  it('limits upload-triggered readiness notices to the affected role and owner', () => {
+    const room = { customer_email: 'owner@example.com', first_name: 'Owner' };
+    const participants = [
+      { email: 'seller@example.com', name: 'Seller', role: 'seller', inviteId: 'invite-seller' },
+      { email: 'buyer@example.com', name: 'Buyer', role: 'buyer', inviteId: 'invite-buyer' },
+    ];
+
+    expect(readinessRecipients(room, participants, ['seller']).map(recipient => recipient.email))
+      .toEqual(['owner@example.com', 'seller@example.com']);
+    expect(readinessRecipients(room, participants, []).map(recipient => recipient.email))
+      .toEqual(['owner@example.com', 'seller@example.com', 'buyer@example.com']);
   });
 });

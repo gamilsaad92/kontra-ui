@@ -1116,6 +1116,7 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
     Math.round((confirmedTokenizationInputs / tokenizationGuidance.inputCount) * 100),
   );
   const digitalAssetSufficient = tokenizationGuidance.complete;
+  const requiredConflictCount = recordState.conflictRequiredCount;
 
   return {
     overall,
@@ -1130,13 +1131,13 @@ function computeTransactionReadiness(room, recordFields, schemaKey, requiredKeys
     digitalAssetGapCount: tokenizationGuidance.gaps.length,
     populatedCount: populated.length,
     unresolvedConflictCount: recordState.unresolvedConflictCount,
-    hasBlockingConflicts: recordState.unresolvedConflictCount > 0,
-    approvalReady: recordState.unresolvedConflictCount === 0,
-    fundReleaseReady: recordState.unresolvedConflictCount === 0,
-    approvalBlockedReason: recordState.unresolvedConflictCount > 0
+    hasBlockingConflicts: requiredConflictCount > 0,
+    approvalReady: requiredConflictCount === 0,
+    fundReleaseReady: requiredConflictCount === 0,
+    approvalBlockedReason: requiredConflictCount > 0
       ? 'Resolve all material Transaction Record conflicts before approval.'
       : null,
-    fundReleaseBlockedReason: recordState.unresolvedConflictCount > 0
+    fundReleaseBlockedReason: requiredConflictCount > 0
       ? 'Resolve all material Transaction Record conflicts before fund release.'
       : null,
     recordState,
@@ -1340,6 +1341,9 @@ async function recalculateTransactionState(propertyId, options = {}) {
     createdTaskCount: createdTasks.length + createdReadinessTasks.length,
     correlationId,
     source: options.source || 'transaction_state',
+    affectedRoles: Array.isArray(options.affectedRoles)
+      ? [...new Set(options.affectedRoles.filter(Boolean).map(role => String(role).trim().toLowerCase()))]
+      : [],
   };
   emit('transaction_state.recalculated', payload, {
     correlationId,

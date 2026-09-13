@@ -15,3 +15,4 @@
 - [Existing-room Digital Asset Readiness](digital-asset-readiness-toggle.md) — enable only as a preserved metadata layer over canonical state; historical artifacts lock destructive disable
 - [API test dependencies](api-test-dependencies.md) — the production API checkout may lack Jest and pg; run focused pure tests with the UI Jest binary when needed
 - [Participant notification deep links](participant-notification-deep-links.md) — signed room/invite/role capabilities must exchange into the existing participant session; URL roles are never authorization
+- [Readiness regression gates](readiness-regression-gates.md) — optional evidence conflicts stay reviewable; only required blockers can regress approval or fund-release readiness

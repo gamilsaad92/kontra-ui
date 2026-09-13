@@ -282,7 +282,9 @@ describe('transaction state recalculation', () => {
       value_text: '$210,000',
       status: 'extracted',
       source_doc_id: 'contractor-doc',
-    }], 'generic', null, conflicts);
+    }], 'generic', [
+      { key: 'financial.repair_costs', label: 'Repair Costs', required: true },
+    ], conflicts);
     const readiness = computeTransactionReadiness(
       { workflow_pack_id: 'generic' },
       [{
@@ -294,7 +296,7 @@ describe('transaction state recalculation', () => {
         source_doc_id: 'contractor-doc',
       }],
       'generic',
-      null,
+      [{ key: 'financial.repair_costs', label: 'Repair Costs', required: true }],
       conflicts,
     );
 
@@ -309,6 +311,42 @@ describe('transaction state recalculation', () => {
     expect(readiness.hasBlockingConflicts).toBe(true);
     expect(readiness.approvalReady).toBe(false);
     expect(readiness.fundReleaseReady).toBe(false);
+  });
+
+  it('keeps optional evidence conflicts visible without blocking approval or fund release', () => {
+    const conflicts = [{
+      id: 'optional-evidence-conflict',
+      field_key: 'transaction.optional_questionnaire_fact',
+      display_label: 'Optional Questionnaire Fact',
+      canonical_value: 'Consistent answer',
+      conflicting_value: 'Different answer',
+      status: 'unresolved',
+    }];
+    const fields = [{
+      id: 'optional-field',
+      field_key: 'transaction.optional_questionnaire_fact',
+      display_label: 'Optional Questionnaire Fact',
+      value_text: 'Consistent answer',
+      status: 'conflicting',
+      is_required: false,
+    }];
+
+    const state = computeTransactionRecordState(fields, 'generated_ai', [
+      { key: 'transaction.required_fact', label: 'Required Fact', required: true },
+    ], conflicts);
+    const readiness = computeTransactionReadiness(
+      { workflow_pack_id: 'generated_ai' },
+      fields,
+      'generated_ai',
+      [{ key: 'transaction.required_fact', label: 'Required Fact', required: true }],
+      conflicts,
+    );
+
+    expect(state.unresolvedConflictCount).toBe(1);
+    expect(state.conflictRequiredCount).toBe(0);
+    expect(readiness.hasBlockingConflicts).toBe(false);
+    expect(readiness.approvalReady).toBe(true);
+    expect(readiness.fundReleaseReady).toBe(true);
   });
 
   it('does not reopen a resolved conflict during a read-after-write refresh', () => {

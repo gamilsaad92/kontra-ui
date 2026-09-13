@@ -4982,7 +4982,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         ? existing.value_text
         : String(f.value_text).slice(0, 2000);
 
-      const { data: savedField, error: saveError } = await supabase.from('transaction_record_fields').upsert({
+      const extractionPayload = {
         property_id:    propertyId,
         field_key:      canonicalKey,
       // Preserve generated definition metadata when extraction fulfills the
@@ -5004,8 +5004,29 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
           ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
           : (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null),
         extracted_by:   'ai',
+        // Newly discovered fields from an uploaded document are optional
+        // evidence unless they already belong to an approved required
+        // definition. This prevents an optional document from expanding the
+        // readiness denominator or creating a required blocker by default.
+        is_required: existing ? existing.is_required !== false : false,
         updated_at:     new Date().toISOString(),
-      }, { onConflict: 'property_id,field_key', ignoreDuplicates: false }).select('id').single();
+      };
+      let { data: savedField, error: saveError } = await supabase
+        .from('transaction_record_fields')
+        .upsert(extractionPayload, { onConflict: 'property_id,field_key', ignoreDuplicates: false })
+        .select('id')
+        .single();
+      // Migration 021 is additive. Keep document extraction usable while an
+      // older runtime is still waiting for the metadata columns.
+      if (saveError && /column|schema cache/i.test(saveError.message || '')) {
+        const legacyPayload = { ...extractionPayload };
+        delete legacyPayload.is_required;
+        ({ data: savedField, error: saveError } = await supabase
+          .from('transaction_record_fields')
+          .upsert(legacyPayload, { onConflict: 'property_id,field_key', ignoreDuplicates: false })
+          .select('id')
+          .single());
+      }
       if (saveError) throw saveError;
       console.log(`[tx-record] field ${propertyId} pack=${schemaKey} raw=${String(f.field_key)} canonical=${canonicalKey} status=${nextStatus} source_doc_id=${docId || 'none'}`);
       await recordTransactionFieldHistory({
@@ -5556,7 +5577,7 @@ async function supersedePriorDocumentVersions(propertyId, section, recordId, cor
   return { replaced: true, priorIds };
 }
 
-async function documentImpact(propertyId, correlationId, beforeState = null) {
+async function documentImpact(propertyId, correlationId, beforeState = null, context = {}) {
   try {
     const before = beforeState
       ? { state: beforeState, beforeReadiness: beforeState.readiness }
@@ -5569,6 +5590,9 @@ async function documentImpact(propertyId, correlationId, beforeState = null) {
       correlationId,
       source: 'document_processing_after',
       before: before.state,
+      affectedRoles: context.affectedRoles,
+      actorId: context.actorId,
+      actorType: context.actorType,
     });
     return {
       before: before.beforeReadiness,
@@ -5874,7 +5898,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         } catch (extractErr) {
           console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
         }
-        const impact = await documentImpact(propertyId, correlationId, beforeState);
+        const impact = await documentImpact(propertyId, correlationId, beforeState, {
+          affectedRoles: [effectiveRole],
+          actorId: access.actorId,
+          actorType: access.actorType,
+        });
         const completedAnalysis = extractionResult.savedCount > 0
           ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
           : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
@@ -5907,7 +5935,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       const bgJob = (async () => {
         const clearPending = async (analysis) => {
           if (!recordId) return;
-          const impact = await documentImpact(propertyId, correlationId, beforeState);
+          const impact = await documentImpact(propertyId, correlationId, beforeState, {
+            affectedRoles: [effectiveRole],
+            actorId: access.actorId,
+            actorType: access.actorType,
+          });
           await updateDocumentProcessing(recordId, {
             analysis: { ...analysis, pending: false, processing_status: 'extracted', processing_impact: impact },
             storage_path: storagePath,
