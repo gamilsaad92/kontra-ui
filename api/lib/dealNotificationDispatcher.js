@@ -11,6 +11,7 @@ const { normalizeAssignmentRole } = require('./documentAssignmentEvents');
 
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
 const INACTIVE_STATUSES = new Set(['revoked', 'expired', 'removed', 'inactive', 'declined']);
+const ACTIVE_INVITE_STATUSES = new Set(['accepted', 'active']);
 const OPEN_TASK_STATUSES = new Set(['pending', 'in_progress', 'escalated']);
 
 function escapeHtml(value) {
@@ -30,6 +31,60 @@ function isActiveParticipant(participant) {
   const email = normalizedEmail(participant?.email);
   const status = String(participant?.status || '').trim().toLowerCase();
   return Boolean(email) && !INACTIVE_STATUSES.has(status);
+}
+
+function isActiveInvite(invite, now = Date.now()) {
+  const status = String(invite?.status || '').trim().toLowerCase();
+  if (!ACTIVE_INVITE_STATUSES.has(status)) return false;
+  if (invite?.revoked_at) return false;
+  if (invite?.expires_at && new Date(invite.expires_at).getTime() <= now) return false;
+  return Boolean(normalizedEmail(invite?.invited_email));
+}
+
+function participantIdentity(participant) {
+  return `${normalizeAssignmentRole(participant?.role)}:${normalizedEmail(participant?.email)}`;
+}
+
+function hydrateActiveParticipants({ submissions = [], invites = [], now = Date.now() } = {}) {
+  const participants = [];
+  const seen = new Set();
+
+  // Accepted invites are the canonical active-recipient source even before a
+  // participant submits their first document. This matters for assignment
+  // notifications: an invited participant must not be required to submit
+  // something before they can receive an assignment.
+  for (const invite of invites) {
+    if (!isActiveInvite(invite, now)) continue;
+    const participant = {
+      email: normalizedEmail(invite.invited_email),
+      name: invite.name || invite.role_key || 'there',
+      role: invite.role_key,
+      status: invite.status,
+      source: 'invite',
+    };
+    const identity = participantIdentity(participant);
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      participants.push(participant);
+    }
+  }
+
+  // Preserve legacy submission-only participants and avoid duplicating an
+  // accepted invite for the same role/email pair.
+  for (const submission of submissions) {
+    if (!isActiveParticipant(submission)) continue;
+    const participant = {
+      ...submission,
+      email: normalizedEmail(submission.email),
+    };
+    const identity = participantIdentity(participant);
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      participants.push(participant);
+    }
+  }
+
+  return participants;
 }
 
 function buildRoomLink(propertyId, role, params = {}) {
@@ -60,7 +115,7 @@ function isMaterialReadinessRegression(before = {}, after = {}) {
 }
 
 async function getRoomContext(propertyId) {
-  const [roomResult, participantResult] = await Promise.all([
+  const [roomResult, participantResult, inviteResult] = await Promise.all([
     supabase.from('deal_rooms')
       .select('property_id, customer_email, property_name, first_name, workflow_pack_id, deal_type')
       .eq('property_id', propertyId)
@@ -68,12 +123,19 @@ async function getRoomContext(propertyId) {
     supabase.from('party_submissions')
       .select('email, name, role')
       .eq('property_id', propertyId),
+    supabase.from('deal_room_invites')
+      .select('role_key, invited_email, status, expires_at, revoked_at')
+      .eq('property_id', propertyId),
   ]);
   if (roomResult?.error) throw roomResult.error;
   if (participantResult?.error) throw participantResult.error;
+  if (inviteResult?.error) throw inviteResult.error;
   return {
     room: roomResult?.data || null,
-    participants: (participantResult?.data || []).filter(isActiveParticipant),
+    participants: hydrateActiveParticipants({
+      submissions: participantResult?.data || [],
+      invites: inviteResult?.data || [],
+    }),
   };
 }
 
@@ -498,6 +560,8 @@ module.exports = {
   buildPackageLink,
   buildIdempotencyKey,
   isActiveParticipant,
+  isActiveInvite,
+  hydrateActiveParticipants,
   isMaterialReadinessRegression,
   participantRecipientsForRoles,
 };
