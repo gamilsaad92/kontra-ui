@@ -759,8 +759,21 @@ function isConflictSupportedByActiveEvidence(conflict, documents = []) {
     conflict?.canonical_source_doc_id,
     conflict?.conflicting_source_doc_id,
   ].filter(Boolean);
-  // A conflict whose evidence was replaced is historical, not a live blocker.
-  if (sourceIds.some(id => !activeIds.has(id))) return false;
+  // A conflict whose two sources were both replaced is historical, not a live
+  // blocker. A replacement upload is different: its new conflicting source is
+  // active while the prior verified canonical source is intentionally retired.
+  // Preserve that pair so a material replacement can regress readiness.
+  const activeSourceIds = sourceIds.filter(id => activeIds.has(id));
+  const hasActiveConflictingSource = Boolean(
+    conflict?.conflicting_source_doc_id
+      && activeIds.has(conflict.conflicting_source_doc_id),
+  );
+  if (sourceIds.length > 0 && activeSourceIds.length === 0) return false;
+  if (
+    conflict?.canonical_source_doc_id
+      && !activeIds.has(conflict.canonical_source_doc_id)
+      && !hasActiveConflictingSource
+  ) return false;
 
   const semantic = inferFactDefinition(
     conflict?.field_key || '',

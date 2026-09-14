@@ -349,6 +349,77 @@ describe('transaction state recalculation', () => {
     expect(readiness.fundReleaseReady).toBe(true);
   });
 
+  it('keeps a material replacement conflict live when the prior canonical source is superseded', () => {
+    const documents = [
+      { id: 'document-prior', section: 'evidence', is_active: false, superseded_at: '2026-09-13T10:00:00.000Z' },
+      { id: 'document-replacement', section: 'evidence', is_active: true },
+    ];
+    const conflict = {
+      field_key: 'transaction.material_evidence',
+      display_label: 'Material Evidence',
+      canonical_value: 'Previously satisfied',
+      conflicting_value: 'No longer satisfied',
+      canonical_source_doc_id: 'document-prior',
+      conflicting_source_doc_id: 'document-replacement',
+      status: 'unresolved',
+    };
+
+    expect(isConflictSupportedByActiveEvidence(conflict, documents)).toBe(true);
+    expect(isConflictSupportedByActiveEvidence({
+      ...conflict,
+      conflicting_source_doc_id: 'document-prior',
+    }, documents)).toBe(false);
+  });
+
+  it('forms the positive and negative readiness regression pair from canonical state', () => {
+    const required = [{ key: 'transaction.material_evidence', label: 'Material Evidence', required: true }];
+    const beforeFields = [{
+      field_key: 'transaction.material_evidence',
+      display_label: 'Material Evidence',
+      value_text: 'Previously satisfied',
+      status: 'verified',
+      is_required: true,
+    }];
+    const afterFields = [{
+      ...beforeFields[0],
+      value_text: 'Previously satisfied',
+      status: 'source_changed',
+    }];
+    const optionalFields = [{
+      field_key: 'transaction.optional_evidence',
+      display_label: 'Optional Evidence',
+      value_text: 'Additional context',
+      status: 'conflicting',
+      is_required: false,
+    }];
+    const materialConflict = [{
+      field_key: 'transaction.material_evidence',
+      display_label: 'Material Evidence',
+      canonical_value: 'Previously satisfied',
+      conflicting_value: 'No longer satisfied',
+    }];
+
+    const before = computeTransactionReadiness({}, beforeFields, 'generic', required, []);
+    const after = computeTransactionReadiness({}, afterFields, 'generic', required, materialConflict);
+    const optionalOnly = computeTransactionReadiness(
+      {},
+      [...beforeFields, ...optionalFields],
+      'generic',
+      required,
+      [{
+        ...materialConflict[0],
+        field_key: 'transaction.optional_evidence',
+        display_label: 'Optional Evidence',
+      }],
+    );
+
+    expect(before.approvalReady).toBe(true);
+    expect(after.approvalReady).toBe(false);
+    expect(after.fundReleaseReady).toBe(false);
+    expect(optionalOnly.approvalReady).toBe(true);
+    expect(optionalOnly.fundReleaseReady).toBe(true);
+  });
+
   it('does not reopen a resolved conflict during a read-after-write refresh', () => {
     expect(shouldPreserveResolvedConflict({
       fieldKey: 'financial.repair_costs',
