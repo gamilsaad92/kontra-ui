@@ -510,6 +510,94 @@ describe('Verified Asset snapshot foundation', () => {
     expect(snapshot.created_from.transaction_record.fields[0].value).toBe('Persisted value');
   });
 
+  test('serializes one canonical required fact after equivalent aliases are consolidated', () => {
+    const closingDate = {
+      id: 'closing-date',
+      key: 'transaction.closing_date',
+      definitionKey: 'target_closing_date',
+      label: 'Target Closing Date',
+      category: 'transaction',
+      value: 'October 28, 2026',
+      status: 'confirmed',
+      sourceDocId: 'agreement-1',
+      sourceFileHash: 'hash-1',
+      verifiedBy: 'coordinator@example.com',
+      verifiedAt: '2026-08-27T00:00:00.000Z',
+    };
+    const snapshot = build({
+      recordState: state({
+        schemaKey: 'generated_ai',
+        fields: [closingDate],
+        requiredFields: [closingDate],
+        requiredCount: 1,
+        confirmedCount: 1,
+      }),
+    });
+
+    expect(snapshot.created_from.transaction_record.required_count).toBe(1);
+    expect(snapshot.created_from.transaction_record.fields).toHaveLength(1);
+    expect(snapshot.created_from.transaction_record.canonical_fields).toHaveLength(1);
+    expect(snapshot.created_from.transaction_record.canonical_fields[0]).toEqual(expect.objectContaining({
+      field_key: 'transaction.closing_date',
+      definition_key: 'target_closing_date',
+      value: 'October 28, 2026',
+    }));
+    expect(snapshot.digital_asset_readiness.verification_status).toEqual(expect.objectContaining({
+      confirmed_fact_count: 1,
+      required_fact_count: 1,
+    }));
+  });
+
+  test('keeps a materially different alias as one canonical snapshot conflict', () => {
+    const closingDate = {
+      id: 'closing-date',
+      key: 'transaction.closing_date',
+      label: 'Target Closing Date',
+      category: 'transaction',
+      value: 'October 28, 2026',
+      status: 'confirmed',
+      sourceDocId: 'agreement-1',
+      sourceFileHash: 'hash-1',
+      verifiedBy: 'coordinator@example.com',
+      verifiedAt: '2026-08-27T00:00:00.000Z',
+    };
+    const conflict = {
+      id: 'closing-conflict',
+      field_id: 'closing-date',
+      field_key: 'transaction.closing_date',
+      display_label: 'Target Closing Date',
+      canonical_value: 'October 28, 2026',
+      conflicting_value: 'October 29, 2026',
+      status: 'unresolved',
+    };
+    const snapshot = build({
+      recordState: state({
+        schemaKey: 'generated_ai',
+        fields: [closingDate],
+        requiredFields: [closingDate],
+        requiredCount: 1,
+        confirmedCount: 1,
+        unresolvedConflictCount: 1,
+      }),
+      conflicts: [conflict],
+    });
+
+    expect(snapshot.created_from.transaction_record.canonical_fields).toHaveLength(1);
+    expect(snapshot.created_from.transaction_record.canonical_fields[0].field_key)
+      .toBe('transaction.closing_date');
+    expect(snapshot.created_from.exceptions).toEqual([
+      expect.objectContaining({
+        field_key: 'transaction.closing_date',
+        status: 'unresolved',
+        canonical_value: 'October 28, 2026',
+        conflicting_value: 'October 29, 2026',
+      }),
+    ]);
+    expect(snapshot.digital_asset_readiness.eligible).toBe(false);
+    expect(snapshot.digital_asset_readiness.exceptions.unresolved_conflicts).toHaveLength(1);
+    expect(snapshot.digital_asset_readiness.exceptions.blocking_count).toBe(1);
+  });
+
   test('hash is stable for the same source payload', () => {
     const first = build();
     const second = build();
@@ -539,6 +627,58 @@ describe('Verified Asset snapshot foundation', () => {
     expect(first.created_from.transaction_record.fields[0].value).toBe('Example Asset');
     expect(second.created_from.transaction_record.fields[0].value).toBe('Updated Asset Name');
     expect(second.snapshot_hash).not.toBe(first.snapshot_hash);
+  });
+
+  test('keeps an earlier clean snapshot unchanged when later reconciliation adds a conflict', () => {
+    const first = build({
+      recordState: state({
+        schemaKey: 'generated_ai',
+        fields: [{
+          ...state().fields[0],
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+        }],
+        requiredFields: [{
+          ...state().fields[0],
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+        }],
+      }),
+    });
+    const archivedFirst = JSON.parse(JSON.stringify(first));
+    const later = build({
+      recordState: state({
+        schemaKey: 'generated_ai',
+        fields: [{
+          ...state().fields[0],
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+        }],
+        requiredFields: [{
+          ...state().fields[0],
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+        }],
+        unresolvedConflictCount: 1,
+      }),
+      conflicts: [{
+        id: 'later-closing-conflict',
+        field_key: 'transaction.closing_date',
+        display_label: 'Target Closing Date',
+        canonical_value: 'October 28, 2026',
+        conflicting_value: 'October 29, 2026',
+        status: 'unresolved',
+      }],
+    });
+
+    expect(first).toEqual(archivedFirst);
+    expect(first.digital_asset_readiness.eligible).toBe(true);
+    expect(later.digital_asset_readiness.eligible).toBe(false);
+    expect(later.snapshot_hash).not.toBe(first.snapshot_hash);
   });
 
   test('freezes Borrower funds at 90,000 after the live value changes to 80,000', () => {
