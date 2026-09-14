@@ -5802,23 +5802,61 @@ function dedupeAttentionItems(items = []) {
 }
 
 function getCanonicalAwaitingRecordFields(recordState) {
-  if (!Array.isArray(recordState?.requiredFields)) return [];
-  const fieldsByIdentity = new Map();
-  recordState.requiredFields.forEach(field => {
-    const identity = [...getRecordFieldIdentitySet(field)][0]
-      || `label:${normalizeAttentionText(field?.label || field?.display_label)}`;
-    if (!identity) return;
-    const current = fieldsByIdentity.get(identity);
-    const currentStatus = normalizeRecordStatus(current);
-    const nextStatus = normalizeRecordStatus(field);
-    if (!current || (currentStatus !== 'confirmed' && nextStatus === 'confirmed')) {
-      fieldsByIdentity.set(identity, field);
-    }
-  });
-  return [...fieldsByIdentity.values()].filter(field =>
+  return getCanonicalRequiredRecordFields(recordState).filter(field =>
     normalizeRecordStatus(field) === 'awaiting'
       && String(field.value ?? field.value_text ?? '').trim()
   );
+}
+
+function getCanonicalRequiredRecordFields(recordState) {
+  if (!Array.isArray(recordState?.requiredFields)) return [];
+  const requiredFields = recordState.requiredFields;
+  const candidates = [
+    ...requiredFields,
+    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
+  ];
+  const statusPriority = {
+    confirmed: 0,
+    verified: 0,
+    source_changed: 1,
+    conflict: 2,
+    conflicting: 2,
+    awaiting: 3,
+    needs_review: 3,
+    extracted: 3,
+    missing: 4,
+    not_applicable: 5,
+  };
+  const normalizeLabel = value => normalizeAttentionText(value);
+  const matchesRequiredField = (requiredField, candidate) => {
+    const requiredIdentities = getRecordFieldIdentitySet(requiredField);
+    const candidateIdentities = getRecordFieldIdentitySet(candidate);
+    const sharesIdentity = [...requiredIdentities].some(identity =>
+      candidateIdentities.has(identity)
+    );
+    const requiredLabel = normalizeLabel(requiredField?.label || requiredField?.display_label);
+    const candidateLabel = normalizeLabel(candidate?.label || candidate?.display_label);
+    return sharesIdentity || (requiredLabel && requiredLabel === candidateLabel);
+  };
+
+  return requiredFields.map(requiredField => {
+    const matches = candidates
+      .filter(candidate => matchesRequiredField(requiredField, candidate))
+      .sort((a, b) =>
+        (statusPriority[normalizeRecordStatus(a)] ?? 6)
+          - (statusPriority[normalizeRecordStatus(b)] ?? 6)
+      );
+    const resolved = matches[0];
+    if (!resolved || resolved === requiredField) return requiredField;
+    return {
+      ...requiredField,
+      ...resolved,
+      key: requiredField.key || resolved.key,
+      definitionKey: requiredField.definitionKey || resolved.definitionKey,
+      required: true,
+      isRequired: requiredField.isRequired !== false,
+    };
+  });
 }
 
 function mergeTransactionRecordState(previous, incoming) {
@@ -6192,17 +6230,15 @@ function TransactionBrief({
     canonicalRecordState,
   );
   const requiredRecordFields = Array.isArray(canonicalRecordState?.requiredFields)
-    ? canonicalRecordState.requiredFields
+    ? getCanonicalRequiredRecordFields(canonicalRecordState)
     : (recordSchemaKey === 'generated_ai'
       ? generatedRecordDefinitions
       : getRequiredRecordFields(recordSchemaKey));
   const confirmedRecordCount = canonicalRecordState
-    ? (canonicalRecordState.confirmedCount || 0)
+    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'confirmed').length
     : 0;
   const capturedAwaitingConfirmation = Array.isArray(canonicalRecordState?.requiredFields)
-    ? canonicalRecordState.requiredFields.filter(field =>
-      field.status === 'awaiting' && String(field.value ?? field.value_text ?? '').trim()
-    )
+    ? getCanonicalAwaitingRecordFields(canonicalRecordState)
     : [];
   // The Brief must not invent a second conflict projection. The canonical
   // unresolved list is also the source used by WhatNeedsAttention.
@@ -6605,6 +6641,7 @@ export {
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
+  getCanonicalRequiredRecordFields,
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
   getRecordDefinitionState,
@@ -8851,17 +8888,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // count; the frontend schema is only a pre-load fallback.
   const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
   const requiredRecordFields = canonicalRecordState?.requiredFields?.length
-    ? canonicalRecordState.requiredFields
+    ? getCanonicalRequiredRecordFields(canonicalRecordState)
     : (recordSchemaKey === 'generated_ai'
       ? generatedRecordDefinitions
       : getRequiredRecordFields(recordSchemaKey));
   const confirmedRequiredCount = canonicalRecordState?.requiredFields?.length
-    ? canonicalRecordState.confirmedCount
+    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'confirmed').length
     : requiredRecordFields.filter(field =>
       getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
     ).length;
   const capturedRequiredCount = canonicalRecordState?.requiredFields?.length
-    ? canonicalRecordState.awaitingRequiredCount
+    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'awaiting').length
     : requiredRecordFields.filter(definition => {
       return getRecordDefinitionState(definition, recordFields, canonicalRecordState).status === 'awaiting';
     }).length;
