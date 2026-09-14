@@ -4,6 +4,7 @@
 - [Render cache rebuilds](render-cache-deploys.md) — a zero-output Node build failure after a huge cache restore may require a clear-cache rebuild before code changes
 - [Node package firewall patches](node-package-firewall.md) — when npm ci is blocked by a vulnerable pinned tarball, update the direct dependency and both lockfiles to the safe patch release
 - [Transaction Record verification inputs](transaction-record-verification-inputs.md) — canonical values may be JSON-shaped with empty text columns; verification must use the same hydrated projection as the record UI
+- [Transaction Brief canonical projection](transaction-brief-canonical-projection.md) — Brief counts and recommendations must share the resolved required-field projection used by the record panel
 - [Live verification tracing](live-verification-tracing.md) — Render deployment logs plus direct room-state reads are required to prove live rerun inputs and blocker grounding
 - [Participant invitation grounding](participant-invitation-grounding.md) — absent invite rows show no current invitation status, never that a role was historically never invited
 - [Vercel deployment inspection](vercel-deployment-inspection.md) — an installed Vercel API-key connection can block deployment/SHA checks with a structured invalid-token 403
