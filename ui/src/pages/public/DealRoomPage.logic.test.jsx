@@ -17,6 +17,7 @@ const {
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
   getCanonicalAwaitingRecordFields,
+  getCanonicalRequiredRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
@@ -507,6 +508,45 @@ describe('coordinator transaction brief logic', () => {
     expect(getCanonicalAwaitingRecordFields(refreshed)).toEqual([
       refreshed.requiredFields[0],
     ]);
+  });
+
+  test('uses the confirmed field row when the required projection is stale', () => {
+    const state = {
+      requiredFields: [
+        {
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+          status: 'awaiting',
+        },
+        {
+          key: 'transaction.structure',
+          label: 'Transaction Structure',
+          value: 'Stock Purchase',
+          status: 'awaiting',
+        },
+      ],
+      fields: [
+        {
+          key: 'transaction.closing_date',
+          label: 'Target Closing Date',
+          value: 'October 28, 2026',
+          status: 'confirmed',
+        },
+        {
+          key: 'transaction.structure',
+          label: 'Transaction Structure',
+          value: 'Stock Purchase',
+          status: 'confirmed',
+        },
+      ],
+    };
+
+    expect(getCanonicalRequiredRecordFields(state).map(field => field.status)).toEqual([
+      'confirmed',
+      'confirmed',
+    ]);
+    expect(getCanonicalAwaitingRecordFields(state)).toEqual([]);
   });
 
   test('replaces a previous canonical array when the newer response is empty', () => {
