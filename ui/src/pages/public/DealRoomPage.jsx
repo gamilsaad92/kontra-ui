@@ -3125,8 +3125,14 @@ function WhatNeedsAttention({
       if (!response.ok) {
         throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
       }
-      await onRefresh?.();
+      await onRefresh?.(data.state);
     } catch (error) {
+      // A stale Brief action can race with another coordinator update. The
+      // API rejects that action intentionally; refresh the canonical state
+      // before showing the error so the obsolete recommendation disappears.
+      if (/FIELD_NOT_AWAITING_CONFIRMATION|FIELD_CHANGED/i.test(String(error?.message || ''))) {
+        await onRefresh?.();
+      }
       setConfirmError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
       setConfirming('');
@@ -4183,7 +4189,7 @@ function DigitalAssetReadinessSection({
             : 'The Transaction Record field could not be confirmed.'
         ));
       }
-      await onRecordUpdated?.();
+      await onRecordUpdated?.(data.state);
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
@@ -4243,7 +4249,7 @@ function DigitalAssetReadinessSection({
       }
       setEditingMissing('');
       setMissingValue('');
-      await onRecordUpdated?.();
+      await onRecordUpdated?.(verifyData.state);
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record value could not be saved.');
     } finally {
@@ -4278,7 +4284,7 @@ function DigitalAssetReadinessSection({
       if (!response.ok) throw new Error(data.message || data.error || 'The Transaction Record field could not be updated.');
       setEditingField('');
       setEditValue('');
-      await onRecordUpdated?.();
+      await onRecordUpdated?.(data.state);
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be updated.');
     } finally {
@@ -6052,7 +6058,8 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || 'The conflict could not be resolved.');
       }
-      await onResolved?.();
+      const data = await response.json().catch(() => ({}));
+      await onResolved?.(data.state);
       onClose?.();
     } catch (resolveError) {
       setError(resolveError.message || 'The conflict could not be resolved.');
@@ -8475,7 +8482,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (updatedTransactionState = null) => {
     if (!propertyId) return;
     // The coordinator shell is useful before secondary panels finish
     // hydrating. Keep the old loading prop for the brief's skeleton only, but
@@ -8483,67 +8490,83 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     setLoading(false);
     const sequence = ++loadSequence.current;
     const headers = getRoomAuthHeaders(propertyId);
-    const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
+    const get = (path, fallback) => fetch(`${API_BASE}${path}`, {
+      headers,
+      cache: 'no-store',
+    })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
     const apply = (setter, transform = value => value) => data => {
       if (sequence === loadSequence.current) setter(transform(data));
     };
 
-    get(`/api/public/deal-room/${propertyId}/brain/briefing`, null)
-      .then(apply(setBriefing));
-    get(`/api/public/deal-room/${propertyId}/coordination`, null)
-      .then(apply(setCoordination));
-    get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
-      .then(apply(
-        setStages,
-        stageData => normalizeLifecycleStages(
-          Array.isArray(stageData?.stages) && stageData.stages.length >= 2
-            ? stageData.stages
-            : (pack.stages || []),
-        ),
-      ));
-    get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
-      .then(record => {
-        if (sequence !== loadSequence.current) return;
-        setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-        // Always replace the projection when the record endpoint responds.
-        // Keeping the first response allowed a slower readiness request to
-        // leave Overview showing an older proposal-shaped state after confirm.
-        if (record?.record_state) {
-          setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
-        }
-      });
-    get(`/api/public/deal-room/${propertyId}/readiness`, null)
-      .then(data => {
-        if (sequence !== loadSequence.current) return;
-        setReadiness(data);
-        if (data?.transaction_record) {
-          setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
-        }
-      });
-    get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
-      .then(apply(setVerifiedAssetReadiness));
-    get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
-      .then(apply(
-        setSnapshotHistory,
-        snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
-      ));
-    get(`/api/public/deal-room/${propertyId}/digital-asset-packages`, { packages: [] })
-      .then(apply(
-        setPackageHistory,
-        packageData => Array.isArray(packageData?.packages) ? packageData.packages : [],
-      ));
-    get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
-      .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
-    get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
-      .then(apply(setEvents, eventData => Array.isArray(eventData?.events) ? eventData.events : []));
-    get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] })
-      .then(apply(setAnalyses, analysisData => Array.isArray(analysisData?.analyses) ? analysisData.analyses : []));
+    // Mutation responses include the freshly recalculated canonical state.
+    // Apply it synchronously so a successful action cannot leave the Brief
+    // rendered from the pre-mutation projection while the fan-out completes.
+    if (updatedTransactionState?.recordState && sequence === loadSequence.current) {
+      setRecordState(updatedTransactionState.recordState);
+    }
+
+    const refreshes = [
+      get(`/api/public/deal-room/${propertyId}/brain/briefing`, null)
+        .then(apply(setBriefing)),
+      get(`/api/public/deal-room/${propertyId}/coordination`, null)
+        .then(apply(setCoordination)),
+      get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
+        .then(apply(
+          setStages,
+          stageData => normalizeLifecycleStages(
+            Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+              ? stageData.stages
+              : (pack.stages || []),
+          ),
+        )),
+      get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
+        .then(record => {
+          if (sequence !== loadSequence.current) return;
+          setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+          // Always replace the projection when the record endpoint responds.
+          // Keeping the first response allowed a slower readiness request to
+          // leave Overview showing an older proposal-shaped state after confirm.
+          if (record?.record_state) {
+            setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
+          }
+        }),
+      get(`/api/public/deal-room/${propertyId}/readiness`, null)
+        .then(data => {
+          if (sequence !== loadSequence.current) return;
+          setReadiness(data);
+          if (data?.transaction_record) {
+            setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
+          }
+        }),
+      get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
+        .then(apply(setVerifiedAssetReadiness)),
+      get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
+        .then(apply(
+          setSnapshotHistory,
+          snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
+        )),
+      get(`/api/public/deal-room/${propertyId}/digital-asset-packages`, { packages: [] })
+        .then(apply(
+          setPackageHistory,
+          packageData => Array.isArray(packageData?.packages) ? packageData.packages : [],
+        )),
+      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
+        .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : [])),
+      get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
+        .then(apply(setEvents, eventData => Array.isArray(eventData?.events) ? eventData.events : [])),
+      get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] })
+        .then(apply(setAnalyses, analysisData => Array.isArray(analysisData?.analyses) ? analysisData.analyses : [])),
+    ];
+    // Callers await this promise after mutations, so the Brief and its
+    // supporting panels are refreshed before the mutation is considered done.
+    await Promise.all(refreshes);
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
   // making the Snapshot and WhatNeedsAttention update without waiting 30s.
   // eslint-disable-next-line react-hooks/exhaustive-deps
+    return true;
   }, [propertyId, pack, refreshKey, ownerToken]);
 
   useEffect(() => {
