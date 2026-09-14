@@ -22,6 +22,7 @@ const {
   getCoordinatorRecordFacts,
   getRecordDefinitionState,
   mergeTransactionRecordState,
+  alignVerifiedAssetReadinessToRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
   getRecordActionTarget,
@@ -568,6 +569,27 @@ describe('coordinator transaction brief logic', () => {
       unresolvedConflicts: [],
       confirmedCount: 0,
     }));
+  });
+
+  test('keeps the Digital Asset card on the live canonical record denominator', () => {
+    const verifiedAssetReadiness = {
+      summary: {
+        confirmed_count: 13,
+        required_count: 18,
+        unresolved_exception_count: 2,
+      },
+    };
+
+    expect(alignVerifiedAssetReadinessToRecordState(verifiedAssetReadiness, {
+      confirmedCount: 15,
+      requiredCount: 18,
+    })).toEqual({
+      summary: {
+        confirmed_count: 15,
+        required_count: 18,
+        unresolved_exception_count: 2,
+      },
+    });
   });
 
   test('removes a stale extracted funds action after canonical confirmation', () => {

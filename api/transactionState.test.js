@@ -225,6 +225,52 @@ describe('transaction state recalculation', () => {
     expect(result.awaitingCount).toBe(2);
   });
 
+  it('keeps confirmation, edit, and revert transitions on one required-field set', () => {
+    const required = [
+      { key: 'transaction.purchase_price', label: 'Purchase price', required: true },
+      { key: 'transaction.closing_date', label: 'Closing date', required: true },
+    ];
+    const field = {
+      id: 'purchase-price',
+      field_key: 'transaction.purchase_price',
+      display_label: 'Purchase price',
+      value_text: '$8,500,000',
+      status: 'verified',
+    };
+
+    const confirmed = computeTransactionRecordState([field], 'generated_ai', required);
+    expect(confirmed).toEqual(expect.objectContaining({
+      requiredCount: 2,
+      confirmedCount: 1,
+      awaitingRequiredCount: 0,
+      missingRequiredCount: 1,
+    }));
+
+    const edited = computeTransactionRecordState([{
+      ...field,
+      value_text: '$8,750,000',
+      status: 'needs_review',
+    }], 'generated_ai', required);
+    expect(edited).toEqual(expect.objectContaining({
+      requiredCount: 2,
+      confirmedCount: 0,
+      awaitingRequiredCount: 1,
+      missingRequiredCount: 1,
+    }));
+
+    const reverted = computeTransactionRecordState([{
+      ...field,
+      value_text: '$8,750,000',
+      status: 'verified',
+    }], 'generated_ai', required);
+    expect(reverted).toEqual(expect.objectContaining({
+      requiredCount: 2,
+      confirmedCount: 1,
+      awaitingRequiredCount: 0,
+      missingRequiredCount: 1,
+    }));
+  });
+
   it('normalizes every populated unconfirmed value to awaiting confirmation', () => {
     const result = computeTransactionRecordState([
       { field_key: 'asset.property_type', display_label: 'Property Type', value_text: 'Multifamily', status: 'captured' },

@@ -649,7 +649,49 @@ function SeededFieldRow({ field, isCoordinator, propertyId, ownerToken, onUpdate
 }
 
 // ── Compute per-category chip for collapsed header ────────────────────────────
-function getCategoryChip(catKey, dbFields, seededFields, viewMode = "full", summaryKeys = null) {
+function getCanonicalCategoryFields(catKey, recordState) {
+  if (!Array.isArray(recordState?.requiredFields)) return null;
+  return recordState.requiredFields.filter(field =>
+    String(field?.category || field?.field_category || "").toLowerCase() === String(catKey || "").toLowerCase()
+  );
+}
+
+function getCategoryChip(
+  catKey,
+  dbFields,
+  seededFields,
+  viewMode = "full",
+  summaryKeys = null,
+  recordState = null,
+) {
+  const canonicalCategory = getCanonicalCategoryFields(catKey, recordState);
+  if (canonicalCategory) {
+    const conflicts = canonicalCategory.filter(field =>
+      ["conflict", "conflicting", "source_changed"].includes(String(field?.status || "").toLowerCase())
+    ).length;
+    const confirmed = canonicalCategory.filter(field =>
+      ["confirmed", "verified"].includes(String(field?.status || "").toLowerCase())
+    ).length;
+    const awaiting = canonicalCategory.filter(field =>
+      ["awaiting", "awaiting_confirmation", "extracted", "needs_review"].includes(
+        String(field?.status || "").toLowerCase()
+      )
+    ).length;
+    const missing = canonicalCategory.filter(field =>
+      String(field?.status || "").toLowerCase() === "missing"
+    ).length;
+
+    if (conflicts > 0) return { text: `${conflicts} conflict${conflicts > 1 ? "s" : ""}`, color: "red" };
+    if (missing > 0) return { text: `${missing} workflow item${missing > 1 ? "s" : ""} missing`, color: "amber" };
+    if (awaiting > 0) return { text: `${awaiting} awaiting review`, color: "blue" };
+    if (confirmed > 0 && canonicalCategory.length > 0) {
+      return { text: `${confirmed} of ${canonicalCategory.length} confirmed`, color: "green" };
+    }
+    return canonicalCategory.length > 0
+      ? { text: `${canonicalCategory.length} collected`, color: "blue" }
+      : { text: "Not started", color: "gray" };
+  }
+
   const isSummary = viewMode === "summary";
   const isSummaryDbField = field => {
     return !isSummary || isMaterialSummaryDbField(field, seededFields, summaryKeys);
@@ -710,7 +752,7 @@ function CategoryChip({ chip }) {
 // ── Category section ──────────────────────────────────────────────────────────
 function CategorySection({
   category, dbFields, seededFields, isCoordinator, propertyId,
-  ownerToken, onUpdated, viewMode, onRequestUpload, summaryKeys,
+  ownerToken, onUpdated, viewMode, onRequestUpload, summaryKeys, recordState,
 }) {
   // Auto-expand if category has conflicts or required missing fields
   const seededCat  = seededFields.filter(f =>
@@ -747,7 +789,7 @@ function CategorySection({
     if (hasUrgent) setOpen(true);
   }, [hasUrgent]);
 
-  const chip = getCategoryChip(category.key, dbFields, seededFields, viewMode, summaryKeys);
+  const chip = getCategoryChip(category.key, dbFields, seededFields, viewMode, summaryKeys, recordState);
 
   // Summary view: show only actionable/populated fields
   function shouldShow(dbField) {
@@ -771,8 +813,11 @@ function CategorySection({
   const hasSummaryContent = viewMode === "full" || visibleDb.length > 0 || visibleSeeded.length > 0;
 
   // Progress bar (only when DB fields exist)
-  const confirmed = dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
-  const total     = dbCat.length;
+  const canonicalCategory = getCanonicalCategoryFields(category.key, recordState);
+  const confirmed = canonicalCategory
+    ? canonicalCategory.filter(f => ["confirmed", "verified"].includes(String(f.status || "").toLowerCase())).length
+    : dbCat.filter(f => ["verified", "confirmed", "source_changed"].includes(f.status)).length;
+  const total = canonicalCategory ? canonicalCategory.length : dbCat.length;
 
   if (!hasSummaryContent) return null;
 
@@ -1084,6 +1129,7 @@ export default function AssetRecordTab({
           onUpdated={() => setRefreshKey(k => k + 1)}
           viewMode={viewMode}
           summaryKeys={summaryKeys}
+           recordState={recordState}
           onRequestUpload={onNavigateToDocuments}
         />
       ))}

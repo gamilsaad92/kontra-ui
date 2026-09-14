@@ -5879,6 +5879,23 @@ function mergeTransactionRecordState(previous, incoming) {
   return merged;
 }
 
+function alignVerifiedAssetReadinessToRecordState(verifiedAssetReadiness, recordState) {
+  if (!verifiedAssetReadiness || !recordState) return verifiedAssetReadiness;
+  const summary = verifiedAssetReadiness.summary || {};
+  return {
+    ...verifiedAssetReadiness,
+    summary: {
+      ...summary,
+      confirmed_count: Number.isFinite(Number(recordState.confirmedCount))
+        ? recordState.confirmedCount
+        : summary.confirmed_count || 0,
+      required_count: Number.isFinite(Number(recordState.requiredCount))
+        ? recordState.requiredCount
+        : summary.required_count || 0,
+    },
+  };
+}
+
 function getCanonicalUnresolvedConflicts(recordState) {
   const persisted = Array.isArray(recordState?.unresolvedConflicts)
     ? recordState.unresolvedConflicts
@@ -6644,6 +6661,7 @@ export {
   getCanonicalRequiredRecordFields,
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
+  alignVerifiedAssetReadinessToRecordState,
   getRecordDefinitionState,
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
@@ -8562,19 +8580,23 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         .then(record => {
           if (sequence !== loadSequence.current) return;
           setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-          // Always replace the projection when the record endpoint responds.
-          // Keeping the first response allowed a slower readiness request to
-          // leave Overview showing an older proposal-shaped state after confirm.
+          // The Transaction Record endpoint is the authoritative live
+          // projection for field identity and confirmation counts. Readiness is
+          // a secondary view and may finish with a state read at another
+          // instant; it must not replace this projection.
           if (record?.record_state) {
-            setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
+            setRecordState(record.record_state);
           }
         }),
       get(`/api/public/deal-room/${propertyId}/readiness`, null)
         .then(data => {
           if (sequence !== loadSequence.current) return;
           setReadiness(data);
+          // Only use the embedded state when the dedicated record request did
+          // not return one. This prevents a slower readiness response from
+          // resurrecting stale awaiting fields.
           if (data?.transaction_record) {
-            setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
+            setRecordState(previous => previous || data.transaction_record);
           }
         }),
       get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
@@ -8764,6 +8786,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const alignedVerifiedAssetReadiness = alignVerifiedAssetReadinessToRecordState(
+    verifiedAssetReadiness,
+    canonicalRecordState,
+  );
   const readinessPct = canonicalRecordState?.requiredCount > 0
     ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
     : (readiness?.transaction_readiness?.overall_pct ?? null);
@@ -9169,7 +9195,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         </div>
       </section>
       <VerifiedAssetReadinessCard
-        verifiedAssetReadiness={verifiedAssetReadiness}
+        verifiedAssetReadiness={alignedVerifiedAssetReadiness}
         isDemo={isDemo}
         digitalAssetEnabled={digitalAssetEnabled}
         ownerToken={ownerToken}
