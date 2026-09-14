@@ -469,6 +469,46 @@ describe('coordinator transaction brief logic', () => {
     ], recordState)).toEqual([]);
   });
 
+  test('removes a confirmation recommendation after the refreshed state confirms the field', () => {
+    const awaiting = {
+      requiredFields: [{
+        key: 'transaction.purchase_price',
+        label: 'Purchase price',
+        value: '$14,000,000',
+        status: 'awaiting',
+      }],
+    };
+    const confirmed = {
+      requiredFields: [{
+        key: 'transaction.purchase_price',
+        label: 'Purchase price',
+        value: '$14,000,000',
+        status: 'confirmed',
+      }],
+    };
+
+    expect(getCanonicalAwaitingRecordFields(awaiting)).toHaveLength(1);
+    expect(getCanonicalAwaitingRecordFields(confirmed)).toEqual([]);
+    expect(filterStaleRecordActions([
+      { title: 'Confirm Purchase price', field_key: 'transaction.purchase_price' },
+    ], confirmed)).toEqual([]);
+  });
+
+  test('shows a confirmation recommendation again when a confirmed field returns to awaiting', () => {
+    const refreshed = {
+      requiredFields: [{
+        key: 'transaction.purchase_price',
+        label: 'Purchase price',
+        value: '$14,000,000',
+        status: 'awaiting',
+      }],
+    };
+
+    expect(getCanonicalAwaitingRecordFields(refreshed)).toEqual([
+      refreshed.requiredFields[0],
+    ]);
+  });
+
   test('replaces a previous canonical array when the newer response is empty', () => {
     const previous = {
       requiredFields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
