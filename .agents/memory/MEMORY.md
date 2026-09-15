@@ -17,3 +17,6 @@
 - [API test dependencies](api-test-dependencies.md) — the production API checkout may lack Jest and pg; run focused pure tests with the UI Jest binary when needed
 - [Participant notification deep links](participant-notification-deep-links.md) — signed room/invite/role capabilities must exchange into the existing participant session; URL roles are never authorization
 - [Readiness regression gates](readiness-regression-gates.md) — optional evidence conflicts stay reviewable; only required blockers can regress approval or fund-release readiness
+- [Canonical duplicate write boundary](canonical-duplicate-write-boundary.md) — all write paths must defer alias cleanup to hydration so provenance and semantic conflicts survive
+- [Deal-room category projection](deal-room-category-projection.md) — the UI category schema must canonicalize definitions and matched rows independently of server readiness state
+- [Deployed runtime drift](deployed-runtime-drift.md) — verify Replit preview, Vercel, Render, and root workspace revisions independently before diagnosing projections
