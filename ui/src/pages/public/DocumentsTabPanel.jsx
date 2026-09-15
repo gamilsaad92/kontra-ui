@@ -20,6 +20,7 @@ export default function DocumentsTabPanel({
   packId = DEFAULT_PACK_ID,
   packReady = true,
   onAnalysisSaved,
+  onVerificationComplete,
   refreshKey,
   jurisdiction,
   onPeople,
@@ -47,6 +48,7 @@ export default function DocumentsTabPanel({
         title="Cross-document checks"
         emptyStateMessage="Cross-document checks begin after two or more related documents are uploaded."
         defaultCollapsed={true}
+        onVerificationComplete={onVerificationComplete || onAnalysisSaved}
       />
     </div>
   );

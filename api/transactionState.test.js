@@ -1,6 +1,7 @@
 const {
   computeTransactionReadiness,
   computeTransactionRecordState,
+  normalizeStoredTransactionRecord,
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,
   latestEvidenceTimestamp,
@@ -8,6 +9,7 @@ const {
   isConflictSupportedByActiveEvidence,
   filterRetiredTransactionConflicts,
   clearRetiredTransactionConflictFields,
+  verificationStatusForConflict,
 } = require('./lib/transactionState');
 
 const requirements = require('../shared/transaction_record_requirements.json');
@@ -15,6 +17,7 @@ const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
 } = require('./lib/transactionRecordCanonicalization');
+const { supabase } = require('./db');
 
 describe('transaction state recalculation', () => {
   it('accepts only the next persisted lifecycle stage, plus legacy funded settlement migration', () => {
@@ -211,6 +214,170 @@ describe('transaction state recalculation', () => {
     expect(price.status).toBe('confirmed');
     expect(price.value).toBe('$5,000,000');
     expect(result.confirmedCount).toBe(2);
+  });
+
+  it('deduplicates bare generated definitions into one required canonical fact', () => {
+    const result = computeTransactionRecordState([
+      {
+        field_key: 'target_closing_date',
+        definition_key: 'target_closing_date',
+        field_category: 'timeline',
+        display_label: 'Target closing date',
+        value_text: '2026-10-28',
+        status: 'verified',
+      },
+    ], 'generated_ai', [
+      { key: 'target_closing_date', label: 'Target closing date', required: true, category: 'timeline' },
+      { key: 'transaction.closing_date', label: 'Closing date', required: true, category: 'transaction' },
+    ]);
+
+    expect(result.fields).toHaveLength(1);
+    expect(result.requiredFields).toHaveLength(1);
+    expect(result.requiredFields[0]).toEqual(expect.objectContaining({
+      key: 'transaction.closing_date',
+      persistedKey: 'transaction.closing_date',
+      category: 'transaction',
+      status: 'confirmed',
+    }));
+  });
+
+  it('keeps a materially different canonical candidate as a blocking conflict', () => {
+    const result = computeTransactionRecordState([
+      {
+        id: 'closing-date',
+        field_key: 'transaction.closing_date',
+        value_text: '2026-10-28',
+        status: 'source_changed',
+        source_doc_id: 'agreement',
+        conflict_candidates: [{ value: '2026-10-29', source_doc_id: 'extraction' }],
+      },
+      {
+        id: 'duplicate-alias',
+        field_key: 'target_closing_date',
+        value_text: '2026-10-29',
+        status: 'extracted',
+      },
+    ], 'generated_ai', [
+      { key: 'target_closing_date', label: 'Target closing date', required: true },
+      { key: 'transaction.closing_date', label: 'Closing date', required: true },
+    ]);
+
+    expect(result.fields).toHaveLength(1);
+    expect(result.requiredCount).toBe(1);
+    expect(result.unresolvedConflictCount).toBe(1);
+    expect(result.conflictRequiredCount).toBe(1);
+    expect(result.unresolvedConflicts[0]).toEqual(expect.objectContaining({
+      fieldKey: 'transaction.closing_date',
+      canonicalValue: '2026-10-28',
+      conflictingValue: '2026-10-29',
+    }));
+  });
+
+  it('persists duplicate history and conflict data before removing aliases', async () => {
+    const calls = [];
+    const originalFrom = supabase.from;
+    supabase.from = table => {
+      calls.push({ table, operation: 'from' });
+      const query = {
+        table,
+        operation: 'select',
+        payload: null,
+        select() { return query; },
+        eq() { return query; },
+        in() { return query; },
+        order() { return query; },
+        limit() { return query; },
+        update(payload) { query.operation = 'update'; query.payload = payload; return query; },
+        insert(payload) { query.operation = 'insert'; query.payload = payload; return query; },
+        delete() { query.operation = 'delete'; return query; },
+        maybeSingle() { return Promise.resolve({ data: null, error: null }); },
+        single() {
+          calls.push({ table, operation: query.operation, payload: query.payload });
+          if (table === 'transaction_record_conflicts' && query.operation === 'insert') {
+            return Promise.resolve({
+              data: { id: 'conflict-1', ...query.payload },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
+        then(resolve, reject) {
+          calls.push({ table, operation: query.operation, payload: query.payload });
+          return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+        },
+      };
+      return query;
+    };
+
+    try {
+      const normalized = await normalizeStoredTransactionRecord(
+        'property-1',
+        { workflow_pack_id: 'generated_ai' },
+        [
+          {
+            id: 'closing-canonical',
+            field_key: 'transaction.closing_date',
+            display_label: 'Closing date',
+            value_text: '2026-10-28',
+            status: 'verified',
+          },
+          {
+            id: 'closing-alias',
+            field_key: 'target_closing_date',
+            display_label: 'Target closing date',
+            value_text: '2026-10-29',
+            status: 'extracted',
+          },
+          {
+            id: 'structure-canonical',
+            field_key: 'transaction.transaction_structure',
+            display_label: 'Transaction structure',
+            value_text: 'Stock Purchase',
+            status: 'verified',
+          },
+          {
+            id: 'structure-alias',
+            field_key: 'transaction_structure',
+            display_label: 'Transaction structure',
+            value_text: 'Stock Purchase',
+            status: 'extracted',
+          },
+        ],
+        'generated_ai',
+        {
+          transaction_record_fields: [
+            { key: 'target_closing_date', label: 'Target closing date', required: true },
+            { key: 'transaction_structure', label: 'Transaction structure', required: true },
+          ],
+        },
+      );
+
+      expect(normalized.fields).toHaveLength(2);
+      expect(normalized.fields.map(field => field.field_key)).toEqual(expect.arrayContaining([
+        'transaction.closing_date',
+        'transaction.transaction_structure',
+      ]));
+      expect(normalized.conflicts).toEqual([
+        expect.objectContaining({
+          id: 'conflict-1',
+          field_key: 'transaction.closing_date',
+          canonical_value: '2026-10-28',
+          conflicting_value: '2026-10-29',
+          status: 'unresolved',
+        }),
+      ]);
+      expect(calls).toEqual(expect.arrayContaining([
+        expect.objectContaining({ table: 'transaction_record_history', operation: 'insert' }),
+        expect.objectContaining({ table: 'transaction_record_fields', operation: 'delete' }),
+        expect.objectContaining({ table: 'transaction_record_conflicts', operation: 'insert' }),
+      ]));
+      const conflictInsert = calls.find(call =>
+        call.table === 'transaction_record_conflicts' && call.operation === 'insert'
+      );
+      expect(conflictInsert.payload.field_key).toBe('transaction.closing_date');
+    } finally {
+      supabase.from = originalFrom;
+    }
   });
 
   it('exposes required and optional awaiting counts from one canonical state', () => {
@@ -699,6 +866,38 @@ describe('transaction state recalculation', () => {
     });
 
     expect(conflicts.map(conflict => conflict.id)).toEqual(['siblings']);
+  });
+
+  it('retires a stale canonical conflict after a clean verification rerun but keeps real discrepancies blocking', () => {
+    const cleanVerification = {
+      analysis: {
+        checks: [{
+          fact_key: 'transaction.closing_date',
+          semantic_key: 'transaction.closing_date',
+          status: 'verified',
+        }],
+      },
+    };
+    const conflictingVerification = {
+      analysis: {
+        checks: [{
+          fact_key: 'transaction.closing_date',
+          semantic_key: 'transaction.closing_date',
+          status: 'discrepancy',
+        }],
+      },
+    };
+    const conflict = {
+      field_key: 'target_closing_date',
+      canonical_value: 'October 28, 2026',
+      conflicting_value: 'October 29, 2026',
+    };
+
+    expect(verificationStatusForConflict(conflict, cleanVerification)).toBe('verified');
+    expect(verificationStatusForConflict(conflict, conflictingVerification)).toBe('discrepancy');
+    expect(verificationStatusForConflict({
+      field_key: 'parties.buyer',
+    }, cleanVerification)).toBe(null);
   });
 
   it('clears a legacy field-level blocker for a retired existing-room conflict', () => {

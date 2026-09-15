@@ -186,6 +186,7 @@ export default function VerificationPanel({
   title = "Verification Log",
   emptyStateMessage = "Upload documents to trigger automatic cross-document verification.",
   defaultCollapsed = false,
+  onVerificationComplete,
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -215,6 +216,7 @@ export default function VerificationPanel({
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || "Verification could not be run");
       applyVerificationState(json);
+      await onVerificationComplete?.(json);
     } catch (error) {
       setRunError(error.message || "Verification could not be run");
     }
@@ -271,6 +273,7 @@ export default function VerificationPanel({
       // immediately instead of waiting for a delayed GET that can show the
       // previous snapshot through a proxy/cache.
       applyVerificationState(json);
+      await onVerificationComplete?.(json);
     } catch (error) {
       setRunError(error.message || "Verification could not be run");
     } finally {

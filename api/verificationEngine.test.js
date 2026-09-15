@@ -11,6 +11,7 @@ const {
   buildChecks,
   extractFacts,
   latestDocuments,
+  setVerificationCompletionHandler,
 } = require('./lib/verificationEngine');
 
 function builder(result) {
@@ -23,7 +24,55 @@ function builder(result) {
 }
 
 describe('verification upload compatibility', () => {
-  afterEach(() => jest.resetAllMocks());
+  afterEach(() => {
+    setVerificationCompletionHandler(null);
+    jest.resetAllMocks();
+  });
+
+  test('runs dependent coordinator reconciliation after persisting a clean rerun', async () => {
+    const reconcile = jest.fn().mockResolvedValue(undefined);
+    setVerificationCompletionHandler(reconcile);
+    supabase.from
+      .mockReturnValueOnce(builder({
+        data: [
+          {
+            id: 'agreement',
+            section: 'purchase_agreement',
+            analysis: {
+              normalized_facts: [{
+                key: 'transaction.closing_date',
+                label: 'Target Closing Date',
+                value: '2026-10-28',
+              }],
+            },
+          },
+          {
+            id: 'ddq',
+            section: 'buyer_due_diligence_questionnaire',
+            analysis: {
+              normalized_facts: [{
+                key: 'transaction.target_closing_date',
+                label: 'Target Closing Date',
+                value: '2026-10-28',
+              }],
+            },
+          },
+        ],
+        error: null,
+      }))
+      .mockReturnValueOnce(builder({ data: [], error: null }))
+      .mockReturnValueOnce(builder({ data: [], error: null }))
+      .mockReturnValueOnce(builder({ data: { id: 'clean-rerun' }, error: null }));
+
+    const result = await runVerification('existing-conflict-room');
+
+    expect(result.summary).toEqual({ verified: 1, discrepancies: 0, pending: 0 });
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({
+      propertyId: 'existing-conflict-room',
+      summary: { verified: 1, discrepancies: 0, pending: 0 },
+    }));
+  });
 
   test.each([
     ['generated AI room', 'generated-room', 'generated_document'],

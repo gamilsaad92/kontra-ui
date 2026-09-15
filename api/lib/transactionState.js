@@ -58,6 +58,32 @@ function latestEvidenceTimestamp(candidates = []) {
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
 }
 
+function verificationStatusForConflict(conflict, verificationDocument) {
+  const checks = Array.isArray(verificationDocument?.analysis?.checks)
+    ? verificationDocument.analysis.checks
+    : [];
+  if (!checks.length) return null;
+
+  const conflictKey = canonicalizeTransactionRecordKey(
+    conflict?.field_key || conflict?.fieldKey,
+    'generated_ai',
+  );
+  if (!conflictKey) return null;
+
+  const matchingChecks = checks.filter(check => {
+    const keys = [
+      check?.fact_key,
+      check?.semantic_key,
+      check?.comparison_key,
+    ].filter(Boolean).map(key => canonicalizeTransactionRecordKey(key, 'generated_ai'));
+    return keys.includes(conflictKey);
+  });
+  if (!matchingChecks.length) return null;
+  if (matchingChecks.some(check => check.status === 'discrepancy')) return 'discrepancy';
+  if (matchingChecks.every(check => check.status === 'verified')) return 'verified';
+  return null;
+}
+
 function shouldPreserveResolvedConflict({
   resolvedConflicts = [],
   fieldKey,
@@ -163,8 +189,17 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       throw openConflictsError;
     }
     const sourceDocuments = selectActiveDocumentVersions(documents || []);
+    const verification = (documents || [])
+      .filter(document => document.section === 'cross_document_verification')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
     for (const conflict of openConflicts || []) {
-      if (isConflictSupportedByActiveEvidence(conflict, documents || [])) continue;
+      const verificationStatus = verificationStatusForConflict(conflict, verification);
+      if (
+        verificationStatus !== 'discrepancy'
+        && verificationStatus !== 'verified'
+        && isConflictSupportedByActiveEvidence(conflict, documents || [])
+      ) continue;
+      if (verificationStatus === 'discrepancy') continue;
       if (conflict.id) reconciliation.retiredConflictIds.add(conflict.id);
       reconciliation.retiredConflicts.push(conflict);
       const resolvedAt = new Date().toISOString();
@@ -195,10 +230,11 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         (conflict.field_id && candidate.id === conflict.field_id)
           || (candidate.field_key && candidate.field_key === conflict.field_key)
       );
-      if (field && ['conflict', 'conflicting'].includes(String(field.status || '').toLowerCase())) {
+      if (field && ['conflict', 'conflicting', 'source_changed'].includes(String(field.status || '').toLowerCase())) {
         const { error: fieldError } = await supabase.from('transaction_record_fields')
           .update({
             status: field.verified_by ? 'verified' : 'extracted',
+            conflict_candidates: [],
             updated_at: resolvedAt,
           })
           .eq('id', field.id)
@@ -281,9 +317,6 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     // The verification engine is the durable source for older rooms: it may
     // have recognized a discrepancy from document summaries/metrics even when
     // those values are not present under repair-specific JSON keys.
-    const verification = (documents || [])
-      .filter(document => document.section === 'cross_document_verification')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
     const sourceBySection = new Map(sourceDocuments.map(document => [document.section, document]));
     for (const check of verification?.analysis?.checks || []) {
       if (check?.status !== 'discrepancy') continue;
@@ -1588,6 +1621,7 @@ module.exports = {
   reconcileStoredDocumentConflicts,
   filterRetiredTransactionConflicts,
   clearRetiredTransactionConflictFields,
+  verificationStatusForConflict,
   reconcileConfirmedFieldHistory,
   hasMeaningfulRecordValue,
   shouldPreserveResolvedConflict,

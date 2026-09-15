@@ -67,7 +67,11 @@ const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
 const { clearBriefingCache, askQuestion } = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
-const { runVerification, inferFactDefinition } = require('./lib/verificationEngine');
+const {
+  runVerification,
+  inferFactDefinition,
+  setVerificationCompletionHandler,
+} = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./lib/taskEngine');
 const {
@@ -120,6 +124,15 @@ const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
 } = require('./lib/documentVersions');
+
+// Every verification write must reconcile the shared coordinator projections.
+// This is registered once at application startup so manual reruns and all
+// background document-processing triggers have identical behavior.
+setVerificationCompletionHandler(async ({ propertyId }) => {
+  await recalculateTransactionState(propertyId, {
+    source: 'verification_completed',
+  });
+});
 const {
   buildRoomParticipants,
   computeRoomDashboardState,

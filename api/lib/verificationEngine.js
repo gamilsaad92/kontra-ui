@@ -20,6 +20,22 @@ const PERCENT_PATTERN = /([\d,]+(?:\.\d+)?)\s*%/gi;
 const GENERIC_FACT_WORDS = new Set(['amount', 'value', 'total', 'number', 'balance', 'variance', 'metric', 'result']);
 const THRESHOLD_WORDS = /\b(trigger|threshold|limit|maximum|max|min(?:imum)?|cap|must\s+not\s+exceed|at\s+least|no\s+more\s+than|no\s+less\s+than)\b/i;
 const ACTUAL_WORDS = /\b(actual|current|reported|observed|measured|as\s+of|is|was|were)\b/i;
+let verificationCompletionHandler = null;
+
+// The verification engine owns the immutable evidence snapshot, but the
+// coordinator projections are owned by transactionState. Keep that boundary
+// injectable so every verification trigger (manual, background, or replacement
+// processing) can run the same dependent-state reconciliation without creating
+// a module cycle.
+function setVerificationCompletionHandler(handler) {
+  verificationCompletionHandler = typeof handler === 'function' ? handler : null;
+}
+
+async function reconcileVerificationDependents(result) {
+  if (!verificationCompletionHandler) return;
+  await verificationCompletionHandler(result);
+}
+
 const SEMANTIC_ALIASES = [
   { key: 'capital.commitment', pattern: /\b(?:total\s+)?(?:loan\s+)?commitment\b|\bcommitted\s+(?:amount|balance)\b/i, type: 'amount' },
   { key: 'financial.policy_limit', pattern: /\b(?:insurance|policy|coverage)\s+(?:policy\s+)?limit\b|\blimit\s+of\s+(?:liability|coverage)\b/i, type: 'amount' },
@@ -803,11 +819,13 @@ async function runVerification(propertyId, packId = null) {
     transactionRecordHistory,
   );
   await persistVerificationResult(result);
+  await reconcileVerificationDependents(result);
   return result;
 }
 
 module.exports = {
   VERIFICATION_SECTION,
+  setVerificationCompletionHandler,
   getVerificationState,
   runVerification,
   latestDocuments,
