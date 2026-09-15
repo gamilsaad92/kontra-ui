@@ -185,6 +185,60 @@ function canonicalRecordKey(field, seededFields) {
   return canonicalFieldKey(schema?.canonicalKey || field?.field_key);
 }
 
+function isCanonicalFieldIdentity(field, seededFields = []) {
+  const schema = field?.key ? field : schemaFieldForDbField(field, seededFields);
+  if (field?.aliasOf || schema?.aliasOf) return false;
+  const rawKey = String(field?.key || field?.field_key || field?.canonicalKey || "").trim();
+  return Boolean(rawKey) && canonicalFieldKey(rawKey) === rawKey;
+}
+
+function mergeCanonicalFieldProjection(primary, secondary) {
+  const merged = { ...primary };
+  const provenanceKeys = [
+    "source_type",
+    "source_doc_id",
+    "source_doc_version",
+    "source_file_hash",
+    "source_page",
+    "source_excerpt",
+    "extraction_timestamp",
+    "extracted_by",
+    "verified_by",
+    "verified_role",
+    "verified_at",
+  ];
+  provenanceKeys.forEach(key => {
+    if ((merged[key] == null || merged[key] === "") && secondary?.[key] != null && secondary[key] !== "") {
+      merged[key] = secondary[key];
+    }
+  });
+
+  const candidateLists = [merged.conflict_candidates, secondary?.conflict_candidates]
+    .filter(Array.isArray)
+    .flat();
+  if (candidateLists.length > 0) {
+    const seen = new Set();
+    merged.conflict_candidates = candidateLists.filter(candidate => {
+      const identity = JSON.stringify([
+        candidate?.value ?? candidate?.value_text ?? null,
+        candidate?.source_doc_id ?? candidate?.sourceDocId ?? null,
+        candidate?.source_page ?? candidate?.sourcePage ?? null,
+        candidate?.source_excerpt ?? candidate?.sourceExcerpt ?? null,
+      ]);
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    });
+  }
+
+  const conflictStatuses = new Set(["conflicting", "conflict", "source_changed"]);
+  if (conflictStatuses.has(String(secondary?.status || "").toLowerCase())
+    && !conflictStatuses.has(String(merged.status || "").toLowerCase())) {
+    merged.status = secondary.status;
+  }
+  return merged;
+}
+
 function uniqueCanonicalFields(fields, seededFields) {
   const result = [];
   const positions = new Map();
@@ -198,13 +252,13 @@ function uniqueCanonicalFields(fields, seededFields) {
       continue;
     }
     const existing = result[existingIndex];
-    const fieldIsCanonical = field.key
-      ? !field.aliasOf
-      : !schemaFieldForDbField(field, seededFields)?.aliasOf;
-    const existingIsCanonical = existing.key
-      ? !existing.aliasOf
-      : !schemaFieldForDbField(existing, seededFields)?.aliasOf;
-    if (fieldIsCanonical && !existingIsCanonical) result[existingIndex] = field;
+    const fieldIsCanonical = isCanonicalFieldIdentity(field, seededFields);
+    const existingIsCanonical = isCanonicalFieldIdentity(existing, seededFields);
+    if (fieldIsCanonical && !existingIsCanonical) {
+      result[existingIndex] = mergeCanonicalFieldProjection(field, existing);
+    } else {
+      result[existingIndex] = mergeCanonicalFieldProjection(existing, field);
+    }
   }
   return result;
 }
@@ -786,14 +840,7 @@ function CategorySection({
   const seededCat  = seededFields.filter(f =>
       canonicalFieldCategory(f.category, f.canonicalKey || f.key) === category.key && f.renderable !== false
   );
-  const presentKeys = new Set(dbFields.map(field => field.field_key));
-  const dedupedDbFields = dbFields.filter(field => {
-    const schemaField = schemaFieldForDbField(field, seededFields);
-    const canonicalPresent = schemaField?.aliasOf &&
-      field.field_key === schemaField.key &&
-      presentKeys.has(schemaField.canonicalKey);
-    return !(schemaField?.aliasOf && canonicalPresent);
-  });
+  const dedupedDbFields = uniqueCanonicalFields(dbFields, seededFields);
   const dbCat      = dedupedDbFields.filter(f =>
     canonicalFieldCategory(f.field_category, f.field_key) === category.key
   );
@@ -1220,3 +1267,10 @@ export default function AssetRecordTab({
     </div>
   );
 }
+
+export {
+  canonicalFieldKey,
+  getCanonicalCategoryFields,
+  getCategoryChip,
+  uniqueCanonicalFields,
+};
