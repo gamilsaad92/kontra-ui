@@ -10,6 +10,8 @@ const SEMANTIC_FIELD_DEFINITIONS = [
   { key: 'parties.seller', pattern: /\b(?:seller|seller\s+entity|seller\s+name|vendor|transferor)\b/i, type: 'text', recordKey: 'parties.seller' },
   { key: 'parties.buyer', pattern: /\b(?:buyer|buyer\s+entity|buyer\s+name|acquirer|transferee)\b/i, type: 'text', recordKey: 'parties.buyer' },
   { key: 'transaction.closing_date', pattern: /\b(?:(?:target|scheduled|expected|estimated|proposed)\s+)?(?:closing|close)\s+date\b|\btarget\s+closing\b/i, type: 'period', recordKey: 'transaction.closing_date' },
+  { key: 'legal.contingencies', pattern: /\b(?:closing|transaction|deal)\s+conditions?\b|\bconditions?\s+(?:to|precedent\s+to)\s+(?:closing|close)\b|\bsubject\s+to\s+satisfaction\s+of\b/i, type: 'text', recordKey: 'legal.contingencies' },
+  { key: 'approval.closing', pattern: /\b(?:closing|transaction)\s+approval\b|\bapproval\s+(?:status|to\s+close)\b|\b(?:approved|authorized|pending\s+approval)\b/i, type: 'text', recordKey: 'approval.closing' },
   { key: 'financial.reporting_period', pattern: /\b(?:reporting|statement|coverage|period)\s+(?:period|covered|ending|ended|of)|\b(?:month|quarter|year)\s+ended\b|\b(?:monthly|quarterly|annually|annual)\b/i, type: 'period', recordKey: 'financial.reporting_period' },
   { key: 'financial.outstanding_principal', pattern: /\b(?:certified\s+)?outstanding\s+(?:loan\s+)?principal\b|\bprincipal\s+balance\b|\bunpaid\s+principal\s+balance\b|\bupb\b/i, type: 'amount', recordKey: 'financial.outstanding_principal' },
   { key: 'financial.servicing_fee_rate', pattern: /\bservicing[_\s-]+fee\b.{0,24}\b(?:rate|percentage|percent)\b|\b(?:rate|percentage|percent)\b.{0,24}\bservicing[_\s-]+fee\b|\bservicing[_\s-]+fee[_\s-]+rate\b/i, type: 'percent', recordKey: 'financial.servicing_fee_rate' },
@@ -54,9 +56,49 @@ function contextFor(key, rawValue, explicitLabel = '') {
   return normalizedText([key, explicitLabel, ...objectContext].filter(Boolean).join(' '));
 }
 
+function rawValueText(rawValue) {
+  if (rawValue && typeof rawValue === 'object') {
+    return String(
+      rawValue.display_value
+        ?? rawValue.value
+        ?? rawValue.amount
+        ?? rawValue.number
+        ?? rawValue.numeric_value
+        ?? rawValue.text
+        ?? '',
+    ).trim();
+  }
+  return String(rawValue ?? '').trim();
+}
+
+function isPartyEntityCandidate(key, rawValue, explicitLabel = '') {
+  const identityContext = normalizedText([
+    key,
+    explicitLabel,
+    rawValue && typeof rawValue === 'object'
+      ? [rawValue.key, rawValue.label, rawValue.name].filter(Boolean).join(' ')
+      : '',
+  ].filter(Boolean).join(' '));
+  const valueText = rawValueText(rawValue);
+  const nonEntityLabel = /\b(?:purchase|sale)\s+price\b|\b(?:amount|value|total|balance|number|count|price|cost|revenue|income|ebitda)\b|\b(?:approval|condition|contingenc|status|date|period|deadline)\b/i.test(identityContext);
+  const numericOnlyValue = /^\(?\s*[$€£]?\s*\d[\d,.]*\s*(?:million|mm|billion|bn|thousand|k|m|b)?\s*(?:dollars?|usd)?\s*\)?$/i.test(valueText);
+  const nonEntityValue = /[$€£]\s*[\d,.]+/i.test(valueText)
+    || numericOnlyValue
+    || /\b(?:proceed|subject\s+to|satisfaction|condition|contingenc|approved|authorized|pending|not\s+applicable)\b/i.test(valueText)
+    || /\b\d{4}[-/]\d{1,2}(?:[-/]\d{1,2})?\b/.test(valueText);
+  if (nonEntityLabel || nonEntityValue) return false;
+  return true;
+}
+
 function inferSemanticDefinition(key, rawValue = null, explicitLabel = '') {
   const context = contextFor(key, rawValue, explicitLabel);
-  const definition = SEMANTIC_FIELD_DEFINITIONS.find(item => item.pattern.test(context));
+  const definition = SEMANTIC_FIELD_DEFINITIONS.find(item => {
+    if ((item.recordKey === 'parties.buyer' || item.recordKey === 'parties.seller')
+      && !isPartyEntityCandidate(key, rawValue, explicitLabel)) {
+      return false;
+    }
+    return item.pattern.test(context);
+  });
   if (!definition) return null;
   const role = THRESHOLD_WORDS.test(context)
     ? 'threshold'
@@ -236,7 +278,11 @@ function isSemanticallyValidValue(value, definitionOrKey, explicitLabel = '') {
   const definition = typeof definitionOrKey === 'string'
     ? inferSemanticDefinition(definitionOrKey, value, explicitLabel)
     : definitionOrKey;
-  if (!definition || definition.valueType !== 'amount') return true;
+  if (!definition) return true;
+  if (definition.recordKey === 'parties.buyer' || definition.recordKey === 'parties.seller') {
+    return isPartyEntityCandidate(definition.recordKey, value, explicitLabel);
+  }
+  if (definition.valueType !== 'amount') return true;
   return normalizeComparableValue(value, definition).type === 'amount';
 }
 

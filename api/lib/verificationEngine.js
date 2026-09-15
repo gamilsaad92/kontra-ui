@@ -107,8 +107,14 @@ function inferFactDefinition(key, rawValue, explicitLabel = '') {
     };
   }
 
-  const slug = normalizedText(key).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   const label = normalizedText(explicitLabel);
+  // Generic extraction keys such as "buyer" are not a semantic identity when
+  // their label describes another concept. Prefer the descriptive label so a
+  // rejected participant candidate cannot collapse unrelated values into
+  // metric:buyer.
+  const genericKey = /^(?:buyer|seller|entity|value|amount|number|metric)$/i.test(String(key || '').trim());
+  const fallbackSource = genericKey && label ? label : key;
+  const slug = normalizedText(fallbackSource).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   const fallbackKey = slug || label.replace(/[^a-z0-9]+/g, '_');
   if (!fallbackKey || GENERIC_FACT_WORDS.has(fallbackKey)) return null;
   const percent = /%|percent|percentage|rate|ratio|ltv|dscr/.test(context);
@@ -491,6 +497,7 @@ function buildChecks(documents, runAt) {
         delta_pct: deltaPct,
         fact_key: baseline.semantic_key,
         semantic_key: baseline.semantic_key,
+        comparison_key: baseline.comparison_key,
         value_type: baseline.value_type,
         unit: baseline.unit,
         evidence_a: evidencePayload(baseline),
@@ -547,6 +554,7 @@ function buildChecks(documents, runAt) {
         delta_pct: deltaPct,
         fact_key: threshold.semantic_key,
         semantic_key: threshold.semantic_key,
+        comparison_key: threshold.comparison_key,
         value_type: threshold.value_type,
         unit: threshold.unit,
         evidence_a: evidencePayload(threshold),

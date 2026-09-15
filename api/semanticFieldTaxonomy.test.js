@@ -198,4 +198,39 @@ describe('semantic Transaction Record field taxonomy', () => {
     expect(canonicalizeTransactionRecordKey('property.property_address'))
       .not.toBe(canonicalizeTransactionRecordKey('borrower.address'));
   });
+
+  test.each([
+    ['buyer', 'Purchase Price', '$8,500,000'],
+    ['buyer', 'Closing Conditions', 'Proceed subject to satisfaction of closing conditions.'],
+    ['parties.buyer', 'Buyer Entity', 'Summit Peak Holdings, LLC'],
+    ['buyer', 'Employee Count', '42'],
+  ])('does not treat %s / %s as a buyer entity unless its value is entity-shaped', (key, label, value) => {
+    const definition = inferSemanticDefinition(key, value, label);
+    if (label === 'Buyer Entity') {
+      expect(definition).toEqual(expect.objectContaining({
+        recordKey: 'parties.buyer',
+        valueType: 'text',
+      }));
+    } else {
+      expect(definition?.recordKey).not.toBe('parties.buyer');
+    }
+  });
+
+  test('maps a buyer-keyed purchase price to a monetary transaction identity', () => {
+    expect(inferSemanticDefinition('buyer', '$8,500,000', 'Purchase Price')).toEqual(expect.objectContaining({
+      recordKey: 'transaction.purchase_price',
+      valueType: 'amount',
+    }));
+  });
+
+  test('maps a buyer-keyed closing condition to a condition identity', () => {
+    expect(inferSemanticDefinition(
+      'buyer',
+      'Proceed subject to satisfaction of closing conditions.',
+      'Closing Conditions',
+    )).toEqual(expect.objectContaining({
+      recordKey: 'legal.contingencies',
+      valueType: 'text',
+    }));
+  });
 });

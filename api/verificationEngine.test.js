@@ -211,6 +211,101 @@ describe('verification upload compatibility', () => {
     ]);
   });
 
+  test('does not compare buyer-keyed monetary, condition, or unrelated values as buyer entities', () => {
+    const checks = buildChecks([
+      {
+        id: 'purchase-agreement',
+        section: 'purchase_agreement',
+        analysis: {
+          normalized_facts: [{
+            key: 'buyer',
+            label: 'Buyer Entity',
+            value: 'Summit Peak Holdings, LLC',
+          }],
+        },
+      },
+      {
+        id: 'buyer-ddq-price',
+        section: 'buyer_due_diligence_questionnaire',
+        analysis: {
+          normalized_facts: [{
+            key: 'buyer',
+            label: 'Purchase Price',
+            value: '$8,500,000',
+          }],
+        },
+      },
+      {
+        id: 'buyer-ddq-conditions',
+        section: 'buyer_due_diligence_questionnaire',
+        analysis: {
+          normalized_facts: [{
+            key: 'buyer',
+            label: 'Closing Conditions',
+            value: 'Proceed subject to satisfaction of closing conditions.',
+          }],
+        },
+      },
+      {
+        id: 'buyer-ddq-unrelated',
+        section: 'buyer_due_diligence_questionnaire',
+        analysis: {
+          normalized_facts: [{
+            key: 'buyer',
+            label: 'Employee Count',
+            value: '42',
+          }],
+        },
+      },
+    ], '2026-09-15T00:00:00.000Z');
+
+    expect(checks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fact_key: 'parties.buyer',
+        doc_section_b: 'buyer_due_diligence_questionnaire',
+      }),
+    ]));
+    expect(checks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ semantic_key: 'parties.buyer' }),
+    ]));
+  });
+
+  test('preserves valid buyer matches and real target closing-date conflicts', () => {
+    const checks = buildChecks([
+      {
+        id: 'purchase-agreement',
+        section: 'purchase_agreement',
+        analysis: {
+          normalized_facts: [
+            { key: 'buyer', label: 'Buyer Entity', value: 'Summit Peak Holdings, LLC' },
+            { key: 'target closing date', label: 'Target Closing Date', value: 'October 28, 2026' },
+          ],
+        },
+      },
+      {
+        id: 'buyer-ddq',
+        section: 'buyer_due_diligence_questionnaire',
+        analysis: {
+          normalized_facts: [
+            { key: 'buyer', label: 'Buyer Entity', value: 'Summit Peak Holdings, LLC' },
+            { key: 'target closing date', label: 'Target Closing Date', value: 'October 29, 2026' },
+          ],
+        },
+      },
+    ], '2026-09-15T00:00:00.000Z');
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: 'verified',
+        fact_key: 'parties.buyer',
+      }),
+      expect.objectContaining({
+        status: 'discrepancy',
+        fact_key: 'transaction.closing_date',
+      }),
+    ]));
+  });
+
   test('uses hydrated Transaction Record amounts for cross-document verification', async () => {
     supabase.from
       .mockReturnValueOnce(builder({
