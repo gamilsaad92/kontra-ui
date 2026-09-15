@@ -1,0 +1,151 @@
+// Canonical Transaction Record key mapping shared by the API and UI.
+//
+// AI output may use descriptive category names, but every real-world fact must
+// resolve to one durable identity before it is persisted or projected.
+
+const UNIVERSAL_ALIASES = {
+  'financial.purchase_price': 'transaction.purchase_price',
+  'financial.deal_value': 'transaction.value',
+  'financial.transaction_value': 'transaction.value',
+  'financial.scheduled_purchase_price': 'transaction.value',
+  'transaction.transaction_value': 'transaction.value',
+  'transaction.scheduled_purchase_price': 'transaction.value',
+  'transaction.scheduled_price': 'transaction.value',
+  'transaction.agreed_purchase_price': 'transaction.value',
+  transaction_value: 'transaction.value',
+  scheduled_purchase_price: 'transaction.value',
+  seller: 'parties.seller',
+  seller_entity: 'parties.seller',
+  seller_name: 'parties.seller',
+  'parties.seller_entity': 'parties.seller',
+  'parties.seller_name': 'parties.seller',
+  'seller.entity': 'parties.seller',
+  'seller.name': 'parties.seller',
+  'parties.buyer_entity': 'parties.buyer',
+  'parties.buyer_name': 'parties.buyer',
+  'buyer.entity': 'parties.buyer',
+  'buyer.name': 'parties.buyer',
+  buyer: 'parties.buyer',
+  buyer_entity: 'parties.buyer',
+  buyer_name: 'parties.buyer',
+
+  // Generated proposals use these bare keys while document extraction and
+  // metadata use the canonical dotted namespace.
+  target_closing_date: 'transaction.closing_date',
+  target_close_date: 'transaction.closing_date',
+  scheduled_closing_date: 'transaction.closing_date',
+  expected_closing_date: 'transaction.closing_date',
+  transaction_structure: 'transaction.transaction_structure',
+
+  'transaction.target_closing_date': 'transaction.closing_date',
+  'transaction.target_close_date': 'transaction.closing_date',
+  'transaction.scheduled_closing_date': 'transaction.closing_date',
+  'transaction.expected_closing_date': 'transaction.closing_date',
+  'transaction.due_diligence_expiration': 'transaction.dd_expiration',
+  'asset.property_address': 'asset.address',
+  'asset.address_line': 'asset.address',
+  'property.address': 'asset.address',
+  'property.property_address': 'asset.address',
+  'asset_identity.property_address': 'asset.address',
+  'parties.borrower_address_line': 'parties.borrower_address',
+  'borrower.address': 'parties.borrower_address',
+  'borrower.borrower_address': 'parties.borrower_address',
+  'parties.borrower_property_address': 'parties.borrower_address',
+  'financial.annual_revenue': 'financial.revenue',
+  'financial.total_revenue': 'financial.revenue',
+  'financial.borrower_advanced_funds': 'financial.borrower_funds_advanced',
+  'financial.borrower_funds_advanced_amount': 'financial.borrower_funds_advanced',
+  'financial.certified_outstanding_principal': 'financial.outstanding_principal',
+  'financial.outstanding_loan_principal': 'financial.outstanding_principal',
+  'loan.outstanding_principal': 'financial.outstanding_principal',
+  'financial.servicing_fee': 'financial.servicing_fee_amount',
+  'financial.servicing_fee_percentage': 'financial.servicing_fee_rate',
+  'financial.servicing_fee_rate': 'financial.servicing_fee_rate',
+  'financial.servicing_fee_amount': 'financial.servicing_fee_amount',
+  'transaction.reporting_period': 'financial.reporting_period',
+  'legal.references': 'legal.document_reference',
+  'legal.document_references': 'legal.document_reference',
+  'document.reference': 'legal.document_reference',
+  'document.references': 'legal.document_reference',
+
+  // Hazard-loss fields are emitted under several namespaces by generated
+  // proposals and document extraction.
+  'hazard.incident_date': 'transaction.incident_date',
+  'incident.incident_date': 'transaction.incident_date',
+  'loss.incident_date': 'transaction.incident_date',
+  'hazard.units_damaged': 'asset.units_damaged',
+  'incident.units_damaged': 'asset.units_damaged',
+  'loss.units_damaged': 'asset.units_damaged',
+  'asset.units_affected': 'asset.units_damaged',
+  'hazard.insurance_proceeds': 'financial.insurance_proceeds',
+  'insurance.proceeds': 'financial.insurance_proceeds',
+  'insurance.insurance_proceeds': 'financial.insurance_proceeds',
+  'financial.proceeds': 'financial.insurance_proceeds',
+  'financial.insurance_policy_limit': 'financial.policy_limit',
+  'insurance.policy_limit': 'financial.policy_limit',
+  'insurance.coverage_limit': 'financial.policy_limit',
+  'financial.coverage_limit': 'financial.policy_limit',
+  'financial.repair_costs': 'financial.repair_costs',
+  'hazard.repair_costs': 'financial.repair_costs',
+  'repairs.repair_costs': 'financial.repair_costs',
+  'repair.repair_costs': 'financial.repair_costs',
+};
+
+const PACK_ALIASES = {
+  business_acquisition: {
+    'asset_identity.legal_name': 'asset.legal_name',
+    'asset_identity.industry': 'asset.industry',
+    'asset_identity.entity_type': 'asset.entity_type',
+    'beneficial_ownership.owners': 'ownership.existing_owners',
+  },
+  cre_acquisition: {
+    'asset_identity.legal_name': 'asset.name',
+    'beneficial_ownership.owners': 'ownership.titled_owner',
+  },
+  fundraising: {
+    'asset_identity.legal_name': 'asset.issuer',
+    'asset_identity.entity_type': 'asset.entity_type',
+  },
+  tokenization: {
+    'asset_identity.legal_name': 'asset.name',
+    'beneficial_ownership.owners': 'ownership.beneficial_owners',
+  },
+  generic: {
+    'asset_identity.legal_name': 'asset.name',
+    'beneficial_ownership.owners': 'ownership.owners',
+  },
+};
+
+function getPackAliases(packId = 'generic') {
+  return {
+    ...PACK_ALIASES.generic,
+    ...(PACK_ALIASES[packId] || {}),
+  };
+}
+
+function canonicalizeTransactionRecordKey(fieldKey, packId = 'generic') {
+  const key = String(fieldKey || '').trim();
+  if (!key) return key;
+  return getPackAliases(packId)[key] || UNIVERSAL_ALIASES[key] || key;
+}
+
+function aliasKeysForCanonical(canonicalKey, packId = 'generic') {
+  const canonical = canonicalizeTransactionRecordKey(canonicalKey, packId);
+  const aliases = new Set([canonical]);
+  const allAliases = {
+    ...UNIVERSAL_ALIASES,
+    ...getPackAliases(packId),
+  };
+  for (const [alias, destination] of Object.entries(allAliases)) {
+    if (canonicalizeTransactionRecordKey(destination, packId) === canonical) aliases.add(alias);
+  }
+  return [...aliases];
+}
+
+module.exports = {
+  UNIVERSAL_ALIASES,
+  PACK_ALIASES,
+  getPackAliases,
+  canonicalizeTransactionRecordKey,
+  aliasKeysForCanonical,
+};

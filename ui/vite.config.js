@@ -89,6 +89,9 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: false,
+      commonjsOptions: {
+        include: [/shared/, /node_modules/],
+      },
     },
     // Optional: bring this back if you want custom chunks
     // build: {

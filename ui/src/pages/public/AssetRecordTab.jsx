@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../../lib/apiBase";
 import { buildSeededFromSchema, getSummaryFieldKeys, resolveSchemaKey } from "../../lib/workflowPacks/transactionRecordSchema";
+import { canonicalizeTransactionRecordKey } from "../../../../shared/transactionRecordCanonicalization";
 
 const ACCENT = "#800020";
 
@@ -84,27 +85,54 @@ function dependencyIsInactive(field, dbFields, seededFields) {
   );
 }
 
+function canonicalFieldKey(fieldOrKey) {
+  const rawKey = typeof fieldOrKey === "string"
+    ? fieldOrKey
+    : fieldOrKey?.canonicalKey || fieldOrKey?.field_key || fieldOrKey?.key;
+  return canonicalizeTransactionRecordKey(rawKey, "generic");
+}
+
+function canonicalFieldCategory(value, key = "") {
+  const canonicalKey = canonicalFieldKey(key);
+  const namespace = String(canonicalKey || "").split(".")[0].toLowerCase();
+  if (namespace === "asset") return "asset_identity";
+  if (namespace === "ownership") return "beneficial_ownership";
+  if (["transaction", "terms", "deal_terms", "hazard", "incident", "loss", "event", "timeline"].includes(String(value || "").toLowerCase())) {
+    return "transaction";
+  }
+  if (["asset", "asset_identity", "property", "company", "identity"].includes(String(value || "").toLowerCase())) {
+    return "asset_identity";
+  }
+  if (["party", "parties", "counterparties"].includes(String(value || "").toLowerCase())) return "parties";
+  if (["ownership", "beneficial_ownership", "cap_table"].includes(String(value || "").toLowerCase())) return "beneficial_ownership";
+  if (["finance", "financial", "financials", "economics", "insurance", "coverage", "repairs", "repair"].includes(String(value || "").toLowerCase())) return "financial";
+  if (["legal", "diligence", "regulatory", "document", "documents", "evidence"].includes(String(value || "").toLowerCase())) return "legal";
+  if (["approval", "approvals", "signoff"].includes(String(value || "").toLowerCase())) return "approvals";
+  return namespace || String(value || "transaction").toLowerCase();
+}
+
 function schemaFieldForDbField(dbField, allSchemaFields = []) {
   // Prefer an exact schema key over an alias whose canonicalKey happens to
   // match. Without this, transaction.purchase_price can be resolved as the
   // earlier transaction.value alias and then hidden as if it were a duplicate.
-  return allSchemaFields.find(field => field.key === dbField?.field_key)
+  const dbKey = canonicalFieldKey(dbField);
+  return allSchemaFields.find(field => canonicalFieldKey(field.key) === dbKey)
     || allSchemaFields.find(field =>
-      !field.aliasOf && (field.canonicalKey || field.key) === dbField?.field_key
+      !field.aliasOf && canonicalFieldKey(field.canonicalKey || field.key) === dbKey
     )
     || allSchemaFields.find(field =>
-      (field.canonicalKey || field.key) === dbField?.field_key
+      canonicalFieldKey(field.canonicalKey || field.key) === dbKey
     )
     || null;
 }
 
 function dbFieldMatchesSchema(dbField, schemaField, allSchemaFields = []) {
   if (!schemaField) return false;
-  const canonicalKey = schemaField.canonicalKey || schemaField.key;
-  return dbField.field_key === schemaField.key ||
-    dbField.field_key === canonicalKey ||
+  const canonicalKey = canonicalFieldKey(schemaField.canonicalKey || schemaField.key);
+  const dbKey = canonicalFieldKey(dbField);
+  return dbKey === canonicalKey ||
     allSchemaFields.some(field =>
-      field.aliasOf === canonicalKey && field.key === dbField.field_key
+      canonicalFieldKey(field.aliasOf) === canonicalKey && canonicalFieldKey(field.key) === dbKey
     );
 }
 
@@ -112,8 +140,8 @@ function canonicalFieldValue(schemaField, dbFields, allSchemaFields = []) {
   const matches = dbFields
     .filter(item => dbFieldMatchesSchema(item, schemaField, allSchemaFields))
     .sort((a, b) => {
-      const aCanonical = a.field_key === schemaField?.canonicalKey || a.field_key === schemaField?.key;
-      const bCanonical = b.field_key === schemaField?.canonicalKey || b.field_key === schemaField?.key;
+      const aCanonical = canonicalFieldKey(a) === canonicalFieldKey(schemaField);
+      const bCanonical = canonicalFieldKey(b) === canonicalFieldKey(schemaField);
       const aHasValue = Boolean(a.value_text || a.value_json);
       const bHasValue = Boolean(b.value_text || b.value_json);
       return Number(bCanonical) - Number(aCanonical) || Number(bHasValue) - Number(aHasValue);
@@ -154,14 +182,14 @@ function isSummarySchemaField(field, summaryKeys) {
 
 function canonicalRecordKey(field, seededFields) {
   const schema = schemaFieldForDbField(field, seededFields);
-  return schema?.canonicalKey || field?.field_key;
+  return canonicalFieldKey(schema?.canonicalKey || field?.field_key);
 }
 
 function uniqueCanonicalFields(fields, seededFields) {
   const result = [];
   const positions = new Map();
   for (const field of fields) {
-    const key = field.key ? (field.canonicalKey || field.key) : canonicalRecordKey(field, seededFields);
+    const key = field.key ? canonicalFieldKey(field.canonicalKey || field.key) : canonicalRecordKey(field, seededFields);
     if (!key) continue;
     const existingIndex = positions.get(key);
     if (existingIndex == null) {
@@ -756,7 +784,7 @@ function CategorySection({
 }) {
   // Auto-expand if category has conflicts or required missing fields
   const seededCat  = seededFields.filter(f =>
-    f.category === category.key && f.renderable !== false
+      canonicalFieldCategory(f.category, f.canonicalKey || f.key) === category.key && f.renderable !== false
   );
   const presentKeys = new Set(dbFields.map(field => field.field_key));
   const dedupedDbFields = dbFields.filter(field => {
@@ -766,7 +794,9 @@ function CategorySection({
       presentKeys.has(schemaField.canonicalKey);
     return !(schemaField?.aliasOf && canonicalPresent);
   });
-  const dbCat      = dedupedDbFields.filter(f => f.field_category === category.key);
+  const dbCat      = dedupedDbFields.filter(f =>
+    canonicalFieldCategory(f.field_category, f.field_key) === category.key
+  );
   const seededWithDependencies = seededCat.map(field => ({
     ...field,
     value: field.value || canonicalFieldValue(field, dbFields, seededFields),

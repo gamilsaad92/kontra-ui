@@ -29,6 +29,7 @@ import {
 } from "../../lib/workflowRoles";
 import { resolveParticipantStates } from "../../lib/participantState";
 import { isDigitalAssetLayerEnabled } from "../../lib/digitalAssetReadiness";
+import { canonicalizeTransactionRecordKey } from "../../../../shared/transactionRecordCanonicalization";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -4982,9 +4983,10 @@ function hasDocumentReviewFinding(analysis) {
 }
 
 function normalizeRecordCategory(value, key = '', label = '') {
+  const canonicalKey = canonicalizeTransactionRecordKey(key, 'generic');
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  const keyCategory = String(key || '').split('.')[0].toLowerCase();
-  const fieldText = `${key} ${label}`.toLowerCase();
+  const keyCategory = String(canonicalKey || key || '').split('.')[0].toLowerCase();
+  const fieldText = `${canonicalKey || key} ${label}`.toLowerCase();
   if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
     return 'asset_identity';
   }
@@ -5082,7 +5084,7 @@ function recordStateFieldForDefinition(definition, recordState) {
     definition?.key,
     definition?.definitionKey,
     definition?.aliasOf,
-  ].filter(Boolean);
+  ].filter(Boolean).map(key => canonicalizeTransactionRecordKey(key, 'generic'));
   const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
   const label = normalizeLabel(definition?.label);
   const definitionIdentities = new Set(definitions.map(normalizeAttentionFieldKey));
@@ -5594,7 +5596,9 @@ function getRecordFieldIdentitySet(field) {
     field?.canonicalKey,
     field?.persistedKey,
     field?.definitionKey,
-  ].filter(Boolean).map(normalizeAttentionFieldKey));
+  ].filter(Boolean).map(key => normalizeAttentionFieldKey(
+    canonicalizeTransactionRecordKey(key, 'generic'),
+  )));
 }
 
 function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {

@@ -31,7 +31,6 @@ const { selectActiveDocumentVersions } = require('./documentVersions');
 // table. Reconcile those stored findings on hydration so reopening a room is
 // enough to restore its blocking state. This is deliberately deterministic and
 // never calls an LLM.
-const recordNormalizeAt = new Map();
 const MONEY_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)/g;
 const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|hazard/i;
 
@@ -516,11 +515,149 @@ function looksLikeGeneratedRoom(room, proposal = null) {
     || Array.isArray(proposal?.transaction_record_fields);
 }
 
+function storedRecordValue(field) {
+  if (field?.value_text !== null && field?.value_text !== undefined
+    && String(field.value_text).trim() !== '') return field.value_text;
+  if (field?.value_json !== null && field?.value_json !== undefined) return field.value_json;
+  return null;
+}
+
+function comparableRecordValue(field, key) {
+  const value = storedRecordValue(field);
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const semantic = inferFactDefinition(key, value, field?.display_label || '');
+  return {
+    value,
+    semantic,
+    normalized: normalizeComparableValue(value, semantic),
+  };
+}
+
+function recordValuesDiffer(first, second, key) {
+  const a = comparableRecordValue(first, key);
+  const b = comparableRecordValue(second, key);
+  if (!a || !b) return false;
+  const comparison = compareComparableValues(a.normalized, b.normalized, a.semantic || b.semantic);
+  return comparison.comparable && !comparison.equivalent;
+}
+
+function recordSourceMetadata(field) {
+  return {
+    source_type: field?.source_type || null,
+    source_doc_id: field?.source_doc_id || null,
+    source_doc_version: field?.source_doc_version || null,
+    source_file_hash: field?.source_file_hash || null,
+    source_page: field?.source_page || null,
+    source_excerpt: field?.source_excerpt || null,
+    extraction_timestamp: field?.extraction_timestamp || null,
+    extracted_by: field?.extracted_by || null,
+    verified_by: field?.verified_by || null,
+    verified_role: field?.verified_role || null,
+    verified_at: field?.verified_at || null,
+  };
+}
+
+function mergeRecordMetadata(winner, duplicate) {
+  const update = {};
+  const winnerSource = recordSourceMetadata(winner);
+  const duplicateSource = recordSourceMetadata(duplicate);
+  for (const [column, value] of Object.entries(duplicateSource)) {
+    if ((winnerSource[column] === null || winnerSource[column] === undefined || winnerSource[column] === '')
+      && value !== null && value !== undefined && value !== '') {
+      update[column] = value;
+      winner[column] = value;
+    }
+  }
+  if ((winner.is_required == null || winner.is_required === false) && duplicate.is_required === true) {
+    winner.is_required = true;
+    update.is_required = true;
+  }
+  return update;
+}
+
+async function preserveCanonicalizedFieldHistory(propertyId, winner, duplicate, key) {
+  if (!winner?.id || !duplicate?.id || winner.id === duplicate.id) return true;
+  let preserved = true;
+  const { error: reassignError } = await supabase
+    .from('transaction_record_history')
+    .update({ field_id: winner.id })
+    .eq('property_id', propertyId)
+    .eq('field_id', duplicate.id);
+  if (reassignError && !/relation|schema cache|column/i.test(reassignError.message || '')) {
+    console.warn('[transaction-state] duplicate history reassignment failed:', reassignError.message);
+    preserved = false;
+  }
+  const { error: historyError } = await supabase.from('transaction_record_history').insert({
+    field_id: winner.id,
+    property_id: propertyId,
+    event_type: 'canonicalized_duplicate',
+    prior_value: storedRecordValue(duplicate),
+    new_value: storedRecordValue(winner),
+    prior_status: duplicate.status || null,
+    new_status: winner.status || null,
+    source_doc_id: duplicate.source_doc_id || null,
+    source_page: duplicate.source_page || null,
+    source_excerpt: duplicate.source_excerpt || null,
+    metadata: {
+      canonical_field_key: key,
+      original_field_id: duplicate.id,
+      original_field_key: duplicate.field_key || null,
+      materially_different: recordValuesDiffer(winner, duplicate, key),
+    },
+  });
+  if (historyError && !/relation|schema cache|column/i.test(historyError.message || '')) {
+    console.warn('[transaction-state] canonicalization history write failed:', historyError.message);
+    preserved = false;
+  }
+  return preserved;
+}
+
+async function persistCanonicalizedDuplicateConflict(propertyId, winner, duplicate, key) {
+  const winnerValue = storedRecordValue(winner);
+  const duplicateValue = storedRecordValue(duplicate);
+  if (!winnerValue || !duplicateValue || !recordValuesDiffer(winner, duplicate, key)) return null;
+
+  const payload = {
+    property_id: propertyId,
+    field_id: winner.id || null,
+    field_key: key,
+    display_label: winner.display_label || duplicate.display_label || key,
+    canonical_value: String(winnerValue).slice(0, 2000),
+    conflicting_value: String(duplicateValue).slice(0, 2000),
+    canonical_source_doc_id: winner.source_doc_id || null,
+    conflicting_source_doc_id: duplicate.source_doc_id || null,
+    canonical_source_page: winner.source_page || null,
+    conflicting_source_page: duplicate.source_page || null,
+    canonical_source_excerpt: winner.source_excerpt || null,
+    conflicting_source_excerpt: duplicate.source_excerpt || null,
+    status: 'unresolved',
+    updated_at: new Date().toISOString(),
+  };
+  const lookup = await supabase
+    .from('transaction_record_conflicts')
+    .select('id')
+    .eq('property_id', propertyId)
+    .eq('field_key', key)
+    .eq('status', 'unresolved')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lookup.error) {
+    if (/relation|schema cache|column/i.test(lookup.error.message || '')) return null;
+    throw lookup.error;
+  }
+  const saved = lookup.data?.id
+    ? await supabase.from('transaction_record_conflicts').update(payload).eq('id', lookup.data.id).select('*').single()
+    : await supabase.from('transaction_record_conflicts').insert(payload).select('*').single();
+  if (saved.error) {
+    if (/relation|schema cache|column/i.test(saved.error.message || '')) return null;
+    throw saved.error;
+  }
+  return saved.data || payload;
+}
+
 async function normalizeStoredTransactionRecord(propertyId, room, recordFields, schemaKey, proposal) {
   const fields = Array.isArray(recordFields) ? recordFields.map(field => ({ ...field })) : [];
-  const now = Date.now();
-  if (!propertyId || now - (recordNormalizeAt.get(propertyId) || 0) < 15000) return fields;
-  recordNormalizeAt.set(propertyId, now);
 
   const definitions = Array.isArray(proposal?.transaction_record_fields)
     ? proposal.transaction_record_fields : [];
@@ -562,17 +699,20 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
   const canonical = [];
   const deleteWrites = [];
   const updateWrites = [];
+  const persistedConflicts = [];
   for (const [key, group] of groups) {
     group.sort((a, b) => {
       const rankDelta = recordStatusRank(b.field) - recordStatusRank(a.field);
       if (rankDelta) return rankDelta;
-      if ((a.field.field_key === key) !== (b.field.field_key === key)) {
-        return a.field.field_key === key ? -1 : 1;
+       if ((a.originalKey === key) !== (b.originalKey === key)) {
+         return a.originalKey === key ? -1 : 1;
       }
       return new Date(b.field.updated_at || b.field.created_at || 0)
         - new Date(a.field.updated_at || a.field.created_at || 0);
     });
     const winner = group[0].field;
+    const materiallyDifferentDuplicate = group.slice(1)
+      .find(duplicate => recordValuesDiffer(winner, duplicate.field, key));
     const generatedDefinition = looksLikeGeneratedRoom(room, proposal)
       ? definitionByCanonicalKey.get(key)
       : null;
@@ -592,10 +732,31 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
         generatedDefinition.label,
       );
     }
+    if (materiallyDifferentDuplicate) {
+      const rawStatus = String(winner.status || '').toLowerCase();
+      winner.status = ['verified', 'confirmed', 'source_changed'].includes(rawStatus)
+        ? 'source_changed'
+        : 'conflicting';
+      const values = group
+        .map(item => storedRecordValue(item.field))
+        .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
+        .map(value => String(value).slice(0, 2000));
+      winner.conflict_candidates = [...new Set(values)];
+      const conflict = await persistCanonicalizedDuplicateConflict(
+        propertyId, winner, materiallyDifferentDuplicate.field, key,
+      );
+      if (conflict) persistedConflicts.push(conflict);
+    }
     canonical.push(winner);
     const original = recordFields.find(field => field.id === winner.id);
+    let metadataChanged = false;
     for (const duplicate of group.slice(1)) {
-      if (duplicate.field.id) {
+      const metadataUpdate = mergeRecordMetadata(winner, duplicate.field);
+      metadataChanged = metadataChanged || Object.keys(metadataUpdate).length > 0;
+      const historyPreserved = await preserveCanonicalizedFieldHistory(
+        propertyId, winner, duplicate.field, key,
+      );
+      if (duplicate.field.id && historyPreserved) {
         deleteWrites.push(supabase.from('transaction_record_fields')
           .delete().eq('id', duplicate.field.id).eq('property_id', propertyId));
       }
@@ -606,6 +767,9 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
       || winner.field_category !== original.field_category
       || winner.display_label !== original.display_label
       || winner.is_required !== original.is_required
+      || winner.status !== original.status
+      || JSON.stringify(winner.conflict_candidates || []) !== JSON.stringify(original.conflict_candidates || [])
+      || metadataChanged
     )) {
       updateWrites.push(supabase.from('transaction_record_fields').update({
         field_key: winner.field_key,
@@ -613,6 +777,9 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
         field_category: winner.field_category || String(key).split('.')[0] || 'transaction',
         display_label: winner.display_label || key,
         is_required: winner.is_required !== false,
+        status: winner.status || 'missing',
+        conflict_candidates: winner.conflict_candidates || [],
+        ...recordSourceMetadata(winner),
         updated_at: new Date().toISOString(),
       }).eq('id', winner.id).eq('property_id', propertyId));
     }
@@ -631,7 +798,7 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
       console.warn('[transaction-state] record normalization update failed:', failed.error.message);
     }
   }
-  return canonical;
+  return { fields: canonical, conflicts: persistedConflicts };
 }
 
 async function reconcileConfirmedFieldHistory(propertyId) {
@@ -915,10 +1082,10 @@ function recordStatusRank(field) {
 function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOverride = null, conflicts = []) {
   const allRequirements = getRequirements();
   const requiredDefinitions = requiredKeysOverride || allRequirements[schemaKey] || [];
-  const requiredKeys = [...new Set(requiredDefinitions.map(field =>
-    typeof field === 'string' ? field : field?.key
-  ).filter(Boolean))];
   const canonicalKey = field => canonicalizeTransactionRecordKey(field, schemaKey);
+  const requiredKeys = [...new Set(requiredDefinitions.map(field =>
+    canonicalKey(typeof field === 'string' ? field : field?.key)
+  ).filter(Boolean))];
   const byKey = new Map();
 
   for (const field of recordFields || []) {
@@ -952,7 +1119,7 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     return {
       key,
       fieldId: field.id || null,
-      persistedKey: field.field_key || key,
+      persistedKey: key,
       definitionKey: field.definition_key || key,
       category: normalizeRecordCategory(
         field.field_category,
@@ -1005,10 +1172,22 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
     const label = requiredLabelByKey.get(canonicalKey(key));
     const matchedByLabel = label ? fieldByLabel.get(label) : null;
     const matched = fieldByKey.get(key) || matchedByLabel;
+    const definition = requiredDefinitions.find(field =>
+      canonicalKey(typeof field === 'object' ? field?.key : field) === key
+        || (matched && typeof field === 'object'
+          && normalizeRecordLabel(field.label || field.display_label)
+            === normalizeRecordLabel(matched.label))
+    );
     if (matched) {
       return {
         ...matched,
-        definitionKey: matched.definition_key || key,
+        persistedKey: matched.key || key,
+        definitionKey: (typeof definition === 'object'
+          ? (definition.definitionKey || definition.key)
+          : null)
+          || matched.definition_key
+          || matched.definitionKey
+          || key,
         required: true,
         isRequired: matched.is_required !== false,
       };
@@ -1018,10 +1197,12 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       definitionKey: key,
       fieldId: null,
       persistedKey: key,
-      category: String(key).split('.')[0] || 'transaction',
-      label: requiredDefinitions.find(field =>
-        (typeof field === 'object' ? field?.key : field) === key
-      )?.label || key,
+      category: normalizeRecordCategory(
+        definition?.category,
+        key,
+        definition?.label || key,
+      ),
+      label: definition?.label || key,
       value: null,
       status: 'missing',
       rawStatus: null,
@@ -1276,7 +1457,7 @@ async function readTransactionState(propertyId) {
   // Never let an equivalent or superseded existing-room conflict leak through
   // to readiness, Overview, or Operations Manager just because that update
   // could not be persisted on this runtime.
-  const conflicts = filterRetiredTransactionConflicts(
+  let conflicts = filterRetiredTransactionConflicts(
     storedConflicts,
     conflictReconciliation,
   );
@@ -1295,9 +1476,17 @@ async function readTransactionState(propertyId) {
   )) {
     schemaKey = 'generated_ai';
   }
-  recordFields = await normalizeStoredTransactionRecord(
+  const normalizedRecord = await normalizeStoredTransactionRecord(
     propertyId, room, recordFields || [], schemaKey, generatedProposal,
   );
+  recordFields = normalizedRecord.fields;
+  if (normalizedRecord.conflicts?.length) {
+    const byConflictId = new Map((conflicts || []).map(conflict => [conflict.id, conflict]));
+    for (const conflict of normalizedRecord.conflicts) {
+      if (conflict?.id) byConflictId.set(conflict.id, conflict);
+    }
+    conflicts = [...byConflictId.values()];
+  }
   const dynamicRequiredKeys = schemaKey === 'generated_ai'
      ? ((recordFields || []).some(field => field.definition_key)
        ? (recordFields || []).filter(field => field.is_required !== false).map(field => ({
@@ -1392,6 +1581,7 @@ module.exports = {
   resolveSchemaKey,
   computeTransactionReadiness,
   computeTransactionRecordState,
+  normalizeStoredTransactionRecord,
   isConflictSupportedByActiveEvidence,
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,

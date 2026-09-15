@@ -3963,6 +3963,7 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
       source_changed: 4, extracted: 3, needs_review: 3, awaiting: 3,
     }[String(row?.status || '').toLowerCase()] || (row?.value_text ? 2 : 0));
     const existingRows = lookup.data || [];
+    const canonicalExisting = existingRows.find(row => row.field_key === fieldKey) || null;
     let existing = existingRows
       .slice()
       .sort((a, b) => {
@@ -3972,13 +3973,10 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
       })[0] || null;
     const lookupError = lookup.error;
     if (lookupError) throw lookupError;
-    const duplicateRows = existingRows.filter(row => row.id !== existing?.id);
-    if (existing && duplicateRows.length) {
-      const { error: deleteError } = await supabase.from('transaction_record_fields')
-        .delete().eq('property_id', propertyId).in('id', duplicateRows.map(row => row.id));
-      if (deleteError) throw deleteError;
-    }
-    if (existing && existing.field_key !== fieldKey) {
+    // Do not delete alias rows here. Hydration performs the shared
+    // canonicalization/merge boundary so equivalent duplicates retain their
+    // provenance and materially different values become durable conflicts.
+    if (existing && existing.field_key !== fieldKey && !canonicalExisting) {
       const { error: moveError } = await supabase.from('transaction_record_fields')
         .update({ field_key: fieldKey, updated_at: now })
         .eq('id', existing.id).eq('property_id', propertyId);
@@ -4919,8 +4917,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         || null;
       const aliasRows = (existingRows || []).filter(row => row.id !== existing?.id);
 
-      // Migrate a legacy alias row in place when no canonical row exists. If
-      // both exist, keep one canonical row and remove duplicate alias rows.
+       // Migrate a legacy alias row in place when no canonical row exists.
+       // When both exist, hydration owns the merge so it can preserve history
+       // and create a conflict for materially different values.
       if (existing && existing.field_key !== canonicalKey) {
         const { error: aliasMoveError } = await supabase
           .from('transaction_record_fields')
@@ -4930,23 +4929,6 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         if (aliasMoveError) throw aliasMoveError;
         existing = { ...existing, field_key: canonicalKey };
       }
-      if (aliasRows.length > 0 && existing) {
-        const aliasWithSource = aliasRows.find(row => row.source_doc_id);
-        if (!existing.source_doc_id && aliasWithSource?.source_doc_id) {
-          await supabase.from('transaction_record_fields').update({
-            source_doc_id: aliasWithSource.source_doc_id,
-            source_page: aliasWithSource.source_page || null,
-            source_excerpt: aliasWithSource.source_excerpt || null,
-          }).eq('id', existing.id).eq('property_id', propertyId);
-        }
-        const { error: duplicateDeleteError } = await supabase
-          .from('transaction_record_fields')
-          .delete()
-          .eq('property_id', propertyId)
-          .in('id', aliasRows.map(row => row.id));
-        if (duplicateDeleteError) throw duplicateDeleteError;
-      }
-
       const priorValue = existing?.value_text || null;
       const priorStatus = existing?.status || null;
       const priorComparable = existing?.value_text
@@ -10476,11 +10458,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
           .update({ field_key: canonicalFieldKey, field_category: canonicalFieldCategory, updated_at: now })
           .eq('id', existing.id).eq('property_id', propertyId);
       }
-      const duplicateIds = existingRows.filter(row => row.id !== existing.id).map(row => row.id).filter(Boolean);
-      if (duplicateIds.length) {
-        await supabase.from('transaction_record_fields').delete()
-          .eq('property_id', propertyId).in('id', duplicateIds);
-      }
+      // Leave alias rows for the shared hydration reconciliation. It merges
+      // equivalent values with provenance/history and records a durable
+      // conflict before removing materially different duplicate rows.
         await recalculateTransactionState(propertyId, {
           source: 'transaction_record_field_updated',
           actorId: access.actorId,
