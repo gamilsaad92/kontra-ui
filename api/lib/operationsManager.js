@@ -16,6 +16,7 @@ const { readTransactionState } = require('./transactionState');
 const {
   projectDocumentChecklist,
 } = require('./documentStatus');
+const { buildStageDecision } = require('./stageDecision');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -162,7 +163,20 @@ function taskEvidence(task) {
   return [];
 }
 
-function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
+function buildPackLifecycle(packId, stageKey, generatedProposal = null, customStages = null) {
+  if (Array.isArray(customStages) && customStages.length >= 2) {
+    const stages = customStages
+      .filter(stage => stage?.key)
+      .map(stage => ({ key: stage.key, label: stage.label || stage.key }));
+    const current = stages.find(stage => stage.key === stageKey) || null;
+    return {
+      source: 'room_custom_stage_configuration',
+      packId,
+      currentStageKey: stageKey || null,
+      currentStageLabel: current?.label || null,
+      stages,
+    };
+  }
   if (generatedProposal?.stages?.length) {
     const stages = generatedProposal.stages.map(stage => ({ key: stage.key, label: stage.name }));
     const current = stages.find(stage => stage.key === stageKey) || null;
@@ -553,6 +567,29 @@ async function buildGroundedContext(propertyId) {
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
+  const lifecycle = buildPackLifecycle(
+    packId,
+    room?.deal_stage || null,
+    generatedProposal,
+    room?.stages_config,
+  );
+  const groundedBlockers = buildGroundedBlockers({
+    packId,
+    recordState,
+    missingDocuments,
+    participants: participantContext,
+    tasks,
+    participantDefinitions,
+    conflicts,
+  });
+  const stageDecision = buildStageDecision({
+    lifecycle,
+    checklist,
+    recordState,
+    readiness: transactionState.readiness,
+    groundedBlockers,
+    packId,
+  });
   const recordStateFields = recordState.fields || [];
   const meaningfulRecordField = key => recordStateFields.find(field =>
     field.key === key
@@ -668,16 +705,9 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
-     lifecycle: buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal),
-    groundedBlockers: buildGroundedBlockers({
-      packId,
-      recordState,
-      missingDocuments,
-      participants: participantContext,
-      tasks,
-      participantDefinitions,
-      conflicts,
-    }),
+      lifecycle,
+      stageDecision,
+      groundedBlockers,
     transactionContext,
     recordState,
     readiness: transactionState.readiness,
@@ -703,6 +733,7 @@ function contextToPrompt(ctx) {
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
+      stage_decision: ctx.stageDecision,
       transaction_record_facts: ctx.recordFacts,
       transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
@@ -737,6 +768,7 @@ function askContextToPrompt(ctx) {
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
+      stage_decision: ctx.stageDecision,
       transaction_record_facts: ctx.recordFacts,
       transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
@@ -757,7 +789,7 @@ function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
 }
 
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
-You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, transaction_record_facts, document_findings). Never invent
+You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, stage_decision, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 Treat active_document_state as the source of truth for document receipt: an active uploaded,
@@ -771,6 +803,7 @@ generic template or from outside this room. A populated Transaction Record field
 incomplete field; do not describe it as awaiting completion.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
+When asked whether the transaction should advance, follow stage_decision exactly. Give a direct yes/no recommendation for the immediate next stage and name the recorded blockers; do not answer with a document inventory instead.
 This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement, determined an exemption, approved an offering, or established eligibility. Use preparation, coordination, professional-review, and external-provider-handoff language instead.
 Tokenization and digital-asset preparation are optional downstream paths. They never replace the transaction workflow and must not be presented as a default outcome.
 
@@ -788,6 +821,10 @@ documents, or requirements from general CRE, lending, legal, or financial knowle
 
 LIFECYCLE RULE: The lifecycle object is the only source for current stage and stage order. Use its
 resolved Workflow Pack and room stage exactly. Never substitute a generic lending or CRE lifecycle.
+
+STAGE DECISION RULE: stage_decision is the canonical operational recommendation. When the user asks
+whether the transaction should advance, answer directly from recommendationAllowed, nextStage, reason,
+and blockers. Do not replace that decision with a list of uploaded documents.
 
 BLOCKER RULE: The blockers array is the complete factual blocker list. It contains only required
 document gaps, required participant state, canonical required Transaction Record gaps/conflicts,
@@ -810,6 +847,30 @@ function isDocumentStatusQuestion(question) {
   const text = String(question || '');
   return /\b(?:document|documents|file|files|paperwork|checklist)\b/i.test(text)
     && /\b(?:missing|required|received|uploaded|processing|submitted|status|have|need)\b/i.test(text);
+}
+
+function isStageDecisionQuestion(question) {
+  const text = String(question || '');
+  return /\b(?:advance|proceed|move\s+forward|next\s+stage|progress|ready)\b/i.test(text)
+    && /\b(?:should|can|recommend|decision|transaction|deal|closing|stage)\b/i.test(text);
+}
+
+function buildStageDecisionAnswer(ctx) {
+  const decision = ctx.stageDecision;
+  if (!decision) {
+    return 'The live stage decision is unavailable right now; refresh the room and try again.';
+  }
+  if (!decision.nextStage) {
+    return decision.reason || 'The current workflow stage has no later stage configured.';
+  }
+  if (decision.recommendationAllowed) {
+    return `Yes — the transaction can advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key}. ${decision.reason}`;
+  }
+  const blockers = (decision.blockers || [])
+    .slice(0, 5)
+    .map(blocker => `${blocker.label}: ${blocker.detail}`)
+    .join(' ');
+  return `No — do not advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key} yet. ${blockers || decision.reason}`;
 }
 
 function buildDocumentStatusAnswer(ctx) {
@@ -1071,6 +1132,14 @@ async function askQuestion(propertyId, question) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
   const ctx = await buildGroundedContext(propertyId);
+  if (isStageDecisionQuestion(question)) {
+    return {
+      answer: buildStageDecisionAnswer(ctx),
+      citedTaskIds: (ctx.stageDecision?.blockers || [])
+        .map(blocker => blocker.taskId)
+        .filter(Boolean),
+    };
+  }
   if (isDocumentStatusQuestion(question)) {
     return {
       answer: buildDocumentStatusAnswer(ctx),
@@ -1095,8 +1164,8 @@ async function askQuestion(propertyId, question) {
         citedTaskIds: ctx.openTasks.map(t => t.id),
       };
     }
-    return {
-      answer: `AI reasoning is temporarily unavailable. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
+      return {
+        answer: `AI reasoning is temporarily unavailable. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
       citedTaskIds: ctx.openTasks.map(t => t.id),
     };
   }

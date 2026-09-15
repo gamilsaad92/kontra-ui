@@ -1438,7 +1438,7 @@ async function readTransactionState(propertyId) {
   await reconcileConfirmedFieldHistory(propertyId);
   const roomQuery = supabase
     .from('deal_rooms')
-    .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
+    .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, stages_config, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
     .eq('property_id', propertyId)
     .maybeSingle();
   const [{ data: initialRoom, error: initialRoomError }, fieldsResult, conflictsResult] = await Promise.all([
@@ -1469,7 +1469,7 @@ async function readTransactionState(propertyId) {
   if (roomError && /column|schema cache|base_pack|generated_proposal/i.test(roomError.message || '')) {
     const legacy = await supabase
       .from('deal_rooms')
-      .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
+       .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, deal_type, deal_stage, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
       .eq('property_id', propertyId)
       .maybeSingle();
     room = legacy.data;

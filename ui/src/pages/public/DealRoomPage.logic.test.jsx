@@ -160,6 +160,42 @@ describe('coordinator transaction brief logic', () => {
     expect(getLifecycleAdvanceRecommendation(stages, 0, analyses, true)).toBeNull();
   });
 
+  test('suppresses a milestone recommendation when the canonical stage decision has blockers', () => {
+    const analyses = [{ section: 'purchase_agreement', processing_status: 'complete', analysis: { summary: 'Executed' } }];
+
+    expect(getLifecycleAdvanceRecommendation(
+      stages,
+      0,
+      analyses,
+      false,
+      {
+        recommendationAllowed: false,
+        nextStage: stages[1],
+        blockers: [{ key: 'required-document:financials', label: 'Financial Statements', detail: 'A required document is missing.' }],
+      },
+    )).toBeNull();
+  });
+
+  test('uses the canonical stage decision when all stage conditions are satisfied', () => {
+    const recommendation = getLifecycleAdvanceRecommendation(
+      stages,
+      0,
+      [],
+      true,
+      {
+        recommendationAllowed: true,
+        currentStage: stages[0],
+        nextStage: stages[1],
+        reason: 'The canonical requirements for Approved are satisfied.',
+      },
+    );
+
+    expect(recommendation).toEqual(expect.objectContaining({
+      stage: stages[1],
+      reason: 'The canonical requirements for Approved are satisfied.',
+    }));
+  });
+
   test('counts conflicts as open issues even when there are no checklist blockers', () => {
     expect(getOpenIssueCount([{ key: 'legal.title_status' }], [])).toBe(1);
     expect(getOpenIssueCount([], [{ key: 'next-doc-purchase_agreement' }])).toBe(1);

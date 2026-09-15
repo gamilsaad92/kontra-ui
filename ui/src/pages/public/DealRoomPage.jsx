@@ -4963,7 +4963,25 @@ function getLifecycleEvidenceSections(stage) {
   return null;
 }
 
-function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, hasBlockingIssues = false) {
+function getLifecycleAdvanceRecommendation(
+  stages,
+  currentStageIndex,
+  analyses,
+  hasBlockingIssues = false,
+  canonicalDecision,
+) {
+  if (canonicalDecision !== undefined) {
+    if (canonicalDecision?.loading || !canonicalDecision?.recommendationAllowed) return null;
+    const canonicalStage = stages.find(stage =>
+      stage.key === canonicalDecision.nextStage?.key
+    ) || canonicalDecision.nextStage;
+    if (!canonicalStage) return null;
+    return {
+      stage: canonicalStage,
+      evidence: [],
+      reason: canonicalDecision.reason || `The canonical requirements for ${canonicalStage.label || canonicalStage.key} are satisfied.`,
+    };
+  }
   if (hasBlockingIssues) return null;
   if (!Array.isArray(stages) || currentStageIndex < 0 || currentStageIndex >= stages.length - 1) return null;
   const usableAnalyses = (analyses || []).filter(analysis =>
@@ -6270,6 +6288,7 @@ function TransactionBrief({
   stages = [],
   currentStage,
   currentStageIndex,
+  canonicalStageDecision,
   events = [],
   loading,
   ownerToken,
@@ -6336,12 +6355,16 @@ function TransactionBrief({
   const goToRecord = field => {
     onOverviewAction?.({ type: 'record', field });
   };
-  const hasBlockingIssues = allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
+  const hasCanonicalStageDecision = canonicalStageDecision && !canonicalStageDecision.loading;
+  const hasBlockingIssues = hasCanonicalStageDecision
+    ? canonicalStageDecision.recommendationAllowed !== true
+    : allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
   const stageRecommendation = getLifecycleAdvanceRecommendation(
     stages,
     currentStageIndex,
     analyses,
     hasBlockingIssues,
+    canonicalStageDecision,
   );
   const openIssueCount = getOpenIssueCount(
     allConflicts,
@@ -6392,6 +6415,18 @@ function TransactionBrief({
           }),
         },
      })),
+    ...(!stageRecommendation && hasCanonicalStageDecision
+      ? (canonicalStageDecision.blockers || [])
+        .filter(blocker => !['required_document', 'transaction_record'].includes(blocker.sourceType))
+        .slice(0, 2)
+        .map(blocker => ({
+          key: `stage-blocker-${blocker.key}`,
+          tone: 'red',
+          text: blocker.label,
+          detail: blocker.detail,
+          action: { label: 'Review stage', onClick: () => setStageDecision('review') },
+        }))
+      : []),
   ].slice(0, 5);
 
   async function acceptStageRecommendation() {
@@ -8605,6 +8640,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [stageActionError, setStageActionError] = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
   const [recordFocus, setRecordFocus] = useState(null);
+  const [stageDecisionState, setStageDecisionState] = useState(null);
+  const [stageDecisionLoaded, setStageDecisionLoaded] = useState(false);
   const loadSequence = useRef(0);
 
   useEffect(() => {
@@ -8650,6 +8687,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
               : (pack.stages || []),
           ),
         )),
+      get(`/api/public/deal-room/${propertyId}/stage-decision`, { stageDecision: null })
+        .then(data => {
+          if (sequence !== loadSequence.current) return;
+          setStageDecisionState(data?.stageDecision || null);
+          setStageDecisionLoaded(true);
+        }),
       get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
         .then(record => {
           if (sequence !== loadSequence.current) return;
@@ -9129,6 +9172,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             stages={stages}
             currentStage={currentStage}
             currentStageIndex={currentStageIndex}
+            canonicalStageDecision={stageDecisionLoaded ? stageDecisionState : { loading: true }}
             events={events}
             loading={loading}
             ownerToken={ownerToken}

@@ -65,7 +65,11 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
-const { clearBriefingCache, askQuestion } = require('./lib/operationsManager');
+const {
+  clearBriefingCache,
+  askQuestion,
+  buildGroundedContext,
+} = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
 const {
   runVerification,
@@ -7827,6 +7831,24 @@ app.get('/api/public/deal-room/:propertyId/readiness', async (req, res) => {
     schema_version:      '1.0',
     generated_at:        new Date().toISOString(),
   });
+});
+
+// The coordinator and Kontra AI use the same canonical stage decision. This
+// endpoint is advisory only; the owner-controlled advance endpoint remains the
+// authority for an explicit workflow override.
+app.get('/api/public/deal-room/:propertyId/stage-decision', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+    const context = await buildGroundedContext(propertyId);
+    return res.json({
+      stageDecision: context.stageDecision || null,
+    });
+  } catch (error) {
+    console.error('[stage-decision]', error.message);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 // ── Jurisdiction update (task #167) ─────────────────────────────────────────

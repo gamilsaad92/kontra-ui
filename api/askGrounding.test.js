@@ -858,6 +858,50 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
+  test('answers stage advancement from the same canonical blockers used by the coordinator', async () => {
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'business_acquisition',
+      room: {
+        property_name: 'Canonical stage decision room',
+        workflow_pack_id: 'business_acquisition',
+        deal_type: 'business_acquisition',
+        deal_stage: 'under_review',
+        checklist_items: [{
+          id: 'required-document',
+          section: 'required-document',
+          label: 'Required document',
+          required: true,
+          documentState: 'missing',
+          documentReceived: false,
+        }],
+      },
+      recordState: {
+        schemaKey: 'business_acquisition',
+        fields: [{ key: 'transaction.value', label: 'Transaction value', status: 'awaiting', value: 'Known value' }],
+        requiredFields: [{ key: 'transaction.value', label: 'Transaction value', status: 'awaiting', value: 'Known value' }],
+        requiredCount: 1,
+        confirmedCount: 0,
+        awaitingRequiredCount: 1,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      readiness: { approvalReady: true, fundReleaseReady: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    setupSupabaseQueries('business_acquisition');
+
+    const result = await askQuestion(
+      'canonical-stage-decision-room',
+      'Should this transaction advance to the next stage?',
+    );
+
+    expect(result.answer).toContain('No — do not advance');
+    expect(result.answer).toContain('Required document');
+    expect(result.answer).toContain('Transaction value');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {
     const propertyId = 'briefing-cache-room';
     const checklist = [
