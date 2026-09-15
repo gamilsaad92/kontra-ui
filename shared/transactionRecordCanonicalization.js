@@ -41,6 +41,7 @@ const UNIVERSAL_ALIASES = {
   'transaction.target_close_date': 'transaction.closing_date',
   'transaction.scheduled_closing_date': 'transaction.closing_date',
   'transaction.expected_closing_date': 'transaction.closing_date',
+  'transaction.structure': 'transaction.transaction_structure',
   'transaction.due_diligence_expiration': 'transaction.dd_expiration',
   'asset.property_address': 'asset.address',
   'asset.address_line': 'asset.address',

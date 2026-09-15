@@ -3078,6 +3078,65 @@ function getRecordActionTarget(field, definitions = [], recordState = null, opti
   ) || field || {};
 }
 
+function canonicalRecordDefinitionKey(field) {
+  const rawKey = field?.canonicalKey
+    || field?.key
+    || field?.field_key
+    || field?.definitionKey
+    || field?.definition_key;
+  return canonicalizeTransactionRecordKey(rawKey, 'generic');
+}
+
+function dedupeCanonicalRecordDefinitions(fields = []) {
+  const result = [];
+  const positions = new Map();
+  (Array.isArray(fields) ? fields : []).forEach(field => {
+    const sourceKey = field?.key
+      || field?.field_key
+      || field?.canonicalKey
+      || field?.definitionKey
+      || field?.definition_key
+      || '';
+    const canonicalKey = canonicalRecordDefinitionKey(field);
+    if (!canonicalKey) return;
+    const normalized = {
+      ...field,
+      key: canonicalKey,
+      canonicalKey,
+      aliasOf: null,
+      __sourceKey: sourceKey,
+    };
+    const existingIndex = positions.get(canonicalKey);
+    if (existingIndex == null) {
+      positions.set(canonicalKey, result.length);
+      result.push(normalized);
+      return;
+    }
+
+    const existing = result[existingIndex];
+    // Prefer the definition that already uses the canonical persisted key.
+    // Room-specific definitions still contribute their label/category metadata
+    // when the static schema supplied the first copy.
+    const existingRawKey = existing.__sourceKey || existing.key || existing.field_key;
+    const incomingRawKey = sourceKey;
+    const incomingIsCanonical = incomingRawKey === canonicalKey;
+    const existingIsCanonical = existingRawKey === canonicalKey;
+    const winner = incomingIsCanonical && !existingIsCanonical ? normalized : existing;
+    const secondary = winner === normalized ? existing : normalized;
+    result[existingIndex] = {
+      ...secondary,
+      ...winner,
+      key: canonicalKey,
+      canonicalKey,
+      aliasOf: null,
+      label: winner.label || winner.display_label || secondary.label || secondary.display_label || canonicalKey,
+      category: winner.category || winner.field_category || secondary.category || secondary.field_category,
+      __sourceKey: winner.__sourceKey || winner.key || winner.field_key,
+    };
+  });
+  return result.map(({ __sourceKey, ...field }) => field);
+}
+
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
 // Unified prioritized feed merging AI findings, next actions, and issues.
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
@@ -3963,10 +4022,13 @@ function DigitalAssetReadinessSection({
       : (generatedSchemaKeys.length
         ? generatedSchemaKeys.map(key => ({ key }))
         : getRequiredRecordFields(schemaKey)))
-      .map(field => field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey)
+      .map(field => canonicalizeTransactionRecordKey(
+        field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey,
+        'generic',
+      ))
       .filter(Boolean),
   );
-  const baseSchemaFields = generatedFields.length
+  const baseSchemaFields = dedupeCanonicalRecordDefinitions(generatedFields.length
     ? generatedFields.map(field => ({
         ...field,
         category: normalizeRecordCategory(field.category || field.field_category, field.key),
@@ -3976,14 +4038,17 @@ function DigitalAssetReadinessSection({
       }))
     : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
         fields.map(field => ({ ...field, category })),
-      );
+      ));
   // The canonical API can contain required fields added by a room-specific
   // workflow pack that is not present in the older static schema. Keep those
   // fields visible so Overview actions never land on an empty category.
-  const canonicalSchemaFields = (canonicalRecordState?.requiredFields || [])
+  const canonicalSchemaFields = dedupeCanonicalRecordDefinitions((canonicalRecordState?.requiredFields || [])
     .map(field => {
       const key = field?.key || field?.persistedKey || field?.field_key || field?.definitionKey || '';
-      const canonicalKey = field?.canonicalKey || field?.definitionKey || field?.persistedKey || key;
+      const canonicalKey = canonicalizeTransactionRecordKey(
+        field?.canonicalKey || field?.definitionKey || field?.persistedKey || key,
+        'generic',
+      );
       const uiCategory = getTransactionRecordCategory({ ...field, field_key: key });
       const category = {
         parties: 'parties',
@@ -4002,25 +4067,25 @@ function DigitalAssetReadinessSection({
         renderable: true,
       };
     })
-    .filter(field => field.key);
+    .filter(field => field.key));
   const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(
     property,
     canonicalRecordState,
     recordFields,
   );
   const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
-  const rawSchemaFields = [
+  const rawSchemaFields = dedupeCanonicalRecordDefinitions([
     ...baseSchemaFields,
     ...canonicalSchemaFields.filter(field =>
-      !schemaFieldKeys.has(field.canonicalKey || field.key)
+      !schemaFieldKeys.has(canonicalRecordDefinitionKey(field))
     ),
     ...operationalSchemaFields.filter(field =>
-      !schemaFieldKeys.has(field.canonicalKey || field.key)
+      !schemaFieldKeys.has(canonicalRecordDefinitionKey(field))
       && !canonicalSchemaFields.some(canonical =>
-        (canonical.canonicalKey || canonical.key) === (field.canonicalKey || field.key)
+        canonicalRecordDefinitionKey(canonical) === canonicalRecordDefinitionKey(field)
       )
     ),
-  ];
+  ]);
   const operationalByIdentity = new Map();
   operationalSchemaFields.forEach(field => {
     [
@@ -4075,11 +4140,14 @@ function DigitalAssetReadinessSection({
 
   // Returns field objects from recordFields that match a given key (supports * prefix)
   function matchingFields(keyDef) {
-    const keys = [keyDef.key, keyDef.definitionKey, keyDef.aliasOf, keyDef.canonicalKey].filter(Boolean);
+    const keys = [keyDef.key, keyDef.definitionKey, keyDef.aliasOf, keyDef.canonicalKey]
+      .filter(Boolean)
+      .map(key => canonicalizeTransactionRecordKey(key, 'generic'));
     return recordFields.filter(f =>
       keyDef.key.endsWith('*')
         ? f.field_key?.startsWith(keyDef.key.slice(0, -1))
-        : keys.includes(f.field_key) || (f.definition_key && keys.includes(f.definition_key))
+        : keys.includes(canonicalizeTransactionRecordKey(f.field_key, 'generic'))
+          || (f.definition_key && keys.includes(canonicalizeTransactionRecordKey(f.definition_key, 'generic')))
     );
   }
 
@@ -6657,6 +6725,8 @@ export {
   isBorrowerFundsRecordAction,
   normalizeRecordCategory,
   getTransactionRecordCategory,
+  canonicalRecordDefinitionKey,
+  dedupeCanonicalRecordDefinitions,
   getRecordActionTarget,
   normalizeAttentionFieldKey,
   getHazardLossOperationalFieldDefinitions,

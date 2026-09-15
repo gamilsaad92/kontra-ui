@@ -25,6 +25,8 @@ const {
   alignVerifiedAssetReadinessToRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
+  canonicalRecordDefinitionKey,
+  dedupeCanonicalRecordDefinitions,
   getRecordActionTarget,
   normalizeAttentionFieldKey,
   getCurrentProvenanceGap,
@@ -548,6 +550,35 @@ describe('coordinator transaction brief logic', () => {
       'confirmed',
     ]);
     expect(getCanonicalAwaitingRecordFields(state)).toEqual([]);
+  });
+
+  test('deduplicates category definitions and rendered rows by canonical identity', () => {
+    const definitions = dedupeCanonicalRecordDefinitions([
+      { key: 'parties.seller', label: 'Seller Entity', category: 'parties' },
+      { key: 'seller_entity', label: 'Seller Entity', category: 'parties' },
+      { key: 'parties.buyer', label: 'Buyer Entity', category: 'parties' },
+      { key: 'buyer_entity', label: 'Buyer Entity', category: 'parties' },
+      { key: 'transaction.transaction_structure', label: 'Transaction Structure', category: 'transaction' },
+      { key: 'transaction_structure', label: 'Transaction Structure', category: 'transaction' },
+      { key: 'transaction.closing_date', label: 'Target Closing Date', category: 'transaction' },
+      { key: 'target_closing_date', label: 'Target Closing Date', category: 'transaction' },
+    ]);
+
+    expect(definitions).toHaveLength(4);
+    expect(definitions.map(field => canonicalRecordDefinitionKey(field))).toEqual([
+      'parties.seller',
+      'parties.buyer',
+      'transaction.transaction_structure',
+      'transaction.closing_date',
+    ]);
+    expect(new Set(definitions.map(field => field.key)).size).toBe(definitions.length);
+
+    const partyRows = definitions.filter(field => field.category === 'parties');
+    const transactionRows = definitions.filter(field => field.category === 'transaction');
+    expect(partyRows).toHaveLength(2);
+    expect(transactionRows).toHaveLength(2);
+    expect(new Set(partyRows.map(field => field.key)).size).toBe(partyRows.length);
+    expect(new Set(transactionRows.map(field => field.key)).size).toBe(transactionRows.length);
   });
 
   test('replaces a previous canonical array when the newer response is empty', () => {
