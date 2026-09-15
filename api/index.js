@@ -124,6 +124,7 @@ const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
 } = require('./lib/documentVersions');
+const { projectDocumentChecklist } = require('./lib/documentStatus');
 
 // Every verification write must reconcile the shared coordinator projections.
 // This is registered once at application startup so manual reruns and all
@@ -5291,6 +5292,27 @@ async function getCanonicalChecklist(packId, propertyType) {
 // fallback. Reads must not mutate a room, because legacy rooms can legitimately
 // have no persisted checklist and the Production audit is read-only.
 
+async function loadChecklistAnalyses(propertyId) {
+  const selects = [
+    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
+  ];
+  let lastError = null;
+  for (const select of selects) {
+    const result = await supabase
+      .from('deal_analyses')
+      .select(select)
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+    if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) break;
+  }
+  if (lastError) console.warn('[checklist] could not load document evidence:', lastError.message);
+  return [];
+}
+
 app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
   try {
@@ -5303,11 +5325,13 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Workspace not found' });
+    const analyses = await loadChecklistAnalyses(propertyId);
 
     // Already saved — return as-is (deterministic after first seed)
     if (Array.isArray(data.checklist_items) && data.checklist_items.length > 0) {
+      const projected = projectDocumentChecklist(data.checklist_items, analyses);
       const items = await scopeChecklistItemsForAccess(
-        data.checklist_items,
+        projected.items,
         access,
         data.workflow_pack_id,
         data.property_type,
@@ -5330,8 +5354,9 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
         sortOrder:  i,
         status:     'missing',
       }));
+      const projected = projectDocumentChecklist(items, analyses);
       const scopedItems = await scopeChecklistItemsForAccess(
-        items,
+        projected.items,
         access,
         data.workflow_pack_id,
         data.property_type,

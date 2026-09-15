@@ -923,6 +923,14 @@ export default function DocumentChecklistPanel({
   const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
   const analysisRecordBySection = Object.fromEntries(analyses.map(a => [a.section, a]));
+  const hasCanonicalDocumentState = Array.isArray(items)
+    && items.some(item => Object.prototype.hasOwnProperty.call(item, "documentState"));
+  const isDocumentReceived = item => hasCanonicalDocumentState
+    ? item.documentReceived === true
+    : uploadedSections.has(item.section);
+  const isDocumentUnderReview = item => hasCanonicalDocumentState
+    ? item.documentState === "needs_review"
+    : analysisBySection[item.section]?.pending === true;
 
   // Build the template this role should see
   const schemaItems = workflowPack.getDocumentSchema?.(propertyType, jurisdiction) || [];
@@ -944,8 +952,8 @@ export default function DocumentChecklistPanel({
     : myItems;
 
   const requiredItems = template.filter(i => i.required);
-  const doneCount = template.filter(i => uploadedSections.has(i.section)).length;
-  const requiredDone = requiredItems.filter(i => uploadedSections.has(i.section)).length;
+  const doneCount = template.filter(isDocumentReceived).length;
+  const requiredDone = requiredItems.filter(isDocumentReceived).length;
   const pct = template.length > 0 ? Math.round((doneCount / template.length) * 100) : 0;
   const allRequiredDone = requiredDone === requiredItems.length && requiredItems.length > 0;
 
@@ -979,11 +987,11 @@ export default function DocumentChecklistPanel({
 
   // ── Item renderer ─────────────────────────────────────────────────────────
   function renderItem(item, idx, totalInGroup) {
-    const done = uploadedSections.has(item.section);
+    const done = isDocumentReceived(item);
     const isUploading = uploadingSection === item.section;
     const analysis = analysisBySection[item.section];
     const analysisRecord = analysisRecordBySection[item.section];
-    const isPending = analysis?.pending;
+    const isPending = isDocumentUnderReview(item);
     const issues = done && !isPending ? getCompletenessIssues(analysis, item.section) : [];
     const facts = done && !isPending ? getInlineFacts(analysis, item.section) : [];
     const hasIssues = issues.length > 0;

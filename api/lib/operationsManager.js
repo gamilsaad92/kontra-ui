@@ -13,7 +13,9 @@ const {
 } = require('./dealRoomHelpers');
 const { listTasksForRoom } = require('./taskEngine');
 const { readTransactionState } = require('./transactionState');
-const { selectActiveDocumentVersions } = require('./documentVersions');
+const {
+  projectDocumentChecklist,
+} = require('./documentStatus');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -405,12 +407,15 @@ async function loadGroundingAnalyses(propertyId) {
   let lastError = null;
 
   for (const select of selects) {
+    // The coordinator checklist reads the complete room evidence set before
+    // selecting active versions. A row limit here can make an older, received
+    // document disappear from AI grounding while it remains visible to the
+    // coordinator.
     const result = await supabase
       .from('deal_analyses')
       .select(select)
       .eq('property_id', propertyId)
-      .order('created_at', { ascending: false })
-      .limit(30);
+      .order('created_at', { ascending: false });
     if (!result.error) return result.data || [];
     lastError = result.error;
     if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) break;
@@ -437,8 +442,12 @@ async function buildGroundedContext(propertyId) {
       .select('role_key, status, expires_at, revoked_at')
       .eq('property_id', propertyId),
   ]);
-  const activeAnalyses = selectActiveDocumentVersions(analyses);
   const room = transactionState.room;
+  const documentProjection = projectDocumentChecklist(
+    Array.isArray(room?.checklist_items) ? room.checklist_items : [],
+    analyses,
+  );
+  const activeAnalyses = documentProjection.activeAnalyses;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal
     || room?.metadata_values?.generated_proposal
@@ -479,8 +488,8 @@ async function buildGroundedContext(propertyId) {
     createdAt: t.created_at,
   });
 
-  const checklist = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
-  const missingDocuments = getLiveMissingDocuments(checklist, activeAnalyses);
+  const checklist = documentProjection.items;
+  const missingDocuments = documentProjection.missingDocuments;
   const populatedRecordFields = (recordState.fields || [])
     .filter(field => field.value !== null && field.value !== undefined
       && String(field.value).trim()
@@ -612,11 +621,12 @@ async function buildGroundedContext(propertyId) {
       documents: documentFindings,
       activeDocumentState: {
         count: activeAnalyses.length,
-        documents: activeAnalyses.map(item => ({
+        documents: documentProjection.activeDocumentStates.map(item => ({
           id: item.id || null,
           section: item.section || null,
           filename: item.filename || null,
           processingStatus: item.processing_status || (item.analysis?.pending === true ? 'processing' : 'complete'),
+          status: item.documentState,
         })),
         missingRequirements: missingDocuments,
       },
@@ -737,72 +747,13 @@ function askContextToPrompt(ctx) {
   );
 }
 
-// A checklist row describes a requirement, while deal_analyses describes the
-// evidence that has actually arrived. A requirement is not missing merely
-// because its latest analysis is still being processed.
-const DOCUMENT_RECEIVED_STATUSES = new Set([
-  'uploaded', 'processing', 'retrying', 'analyzing', 'analyzed',
-  'complete', 'completed', 'approved', 'ai_complete', 'received',
-]);
-
-function normalizedDocumentText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ');
-}
-
-function documentRequirementMatchesAnalysis(requirement, analysis) {
-  const requirementSection = normalizedDocumentText(requirement?.section || requirement?.category);
-  const analysisSection = normalizedDocumentText(analysis?.section);
-  if (requirementSection && analysisSection && requirementSection === analysisSection) return true;
-
-  const requirementLabels = [
-    requirement?.label,
-    requirement?.name,
-    requirement?.document_type,
-    requirement?.documentType,
-  ].map(normalizedDocumentText).filter(Boolean);
-  const analysisLabels = [
-    analysis?.filename,
-    analysis?.document_type,
-    analysis?.documentType,
-    analysis?.analysis?.document_type,
-    analysis?.analysis?.documentType,
-    analysis?.analysis?.title,
-  ].map(normalizedDocumentText).filter(Boolean);
-  return requirementLabels.some(label =>
-    analysisLabels.some(candidate =>
-      label === candidate
-        || (label.length > 2 && candidate.includes(label))
-        || (candidate.length > 2 && label.includes(candidate)),
-    )
-  );
-}
-
 function isDocumentRequirementReceived(requirement, activeAnalyses = []) {
-  const status = String(requirement?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (['not_applicable', 'na', 'n_a'].includes(status)) return false;
-  if (requirement?.uploaded === true || requirement?.uploaded === 'true') return true;
-  if (DOCUMENT_RECEIVED_STATUSES.has(status)) return true;
-  return activeAnalyses.some(analysis =>
-    analysis
-      && analysis.is_active !== false
-      && !analysis.superseded_at
-      && documentRequirementMatchesAnalysis(requirement, analysis)
-  );
+  return projectDocumentChecklist([requirement], activeAnalyses)
+    .items[0]?.documentReceived === true;
 }
 
 function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
-  return (Array.isArray(checklist) ? checklist : [])
-    .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
-    .slice(0, 30)
-    .map(item => ({
-      id: item.id || item.document_id || item.documentId || null,
-      label: item.label || item.name || item.id || 'Required document',
-      section: item.section || item.category || null,
-    }));
+  return projectDocumentChecklist(checklist, activeAnalyses).missingDocuments;
 }
 
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
@@ -810,7 +761,9 @@ You reason ONLY from the JSON context provided (transaction_context, closing_cha
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 Treat active_document_state as the source of truth for document receipt: an active uploaded,
-processing, retrying, or completed document has been received and must not be described as missing.
+processing, retrying, failed, or completed document has been received and must not be described as
+missing. A document with status "needs_review" is received evidence that needs coordinator review,
+not a missing document.
 Only list a document as missing when it appears in missing_documents.
 The participants array is the live People state for this room. Do not import roles from a
 generic template or from outside this room. A populated Transaction Record field with status
@@ -865,10 +818,17 @@ function buildDocumentStatusAnswer(ctx) {
   const receivedLabels = received
     .map(document => document.filename || document.section)
     .filter(Boolean);
+  const reviewLabels = received
+    .filter(document => document.status === 'needs_review')
+    .map(document => document.filename || document.section)
+    .filter(Boolean);
 
   if (missing.length === 0) {
+    const reviewNote = reviewLabels.length > 0
+      ? ` Documents needing review: ${reviewLabels.join(', ')}.`
+      : '';
     return receivedLabels.length > 0
-      ? `No required documents are currently missing. The live room shows received evidence for: ${receivedLabels.join(', ')}.`
+      ? `No required documents are currently missing. The live room shows received evidence for: ${receivedLabels.join(', ')}.${reviewNote}`
       : 'No required documents are currently missing, and no active document evidence is recorded in the live room.';
   }
 
@@ -876,7 +836,10 @@ function buildDocumentStatusAnswer(ctx) {
   const receivedNote = receivedLabels.length > 0
     ? ` The live room also shows received evidence for: ${receivedLabels.join(', ')}.`
     : '';
-  return `Currently missing required documents: ${missingLabels.join(', ')}.${receivedNote}`;
+  const reviewNote = reviewLabels.length > 0
+    ? ` Documents needing review: ${reviewLabels.join(', ')}.`
+    : '';
+  return `Currently missing required documents: ${missingLabels.join(', ')}.${receivedNote}${reviewNote}`;
 }
 
 // ── Morning briefing ──────────────────────────────────────────────────────────

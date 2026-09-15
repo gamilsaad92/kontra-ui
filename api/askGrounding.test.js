@@ -769,6 +769,95 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
+  test('does not report received required documents as missing when checklist rows are stale', async () => {
+    const checklist = [
+      {
+        id: 'purchase_agreement',
+        section: 'legal',
+        label: 'Purchase Agreement',
+        required: true,
+        status: 'missing',
+        uploaded: false,
+      },
+      {
+        id: 'disclosure_schedules',
+        section: 'legal',
+        label: 'Disclosure Schedules',
+        required: true,
+        status: 'missing',
+        uploaded: false,
+      },
+    ];
+    const analyses = [
+      {
+        id: 'purchase-analysis',
+        section: 'legal',
+        filename: 'executed-agreement.pdf',
+        processing_status: 'complete',
+        analysis: { documentType: 'Purchase Agreement', summary: 'Agreement received.' },
+        created_at: '2026-09-04T01:29:35.077Z',
+        is_active: true,
+      },
+      {
+        id: 'disclosure-analysis',
+        section: 'legal',
+        filename: 'disclosures.pdf',
+        processing_status: 'complete',
+        analysis: { documentType: 'Disclosure Schedules', summary: 'Schedules received.' },
+        created_at: '2026-09-04T01:29:48.715Z',
+        is_active: true,
+      },
+    ];
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'business_acquisition',
+      room: {
+        property_name: 'Canonical document status room',
+        workflow_pack_id: 'business_acquisition',
+        deal_type: 'business_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+      },
+      recordState: {
+        schemaKey: 'business_acquisition',
+        fields: [],
+        requiredFields: [],
+        requiredCount: 0,
+        confirmedCount: 0,
+        awaitingRequiredCount: 0,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses'
+        ? analyses
+        : table === 'party_submissions'
+          ? completedParticipants('business_acquisition')
+          : [];
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const result = await askQuestion(
+      'canonical-document-status-room',
+      'Should this transaction advance from Due Diligence to Closing based on the current document status?',
+    );
+
+    expect(result.answer).toContain('No required documents are currently missing.');
+    expect(result.answer).not.toContain('Purchase Agreement');
+    expect(result.answer).not.toContain('Disclosure Schedules');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {
     const propertyId = 'briefing-cache-room';
     const checklist = [
