@@ -55,9 +55,9 @@ describe('participant submission persistence', () => {
       expect.objectContaining({
         property_id: 'harbor-ridge-production-regression',
         role: 'attorney',
-        status: 'submitted',
         doc_count: 1,
       }),
     ]);
+    expect(writes[0]).not.toHaveProperty('status');
   });
 });

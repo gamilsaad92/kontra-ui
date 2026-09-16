@@ -173,7 +173,7 @@ async function sealClosingRecord(propertyId) {
         .select('property_name, property_type, deal_amount, address, customer_email, first_name, activated_at')
         .eq('property_id', propertyId).maybeSingle(),
       supabase.from('party_submissions')
-        .select('role, name, email, status, submitted_at')
+        .select('role, name, email, submitted_at')
         .eq('property_id', propertyId),
       supabase.from('deal_analyses')
         .select('section, filename, uploaded_by_role, created_at, storage_path')

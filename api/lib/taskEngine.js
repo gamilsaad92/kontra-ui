@@ -445,7 +445,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
 
   const [existingRes, submissionsRes, analysesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role, email, name, status, submitted_at').eq('property_id', propertyId),
+    supabase.from('party_submissions').select('role, email, name, doc_count, submitted_at').eq('property_id', propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
   ]);
 
@@ -496,37 +496,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     if (task) created.push(task);
   }
 
-  // 2) Stuck-pending submission — a submission row exists but is not complete.
-  for (const sub of submissions) {
-    if (sub.status !== 'pending' && sub.status !== 'invited') continue;
-    const sourceId = `pending-submission:${sub.role}`;
-    if (hasExistingTask('pending_submission', sourceId)) continue;
-    const roleLabel = roleConfig.roles.find(role => role.key === sub.role)?.label
-      || getPackRoleLabel(packId, sub.role);
-    const task = await createTask(propertyId, {
-      taskType: 'pending_submission',
-      title: `${roleLabel} has a pending participant submission`,
-      description: `${sub.name || roleLabel} has a party_submissions record with status "${sub.status}" but has not completed the submission.`,
-      ownerType: 'ai',
-      ownerRole: sub.role,
-      evidence: [`party_submissions.status = "${sub.status}" for role "${sub.role}" (submission not yet complete).`],
-      draftAction: sub.email ? {
-        type: 'email',
-        to: sub.email,
-        subject: `Reminder: your documents for this deal room`,
-        body: `Hi ${sub.name || roleLabel}, this is a reminder to complete your document submission for this deal room when you have a moment.`,
-      } : null,
-      sourceType: 'party_submission',
-      sourceId,
-      category: 'participant',
-      blocking: false,
-      severity: 'medium',
-      correlationId: options.correlationId,
-    });
-    if (task) created.push(task);
-  }
-
-  // 3) Document analysis flags — insurance/expiration language surfaced by AI review.
+  // 2) Document analysis flags — insurance/expiration language surfaced by AI review.
   const EXPIRY_HINT = /expir|renew|lapsed?\b/i;
   const MISSING_HINT = /missing (appendix|schedule|exhibit|attachment)/i;
   for (const doc of analyses) {

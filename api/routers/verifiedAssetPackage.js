@@ -159,7 +159,7 @@ async function buildVAP(propertyId) {
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }),
     supabase.from('party_submissions')
-      .select('role, name, status, submitted_at')
+      .select('role, name, submitted_at')
       .eq('property_id', propertyId),
     readTransactionState(propertyId),
     supabase.from('transaction_record_approvals')

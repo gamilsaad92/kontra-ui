@@ -16,7 +16,7 @@ async function syncParticipantSubmissionFromDocument({
 
   const existingResult = await supabase
     .from('party_submissions')
-    .select('name, email, status, doc_count, submitted_at, notes')
+    .select('name, email, doc_count, submitted_at, notes')
     .eq('property_id', propertyId)
     .eq('role', role)
     .maybeSingle();
@@ -47,7 +47,6 @@ async function syncParticipantSubmissionFromDocument({
     role,
     name: existing.name || name || role,
     email: existing.email || email || null,
-    status: 'submitted',
     doc_count: Number.isFinite(Number(documentCount))
       ? Number(documentCount)
       : Number(existing.doc_count || 0) + 1,
@@ -57,7 +56,7 @@ async function syncParticipantSubmissionFromDocument({
   const { data, error } = await supabase
     .from('party_submissions')
     .upsert(payload, { onConflict: 'property_id,role' })
-    .select('property_id, role, status, doc_count, submitted_at')
+    .select('property_id, role, doc_count, submitted_at')
     .maybeSingle();
   if (error) throw error;
   return data || payload;

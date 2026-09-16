@@ -339,9 +339,8 @@ function buildGroundedBlockers({
       && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
     .forEach(role => {
       const participant = participantRows.find(row => row.role === role.key);
-      const participantStatus = String(participant?.status || '').toLowerCase();
       const inviteStatus = String(participant?.inviteStatus || '').toLowerCase();
-      const submitted = ['submitted', 'complete', 'completed'].includes(participantStatus)
+      const submitted = Boolean(participant?.submissionStatus)
         || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
       if (submitted) return;
 
@@ -353,12 +352,12 @@ function buildGroundedBlockers({
         sourceType: 'required_participant',
         role: role.key,
         label: roleLabel,
-        status: participant?.status || 'missing',
+        status: 'missing',
         submissionStatus,
         invitationStatus,
         evidence: [
           submissionStatus || documentCount > 0
-            ? `party_submissions.status = "${submissionStatus || 'not recorded'}" for role "${role.key}" with ${documentCount} submitted document(s).`
+            ? `party_submissions has a canonical submission for role "${role.key}" with ${documentCount} submitted document(s).`
             : `No party_submissions record exists for required role "${role.key}".`,
           invitationStatus
             ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
@@ -455,7 +454,7 @@ async function buildGroundedContext(propertyId) {
     loadGroundingAnalyses(propertyId),
     supabase
       .from('party_submissions')
-      .select('role, name, status, doc_count, submitted_at')
+      .select('role, name, doc_count, submitted_at')
       .eq('property_id', propertyId),
     supabase
       .from('deal_room_invites')
@@ -562,8 +561,8 @@ async function buildGroundedContext(propertyId) {
         role: role.key,
         label: role.label || getPackRoleLabel(packId, role.key),
         name: submission?.name || null,
-        status: submission?.status || invite?.status || null,
-        submissionStatus: submission?.status || null,
+        status: submission ? 'submitted' : (invite?.status || null),
+        submissionStatus: submission ? 'submitted' : null,
         inviteStatus: invite?.status || null,
         invited: !!invite,
         documentCount: Number(submission?.doc_count || 0),
