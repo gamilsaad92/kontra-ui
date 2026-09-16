@@ -91,12 +91,27 @@ function participantTaskTitle(packId, task, participantDefinitions = []) {
   const role = participantDefinitions.find(item => item.key === roleKey);
   const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
   if (task.task_type === 'missing_participant' && roleLabel) {
-    return `${roleLabel} has no participant submission on record`;
+    return `${roleLabel} has not submitted required documents yet`;
   }
   if (task.task_type === 'pending_submission' && roleLabel) {
-    return `${roleLabel} has a pending participant submission`;
+    return `${roleLabel} has a pending document submission`;
   }
   return task.title;
+}
+
+function participantTaskEvidence(packId, task, participantDefinitions = []) {
+  if (!isParticipantTask(task)) return taskEvidence(task);
+  const roleKey = subjectRoleOf(task);
+  const role = participantDefinitions.find(item => item.key === roleKey);
+  const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
+  if (!roleLabel) return taskEvidence(task);
+  if (task.task_type === 'missing_participant') {
+    return [`No submission has been received for the ${roleLabel} role.`];
+  }
+  if (task.task_type === 'pending_submission') {
+    return [`${roleLabel} has a submission that is not yet complete.`];
+  }
+  return taskEvidence(task);
 }
 
 function computeChainStatus(packId, tasks) {
@@ -365,13 +380,13 @@ function buildGroundedBlockers({
         invitationStatus,
         evidence: [
           submissionStatus || documentCount > 0
-            ? submissionSource === 'active_role_evidence'
-              ? `No party_submissions row exists for role "${role.key}", but active uploaded evidence tagged to that role contains ${documentCount} document(s); completion is derived from that evidence for this read.`
-              : `party_submissions has a canonical submission for role "${role.key}" with ${documentCount} submitted document(s).`
-            : `No party_submissions record exists for required role "${role.key}".`,
+            ? submissionSource === 'role_uploaded_evidence'
+              ? `No submission has been received for the ${roleLabel} role.`
+              : `${roleLabel} has ${documentCount} submitted document(s).`
+            : `No submission has been received for the ${roleLabel} role.`,
           invitationStatus
-            ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
-            : `No current active deal_room_invites.status is recorded for role "${role.key}"; this does not establish prior invitation history.`,
+            ? `${roleLabel} invitation status is "${invitationStatus}".`
+            : `No active invitation is recorded for ${roleLabel}.`,
         ],
       });
     });
@@ -417,7 +432,7 @@ function buildGroundedBlockers({
         taskId: task.id,
         label: participantTaskTitle(packId, task, effectiveParticipantDefinitions),
         status: task.status,
-        evidence: taskEvidence(task),
+         evidence: participantTaskEvidence(packId, task, effectiveParticipantDefinitions),
       });
     });
 
@@ -543,17 +558,17 @@ async function buildGroundedContext(propertyId) {
       const role = participantDefinitions.find(item => item.key === roleKey);
       const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
       if (t.task_type === 'missing_participant' && roleLabel) {
-        return `The ${roleLabel} role is required, but party_submissions has no record for this role.`;
+        return `The ${roleLabel} role is required, but no submission has been received yet.`;
       }
       if (t.task_type === 'pending_submission' && roleLabel) {
-        return `${roleLabel} has a party_submissions record that is not yet complete.`;
+        return `${roleLabel} has a submission that is not yet complete.`;
       }
       return t.description || null;
     })(),
     ownedBy: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(packId, t.owner_role || 'unknown'),
     ownerRole: t.owner_role,
     status: t.status,
-    evidence: Array.isArray(t.evidence) ? t.evidence : [],
+     evidence: participantTaskEvidence(packId, t, participantDefinitions),
     hasDraftAction: !!t.draft_action,
     dueAt: t.due_at,
     createdAt: t.created_at,
@@ -623,7 +638,7 @@ async function buildGroundedContext(propertyId) {
         invited: !!invite,
         documentCount: Number(submission?.doc_count || 0),
         submittedAt: submission?.submitted_at || null,
-         submissionSource: submission?.submissionSource || (submission ? 'party_submissions' : null),
+         submissionSource: submission?.submissionSource || (submission ? 'recorded_submission' : null),
         assignedRequirements: buildParticipantRequirementState(
           projectedChecklist,
           role.key,
@@ -1005,8 +1020,8 @@ function buildParticipantDocumentAnswer(ctx, participant) {
     .filter(document => document.required && !document.received)
     .map(document => document.label)
     .filter(Boolean);
-  const submissionNote = participant.submissionSource === 'active_role_evidence'
-    ? ` No party_submissions row is currently stored for ${label}, but the participant state is derived from active evidence uploaded under the ${participant.role} role; re-upload is not required.`
+  const submissionNote = participant.submissionSource === 'role_uploaded_evidence'
+    ? ` No separate submission has been recorded for ${label}, but active documents uploaded by this role confirm the participant state; re-upload is not required.`
     : '';
   const blockerNote = missingRequired.length > 0
     ? ` ${label} is currently blocked only by these assigned required document${missingRequired.length === 1 ? '' : 's'}: ${missingRequired.join(', ')}.`

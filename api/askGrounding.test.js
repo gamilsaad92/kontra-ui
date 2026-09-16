@@ -283,7 +283,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         status: 'pending',
         blocking: true,
         title: 'Property Owner has not been invited or submitted documents yet',
-        evidence: ['stale role evidence'],
+         evidence: ['No party_submissions record found for role "property_owner".'],
       },
     ]);
     setupCustomRoomQueries(liveRoles);
@@ -298,12 +298,12 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     ]);
     expect(context.openTasks).toEqual([
       expect.objectContaining({
-        title: 'Property Owner has no participant submission on record',
+        title: 'Property Owner has not submitted required documents yet',
       }),
     ]);
     expect(context.transactionContext.operations.openTasks).toEqual([
       expect.objectContaining({
-        title: 'Property Owner has no participant submission on record',
+        title: 'Property Owner has not submitted required documents yet',
       }),
     ]);
     expect(context.transactionContext.participants).toEqual(expect.arrayContaining([
@@ -315,7 +315,9 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       }),
     ]));
     expect(JSON.stringify(context)).not.toContain('has not been invited');
-    expect(JSON.stringify(context)).toContain('No current active deal_room_invites.status is recorded');
+    expect(JSON.stringify(context)).toContain('No active invitation is recorded for Property Owner');
+    expect(JSON.stringify(context)).not.toContain('party_submissions');
+    expect(JSON.stringify(context)).not.toContain('deal_room_invites');
     expect(JSON.stringify(context)).not.toContain('Buyer');
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');
@@ -374,8 +376,8 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       source_type: 'party_role',
       status: 'pending',
       blocking: true,
-      title: 'Legal Advisor has no participant submission on record',
-      evidence: ['No party_submissions record found for role "attorney".'],
+      title: 'Legal Advisor has not submitted required documents yet',
+      evidence: ['No submission has been received for the Legal Advisor role.'],
     }]);
     setupCustomRoomQueries(
       roles,
@@ -536,8 +538,8 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       source_type: 'party_role',
       status: 'pending',
       blocking: true,
-      title: 'Buyer has no participant submission on record',
-      evidence: ['No party_submissions record found for role "buyer".'],
+      title: 'Buyer has not submitted required documents yet',
+      evidence: ['No submission has been received for the Buyer role.'],
     }]);
     setupCustomRoomQueries(
       roles,
@@ -551,7 +553,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(buyer).toEqual(expect.objectContaining({
       submissionStatus: 'submitted',
       documentCount: 2,
-      submissionSource: 'active_role_evidence',
+      submissionSource: 'role_uploaded_evidence',
       assignedRequirements: expect.objectContaining({
         submissionRecorded: true,
         requiredCount: 2,
@@ -584,6 +586,8 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(blockedAnswer.answer).toContain('Buyer Management Confirmation');
     expect(blockedAnswer.answer).not.toContain('Financial Due Diligence Report');
     expect(blockedAnswer.answer).not.toContain('Tax Due Diligence Report');
+    expect(blockedAnswer.answer).not.toContain('party_submissions');
+    expect(blockedAnswer.answer).not.toContain('deal_room_invites');
 
     const assignmentAnswer = await askQuestion(
       'harbor-ridge-buyer-legacy-regression',
@@ -594,6 +598,8 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(assignmentAnswer.answer).not.toContain('Financial Due Diligence Report');
     expect(assignmentAnswer.answer).not.toContain('Tax Due Diligence Report');
     expect(assignmentAnswer.answer).toContain('re-upload is not required');
+    expect(assignmentAnswer.answer).not.toContain('party_submissions');
+    expect(assignmentAnswer.answer).not.toContain('deal_room_invites');
     expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 

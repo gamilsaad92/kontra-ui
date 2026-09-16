@@ -94,7 +94,7 @@ function deriveParticipantSubmissionRows(submissions = [], analyses = []) {
       doc_count: Math.max(existingCount, evidenceCount),
       submitted_at: existing?.submitted_at || latestEvidence?.created_at || null,
       notes: existing?.notes || null,
-      submissionSource: existing ? 'party_submissions_and_active_evidence' : 'active_role_evidence',
+      submissionSource: existing ? 'recorded_submission_and_role_evidence' : 'role_uploaded_evidence',
     };
     rowsByRole.set(role, existing ? { ...existing, ...derived } : derived);
   }

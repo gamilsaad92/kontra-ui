@@ -27,7 +27,7 @@ describe('participant submission persistence', () => {
         role: 'buyer',
         doc_count: 2,
         submitted_at: '2026-09-16T11:00:00.000Z',
-        submissionSource: 'active_role_evidence',
+        submissionSource: 'role_uploaded_evidence',
       }),
     ]);
   });

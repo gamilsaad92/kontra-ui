@@ -480,11 +480,11 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     const roleLabel = role.label || getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
-      title: `${roleLabel} has no participant submission on record`,
-      description: `The ${roleLabel} role is required for this deal type, but party_submissions has no record for this role.`,
+     title: `${roleLabel} has not submitted required documents yet`,
+     description: `The ${roleLabel} role is required for this deal type, but no submission has been received yet.`,
       ownerType: 'ai',
       ownerRole: 'owner',
-      evidence: [`No party_submissions record found for role "${role.key}" (${roleLabel}).`],
+       evidence: [`No submission has been received for the ${roleLabel} role.`],
       draftAction: null,
       sourceType: 'party_role',
       sourceId,

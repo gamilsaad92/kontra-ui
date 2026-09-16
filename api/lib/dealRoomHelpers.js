@@ -454,7 +454,7 @@ async function notifyVAPReady(propertyId, stage, resolvedLabel) {
         <ul style="color:#555;padding-left:20px;line-height:1.8">
           <li>Verification score and AI-generated verification summary</li>
           <li>Complete audit trail of deal activity and document uploads</li>
-          <li>Participant approvals and party submissions record</li>
+          <li>Participant approvals and submitted documents</li>
           <li>Structured financial metrics and key legal terms</li>
           <li>JSON export for integration with your systems</li>
         </ul>
