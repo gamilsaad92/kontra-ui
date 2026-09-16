@@ -1,4 +1,4 @@
-const workflowStages = require('../../shared/workflowStages.json');
+const workflowStages = require('../shared/workflowStages.json');
 const { getPackRoleConfig } = require('./lib/dealRoomHelpers');
 
 const mockReadTransactionState = jest.fn();
@@ -26,7 +26,7 @@ jest.mock('openai', () => jest.fn().mockImplementation(() => ({
       create: (...args) => mockOpenAICompletion(...args),
     },
   },
-})));
+})), { virtual: true });
 
 process.env.OPENAI_API_KEY = 'ask-grounding-test-key';
 
@@ -77,7 +77,7 @@ function setupSupabaseQueries(packId) {
   });
 }
 
-function setupCustomRoomQueries(roles, participantRows = [], invites = []) {
+function setupCustomRoomQueries(roles, participantRows = [], invites = [], analyses = []) {
   mockSupabaseFrom.mockImplementation(table => {
     const result = table === 'custom_workflow_packs'
       ? { config: { roles } }
@@ -85,6 +85,8 @@ function setupCustomRoomQueries(roles, participantRows = [], invites = []) {
         ? participantRows
         : table === 'deal_room_invites'
           ? invites
+          : table === 'deal_analyses'
+            ? analyses
           : [];
     const chain = {
       select: () => chain,
@@ -317,6 +319,95 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');
     expect(JSON.stringify(context)).not.toContain('Financial Advisor');
+  });
+
+  test('joined participant upload completion clears the coordinator blocker and AI sees the same canonical state', async () => {
+    const roles = [{
+      key: 'attorney',
+      label: 'Legal Advisor',
+      required: true,
+      invitable: true,
+    }];
+    const checklist = [{
+      section: 'legal_due_diligence_report',
+      label: 'Legal Due Diligence Report',
+      required: true,
+      assignedTo: ['attorney'],
+      status: 'pending',
+    }];
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    const activeAnalysis = {
+      id: 'legal-dd-report',
+      section: 'legal_due_diligence_report',
+      filename: 'legal-due-diligence-report.pdf',
+      analysis: { summary: 'Legal due diligence report analyzed.', pending: false },
+      processing_status: 'extracted',
+      is_active: true,
+      superseded_at: null,
+      created_at: '2026-09-15T12:00:00.000Z',
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'generated_ai',
+      room: {
+        property_id: 'joined-upload-room',
+        property_name: 'Joined Upload Room',
+        workflow_pack_id: 'generated_ai',
+        workflow_pack_config: { roles, documents: checklist },
+        deal_type: 'other',
+        deal_stage: 'uploading',
+        checklist_items: checklist,
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState,
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([{
+      id: 'stale-attorney-task',
+      task_type: 'missing_participant',
+      source_id: 'missing-role:attorney',
+      source_type: 'party_role',
+      status: 'pending',
+      blocking: true,
+      title: 'Legal Advisor has no participant submission on record',
+      evidence: ['No party_submissions record found for role "attorney".'],
+    }]);
+    setupCustomRoomQueries(
+      roles,
+      [{ role: 'attorney', status: 'submitted', doc_count: 1 }],
+      [{ role_key: 'attorney', status: 'active' }],
+      [activeAnalysis],
+    );
+
+    const context = await buildGroundedContext('joined-upload-room');
+    expect(context.transactionContext.participants).toEqual([
+      expect.objectContaining({
+        role: 'attorney',
+        label: 'Legal Advisor',
+        joined: true,
+        complete: true,
+        submissionStatus: 'submitted',
+      }),
+    ]);
+    expect(context.groundedBlockers).toEqual([]);
+    expect(context.openTasks).toEqual([]);
+
+    const answer = await askQuestion(
+      'joined-upload-room',
+      'Has the Legal Advisor completed the assigned requirement?',
+    );
+    expect(answer.answer).toContain('Yes — Legal Advisor is complete');
+    expect(answer.answer).toContain('All 1 assigned required document(s) are complete.');
   });
 
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {

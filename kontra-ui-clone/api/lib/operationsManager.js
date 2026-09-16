@@ -21,6 +21,11 @@ const {
   buildTokenizationAnswerPrefix,
 } = require('./tokenizationGuidance');
 const { safeAIErrorMetadata } = require('./openaiClient');
+const {
+  resolveParticipantCompletions,
+  normalizeParticipantRole,
+  participantRoleMatches,
+} = require('./participantCompletion');
 
 let _deps = null;
 function getDependencies() {
@@ -257,10 +262,15 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
-function filterTasksToLiveParticipants(tasks, participantDefinitions) {
+function filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions = []) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
+  const completedParticipantKeys = new Set((participantCompletions || [])
+    .filter(state => state.complete)
+    .map(state => normalizeParticipantRole(state.role)));
   return (Array.isArray(tasks) ? tasks : []).filter(task =>
-    !isParticipantTask(task) || liveParticipantKeys.has(subjectRoleOf(task))
+    !isParticipantTask(task)
+      || (liveParticipantKeys.has(subjectRoleOf(task))
+        && !completedParticipantKeys.has(normalizeParticipantRole(subjectRoleOf(task))))
   );
 }
 
@@ -316,18 +326,26 @@ function buildGroundedBlockers({
     .filter(role => role.required && role.invitable !== false
       && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
     .forEach(role => {
-      const participant = participantRows.find(row => row.role === role.key);
-      const participantStatus = String(participant?.status || '').toLowerCase();
-      const inviteStatus = String(participant?.inviteStatus || '').toLowerCase();
-      const submitted = JOINED_PARTICIPANT_INVITE_STATUSES.has(inviteStatus)
-        || ['submitted', 'complete', 'completed'].includes(participantStatus)
-        || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
-      if (submitted) return;
+      const participant = participantRows.find(row =>
+        normalizeParticipantRole(row.role) === normalizeParticipantRole(role.key)
+      );
+      const legacyComplete = participant?.complete !== true
+        && !participant?.inviteStatus
+        && (
+          ['submitted', 'complete', 'completed'].includes(
+            String(participant?.submissionStatus || participant?.status || '').toLowerCase(),
+          )
+          || Number(participant?.documentCount || participant?.doc_count || 0) > 0
+        );
+      if (participant?.complete === true || legacyComplete) return;
 
       const roleLabel = role.label || getPackRoleLabel(packId, role.key);
       const submissionStatus = participant?.submissionStatus ?? null;
       const invitationStatus = participant?.inviteStatus ?? null;
       const documentCount = Number(participant?.documentCount || participant?.doc_count || 0);
+      const assignedDocumentBlocker = participant?.unresolvedRequiredDocumentCount > 0
+        ? `${roleLabel} has ${participant.unresolvedRequiredDocumentCount} assigned required document(s) that are not complete.`
+        : null;
       blockers.push({
         sourceType: 'required_participant',
         role: role.key,
@@ -336,8 +354,9 @@ function buildGroundedBlockers({
         submissionStatus,
         invitationStatus,
         evidence: [
-          submissionStatus || documentCount > 0
-            ? `party_submissions.status = "${submissionStatus || 'not recorded'}" for role "${role.key}" with ${documentCount} submitted document(s).`
+          assignedDocumentBlocker || submissionStatus || documentCount > 0
+            ? assignedDocumentBlocker
+              || `party_submissions.status = "${submissionStatus || 'not recorded'}" for role "${role.key}" with ${documentCount} submitted document(s).`
             : `No party_submissions record exists for required role "${role.key}".`,
           invitationStatus
             ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
@@ -521,27 +540,31 @@ async function buildGroundedContext(propertyId) {
     if (['pending', 'invited', 'sent'].includes(status)
       && invite?.expires_at
       && new Date(invite.expires_at).getTime() <= Date.now()) return false;
-    return liveParticipantKeys.has(invite.role_key);
+    return participantDefinitions.some(role => participantRoleMatches(role, invite.role_key));
   });
+  const participantCompletions = resolveParticipantCompletions(participantDefinitions, {
+    checklist: checklist.map(item => ({
+      ...item,
+      status: isDocumentRequirementReceived(item, activeAnalyses) ? 'uploaded' : item.status,
+    })),
+    invites: liveInvites,
+    submissions: participants || [],
+  });
+  const participantCompletionByRole = new Map(
+    participantCompletions.map(state => [normalizeParticipantRole(state.role), state])
+  );
   const participantContext = participantDefinitions
-    .filter(role => role.invitable !== false && !role.legacyOnly)
-    .map(role => {
-      const submission = (participants || []).find(item =>
-        item?.role === role.key
-      );
-      const invite = liveInvites.find(item => item.role_key === role.key);
-      return {
-        role: role.key,
-        name: submission?.name || null,
-        status: submission?.status || invite?.status || null,
-        submissionStatus: submission?.status || null,
-        inviteStatus: invite?.status || null,
-        invited: !!invite,
-        documentCount: Number(submission?.doc_count || 0),
-        submittedAt: submission?.submitted_at || null,
-      };
-    });
-  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions);
+    .filter(role => {
+      if (role.invitable === false) return false;
+      if (!role.legacyOnly) return true;
+      const state = participantCompletionByRole.get(normalizeParticipantRole(role.key));
+      return state?.invited || state?.assignedRequiredDocumentCount > 0;
+    })
+    .map(role => ({
+      name: (participants || []).find(item => participantRoleMatches(role, item?.role))?.name || null,
+       ...(participantCompletionByRole.get(normalizeParticipantRole(role.key)) || {}),
+     }));
+  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions);
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
@@ -665,7 +688,7 @@ async function buildGroundedContext(propertyId) {
       recordState,
       missingDocuments,
       participants: participantContext,
-      tasks,
+      tasks: groundedTasks,
       participantDefinitions,
       conflicts,
     }),
@@ -1077,12 +1100,50 @@ function buildFallbackBriefing(ctx) {
   };
 }
 
+function isParticipantCompletionQuestion(question) {
+  const text = String(question || '');
+  return /\b(?:participant|party|role|advisor|counsel|representative)\b/i.test(text)
+    && /\b(?:complete|completed|finish|finished|done|uploaded|submitted|requirement)\b/i.test(text);
+}
+
+function buildParticipantCompletionAnswer(ctx, question) {
+  const participants = ctx.transactionContext?.participants || [];
+  const normalizedQuestion = String(question || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  const participant = participants.find(item => [item.role, item.label, item.shortLabel]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase().replace(/[^a-z0-9]+/g, ' '))
+    .some(identity => identity && normalizedQuestion.includes(identity)));
+  if (!participant) {
+    return 'The live participant state does not identify which role this question refers to.';
+  }
+  if (participant.complete) {
+    const assignedCount = Number(participant.assignedRequiredDocumentCount || 0);
+    return `Yes — ${participant.label || participant.role} is complete based on the live joined participant state.${
+      assignedCount > 0
+        ? ` All ${assignedCount} assigned required document(s) are complete.`
+        : ' No assigned required documents remain for this role.'
+    }`;
+  }
+  const remaining = Number(participant.unresolvedRequiredDocumentCount || 0);
+  return `No — ${participant.label || participant.role} is not complete yet.${
+    remaining > 0
+      ? ` ${remaining} assigned required document(s) remain incomplete.`
+      : ' The live participant state does not show a completed joined requirement.'
+  }`;
+}
+
 // ── Answer engine ─────────────────────────────────────────────────────────────
 async function askQuestion(propertyId, question) {
   if (!question || !question.trim()) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
   const ctx = await buildGroundedContext(propertyId);
+  if (isParticipantCompletionQuestion(question)) {
+    return {
+      answer: buildParticipantCompletionAnswer(ctx, question),
+      citedTaskIds: [],
+    };
+  }
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)
     ? buildTokenizationGuidance({

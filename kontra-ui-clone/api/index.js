@@ -85,6 +85,9 @@ const {
 } = require('./lib/transactionState');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
 const {
+  syncParticipantSubmissionFromDocument,
+} = require('./lib/participantSubmissionState');
+const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
   canonicalTransactionTypeLabel,
@@ -5868,6 +5871,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           failure_reason: null,
           processing_completed_at: new Date().toISOString(),
         }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
+        if (access.mode === 'participant') {
+          await syncParticipantSubmissionFromDocument({
+            supabase,
+            propertyId,
+            role: effectiveRole,
+            email: access.email,
+          });
+        }
         clearBriefingCache(propertyId);
         emitInternalEvent('document.extracted', {
           propertyId, documentId: recordId, section, filename,
@@ -5892,6 +5903,14 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             failure_reason: null,
             processing_completed_at: new Date().toISOString(),
           }, { analysis: { ...analysis, pending: false, processing_impact: impact }, storage_path: storagePath });
+          if (access.mode === 'participant') {
+            await syncParticipantSubmissionFromDocument({
+              supabase,
+              propertyId,
+              role: effectiveRole,
+              email: access.email,
+            });
+          }
           clearBriefingCache(propertyId);
           emitInternalEvent('document.extracted', {
             propertyId, documentId: recordId, section, filename, impact, correlationId,

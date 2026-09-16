@@ -23,6 +23,9 @@ const {
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
 const { renderPdfPagesForVision } = require('../lib/pdfVision');
+const {
+  syncParticipantSubmissionFromDocument,
+} = require('../lib/participantSubmissionState');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
@@ -249,7 +252,7 @@ async function authorizeDocumentUpload(req, res, section) {
     if (session?.invite_id) {
       const { data: invite } = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, status')
+        .select('property_id, role_key, invited_email, status')
         .eq('id', session.invite_id)
         .maybeSingle();
       if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
@@ -277,7 +280,12 @@ async function authorizeDocumentUpload(req, res, section) {
           res.status(403).json({ error: 'Access denied', message: 'This document section is not assigned to your role' });
           return null;
         }
-        return { mode: 'participant', role: invite.role_key, propertyId };
+        return {
+          mode: 'participant',
+          role: invite.role_key,
+          email: invite.invited_email || null,
+          propertyId,
+        };
       }
     }
   }
@@ -818,6 +826,14 @@ Return only valid JSON. No extra text.`;
         propertyId: property_id, section, filename: _name, analysis: result,
         role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
+      if (uploadAccess.mode === 'participant') {
+        await syncParticipantSubmissionFromDocument({
+          supabase,
+          propertyId: property_id,
+          role,
+          email: uploadAccess.email,
+        });
+      }
       console.log(`[deal_analyses] ${section} saved (analyze-document) — fresh content analysis persisted`);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }

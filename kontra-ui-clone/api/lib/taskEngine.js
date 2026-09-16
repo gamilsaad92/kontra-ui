@@ -22,6 +22,7 @@ const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
+const { resolveParticipantCompletions } = require('./participantCompletion');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -433,10 +434,11 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const packId = await getRoomPackId(propertyId);
   const roleConfig = await getLiveRoleConfig(packId);
 
-  const [existingRes, submissionsRes, analysesRes] = await Promise.all([
+  const [existingRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role, email, name, status, submitted_at').eq('property_id', propertyId),
+    supabase.from('party_submissions').select('role, email, name, status, doc_count, submitted_at').eq('property_id', propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
+    supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
   ]);
 
   const existing = existingRes.data || [];
@@ -446,6 +448,16 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   const analyses = selectActiveDocumentVersions(analysesRes.data || []);
   const transactionState = await readTransactionState(propertyId);
+  const participantCompletions = resolveParticipantCompletions(roleConfig.roles || [], {
+    checklist: Array.isArray(transactionState.room?.checklist_items)
+      ? transactionState.room.checklist_items
+      : [],
+    invites: invitesRes.data || [],
+    submissions,
+  });
+  const completedParticipantRoles = new Set(
+    participantCompletions.filter(state => state.complete).map(state => state.role)
+  );
 
   const hasExistingTask = (taskType, sourceId) => existing.some(t =>
     t.task_type === taskType && t.source_id === sourceId);
@@ -464,7 +476,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   for (const role of requiredRoles) {
     const sub = submissions.find(s => s.role === role.key);
-    if (sub) continue;
+    if (sub || completedParticipantRoles.has(role.key)) continue;
     const sourceId = `missing-role:${role.key}`;
     if (hasExistingTask('missing_participant', sourceId)) continue;
     const roleLabel = role.label || getPackRoleLabel(packId, role.key);
@@ -488,6 +500,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
 
   // 2) Stuck-pending submission — a submission row exists but is not complete.
   for (const sub of submissions) {
+    if (completedParticipantRoles.has(sub.role)) continue;
     if (sub.status !== 'pending' && sub.status !== 'invited') continue;
     const sourceId = `pending-submission:${sub.role}`;
     if (hasExistingTask('pending_submission', sourceId)) continue;
