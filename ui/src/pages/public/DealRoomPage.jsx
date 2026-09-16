@@ -29,7 +29,6 @@ import {
 } from "../../lib/workflowRoles";
 import { resolveParticipantStates } from "../../lib/participantState";
 import { isDigitalAssetLayerEnabled } from "../../lib/digitalAssetReadiness";
-import { canonicalizeTransactionRecordKey } from "../../../../shared/transactionRecordCanonicalization";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -1568,9 +1567,10 @@ function JurisdictionSettingsPanel({ propertyId, property }) {
   );
 }
 
-// ── DigitalAssetTogglePanel ─────────────────────────────────────────────────
+// ── DigitalAssetTogglePanel (#181) ───────────────────────────────────────────
 // Lets owners of non-tokenization workspaces opt the Digital Asset Preparation
-// Layer on or off without switching to the tokenization pack.
+// Layer on or off without switching to the tokenization pack. Saves a single
+// flag into metadata_values via the non-destructive /metadata-merge endpoint.
 function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }) {
   const isTokenization = pack?.id === 'tokenization'
     || pack?.transactionType === 'tokenization'
@@ -1578,39 +1578,11 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
   const [enabled,    setEnabled]    = useState(!!(property?.metadata_values?.digital_asset_enabled));
   const [saving,     setSaving]     = useState(false);
   const [saveOk,     setSaveOk]     = useState(false);
-  const [saveErr,    setSaveErr]    = useState('');
-  const [hasHistory, setHasHistory] = useState(false);
-  const [historyKnown, setHistoryKnown] = useState(false);
   const [ownerToken, setOwnerToken] = useState('');
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
-
-  useEffect(() => {
-    if (!ownerToken || isTokenization) return undefined;
-    let cancelled = false;
-    Promise.all([
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verified-asset/snapshots`, {
-        headers: getRoomAuthHeaders(propertyId),
-      }),
-      fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-packages`, {
-        headers: getRoomAuthHeaders(propertyId),
-      }),
-    ]).then(async ([snapshotsResponse, packagesResponse]) => {
-      const snapshots = snapshotsResponse.ok ? await snapshotsResponse.json() : null;
-      const packages = packagesResponse.ok ? await packagesResponse.json() : null;
-      if (cancelled) return;
-      setHistoryKnown(snapshotsResponse.ok && packagesResponse.ok);
-      setHasHistory(
-        (snapshots?.snapshots || []).length > 0
-        || (packages?.packages || []).length > 0,
-      );
-    }).catch(() => {
-      if (!cancelled) setHistoryKnown(false);
-    });
-    return () => { cancelled = true; };
-  }, [isTokenization, ownerToken, propertyId]);
 
   // Tokenization workspaces always have the layer on — no toggle needed.
   // Non-owners can't change this setting.
@@ -1618,24 +1590,23 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
 
   async function handleToggle() {
     const next = !enabled;
-    setSaving(true); setSaveErr(''); setSaveOk(false);
+    setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/digital-asset-readiness`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/metadata-merge`, {
         method: 'PATCH',
-        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          enabled: next,
+          values: { digital_asset_enabled: next ? 'true' : '' },
           ownerWriteToken: ownerToken,
         }),
       });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.message || payload.error || `Save failed (${res.status})`);
+      if (!res.ok) throw new Error((await res.json()).error);
       setEnabled(next);
       onEnabledChange?.(next);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
-      setSaveErr(err.message || 'Could not update Digital Asset Readiness');
+      console.error('[DAToggle]', err.message);
     } finally {
       setSaving(false);
     }
@@ -1654,7 +1625,7 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
           {saveOk && <span className="text-[10px] font-bold text-green-700">✓ Saved</span>}
           <button
             onClick={handleToggle}
-            disabled={saving || (enabled && (!historyKnown || hasHistory))}
+            disabled={saving}
             aria-label={enabled ? 'Disable Digital Asset Preparation' : 'Enable Digital Asset Preparation'}
             className="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 shrink-0"
             style={{ background: enabled ? '#7c3aed' : '#e5e7eb' }}>
@@ -1664,16 +1635,11 @@ function DigitalAssetTogglePanel({ propertyId, property, pack, onEnabledChange }
           </button>
         </div>
       </div>
-      {saveErr && <p role="alert" className="mt-3 text-xs font-medium text-red-600">{saveErr}</p>}
       {enabled && (
         <p className="text-[10px] font-medium mt-3 pt-3 border-t leading-relaxed"
           style={{ color: '#7c3aed', borderColor: '#ede9fe' }}>
           🪙 Digital Asset Preparation Layer active — the Overview tab now shows the full readiness tracker.
-          {hasHistory
-            ? ' Historical Verified Asset artifacts are preserved and this setting is locked on.'
-            : !historyKnown
-              ? ' Historical artifact status is unavailable, so disabling is temporarily locked.'
-              : ' Readiness is calculated from the existing Transaction Record.'}
+          Reload to see updated progress.
         </p>
       )}
     </div>
@@ -3078,65 +3044,6 @@ function getRecordActionTarget(field, definitions = [], recordState = null, opti
   ) || field || {};
 }
 
-function canonicalRecordDefinitionKey(field) {
-  const rawKey = field?.canonicalKey
-    || field?.key
-    || field?.field_key
-    || field?.definitionKey
-    || field?.definition_key;
-  return canonicalizeTransactionRecordKey(rawKey, 'generic');
-}
-
-function dedupeCanonicalRecordDefinitions(fields = []) {
-  const result = [];
-  const positions = new Map();
-  (Array.isArray(fields) ? fields : []).forEach(field => {
-    const sourceKey = field?.key
-      || field?.field_key
-      || field?.canonicalKey
-      || field?.definitionKey
-      || field?.definition_key
-      || '';
-    const canonicalKey = canonicalRecordDefinitionKey(field);
-    if (!canonicalKey) return;
-    const normalized = {
-      ...field,
-      key: canonicalKey,
-      canonicalKey,
-      aliasOf: null,
-      __sourceKey: sourceKey,
-    };
-    const existingIndex = positions.get(canonicalKey);
-    if (existingIndex == null) {
-      positions.set(canonicalKey, result.length);
-      result.push(normalized);
-      return;
-    }
-
-    const existing = result[existingIndex];
-    // Prefer the definition that already uses the canonical persisted key.
-    // Room-specific definitions still contribute their label/category metadata
-    // when the static schema supplied the first copy.
-    const existingRawKey = existing.__sourceKey || existing.key || existing.field_key;
-    const incomingRawKey = sourceKey;
-    const incomingIsCanonical = incomingRawKey === canonicalKey;
-    const existingIsCanonical = existingRawKey === canonicalKey;
-    const winner = incomingIsCanonical && !existingIsCanonical ? normalized : existing;
-    const secondary = winner === normalized ? existing : normalized;
-    result[existingIndex] = {
-      ...secondary,
-      ...winner,
-      key: canonicalKey,
-      canonicalKey,
-      aliasOf: null,
-      label: winner.label || winner.display_label || secondary.label || secondary.display_label || canonicalKey,
-      category: winner.category || winner.field_category || secondary.category || secondary.field_category,
-      __sourceKey: winner.__sourceKey || winner.key || winner.field_key,
-    };
-  });
-  return result.map(({ __sourceKey, ...field }) => field);
-}
-
 // ── WhatNeedsAttention ────────────────────────────────────────────────────────
 // Unified prioritized feed merging AI findings, next actions, and issues.
 // Replaces the old separate "Next Actions", "AI Findings", and "Issues" cards.
@@ -3185,14 +3092,8 @@ function WhatNeedsAttention({
       if (!response.ok) {
         throw new Error(data.message || data.error || 'The Transaction Record field could not be confirmed.');
       }
-      await onRefresh?.(data.state);
+      await onRefresh?.();
     } catch (error) {
-      // A stale Brief action can race with another coordinator update. The
-      // API rejects that action intentionally; refresh the canonical state
-      // before showing the error so the obsolete recommendation disappears.
-      if (/FIELD_NOT_AWAITING_CONFIRMATION|FIELD_CHANGED/i.test(String(error?.message || ''))) {
-        await onRefresh?.();
-      }
       setConfirmError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
       setConfirming('');
@@ -3423,6 +3324,7 @@ function WhatNeedsAttention({
   };
   const documentActions = missingDocuments.map((document, index) => ({
     id: `missing-document-${document.id || document.section || index}`,
+    documentKey: getDocumentActionIdentity(document),
     urgency: isCurrentStageDocument(document) ? 'high' : 'medium',
     title: (() => {
       const assignedRoles = document.assignedTo || document.assigned_to || [];
@@ -3491,12 +3393,14 @@ function WhatNeedsAttention({
         return {
           title: `Upload ${document}`,
           document: true,
+          documentKey: getDocumentActionIdentity({ label: document, document: true }),
         };
       }
       return {
         ...document,
         title: `Upload ${document.label || document.name || 'required document'}`,
         document: true,
+        documentKey: getDocumentActionIdentity({ ...document, document: true }),
       };
     }) : []),
   ], documentStats), recordState, recordFields, canonicalActionKeys)
@@ -4022,13 +3926,10 @@ function DigitalAssetReadinessSection({
       : (generatedSchemaKeys.length
         ? generatedSchemaKeys.map(key => ({ key }))
         : getRequiredRecordFields(schemaKey)))
-      .map(field => canonicalizeTransactionRecordKey(
-        field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey,
-        'generic',
-      ))
+      .map(field => field.key || field.canonicalKey || field.persistedKey || field.field_key || field.definitionKey)
       .filter(Boolean),
   );
-  const baseSchemaFields = dedupeCanonicalRecordDefinitions(generatedFields.length
+  const baseSchemaFields = generatedFields.length
     ? generatedFields.map(field => ({
         ...field,
         category: normalizeRecordCategory(field.category || field.field_category, field.key),
@@ -4038,17 +3939,14 @@ function DigitalAssetReadinessSection({
       }))
     : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
         fields.map(field => ({ ...field, category })),
-      ));
+      );
   // The canonical API can contain required fields added by a room-specific
   // workflow pack that is not present in the older static schema. Keep those
   // fields visible so Overview actions never land on an empty category.
-  const canonicalSchemaFields = dedupeCanonicalRecordDefinitions((canonicalRecordState?.requiredFields || [])
+  const canonicalSchemaFields = (canonicalRecordState?.requiredFields || [])
     .map(field => {
       const key = field?.key || field?.persistedKey || field?.field_key || field?.definitionKey || '';
-      const canonicalKey = canonicalizeTransactionRecordKey(
-        field?.canonicalKey || field?.definitionKey || field?.persistedKey || key,
-        'generic',
-      );
+      const canonicalKey = field?.canonicalKey || field?.definitionKey || field?.persistedKey || key;
       const uiCategory = getTransactionRecordCategory({ ...field, field_key: key });
       const category = {
         parties: 'parties',
@@ -4067,25 +3965,25 @@ function DigitalAssetReadinessSection({
         renderable: true,
       };
     })
-    .filter(field => field.key));
+    .filter(field => field.key);
   const operationalSchemaFields = getHazardLossOperationalFieldDefinitions(
     property,
     canonicalRecordState,
     recordFields,
   );
   const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
-  const rawSchemaFields = dedupeCanonicalRecordDefinitions([
+  const rawSchemaFields = [
     ...baseSchemaFields,
     ...canonicalSchemaFields.filter(field =>
-      !schemaFieldKeys.has(canonicalRecordDefinitionKey(field))
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
     ),
     ...operationalSchemaFields.filter(field =>
-      !schemaFieldKeys.has(canonicalRecordDefinitionKey(field))
+      !schemaFieldKeys.has(field.canonicalKey || field.key)
       && !canonicalSchemaFields.some(canonical =>
-        canonicalRecordDefinitionKey(canonical) === canonicalRecordDefinitionKey(field)
+        (canonical.canonicalKey || canonical.key) === (field.canonicalKey || field.key)
       )
     ),
-  ]);
+  ];
   const operationalByIdentity = new Map();
   operationalSchemaFields.forEach(field => {
     [
@@ -4140,14 +4038,11 @@ function DigitalAssetReadinessSection({
 
   // Returns field objects from recordFields that match a given key (supports * prefix)
   function matchingFields(keyDef) {
-    const keys = [keyDef.key, keyDef.definitionKey, keyDef.aliasOf, keyDef.canonicalKey]
-      .filter(Boolean)
-      .map(key => canonicalizeTransactionRecordKey(key, 'generic'));
+    const keys = [keyDef.key, keyDef.definitionKey, keyDef.aliasOf, keyDef.canonicalKey].filter(Boolean);
     return recordFields.filter(f =>
       keyDef.key.endsWith('*')
         ? f.field_key?.startsWith(keyDef.key.slice(0, -1))
-        : keys.includes(canonicalizeTransactionRecordKey(f.field_key, 'generic'))
-          || (f.definition_key && keys.includes(canonicalizeTransactionRecordKey(f.definition_key, 'generic')))
+        : keys.includes(f.field_key) || (f.definition_key && keys.includes(f.definition_key))
     );
   }
 
@@ -4258,7 +4153,7 @@ function DigitalAssetReadinessSection({
             : 'The Transaction Record field could not be confirmed.'
         ));
       }
-      await onRecordUpdated?.(data.state);
+      await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
@@ -4318,7 +4213,7 @@ function DigitalAssetReadinessSection({
       }
       setEditingMissing('');
       setMissingValue('');
-      await onRecordUpdated?.(verifyData.state);
+      await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record value could not be saved.');
     } finally {
@@ -4353,7 +4248,7 @@ function DigitalAssetReadinessSection({
       if (!response.ok) throw new Error(data.message || data.error || 'The Transaction Record field could not be updated.');
       setEditingField('');
       setEditValue('');
-      await onRecordUpdated?.(data.state);
+      await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be updated.');
     } finally {
@@ -4704,6 +4599,27 @@ function DigitalAssetReadinessSection({
         </p>
       )}
 
+      {/* Footer — DA prep available (only when tokenization/DA is explicitly enabled) */}
+      {digitalAssetEnabled && allReady ? (
+        <div className="border-t border-emerald-100 bg-emerald-50/60 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-1">Optional Digital Asset Preparation</p>
+          <p className="text-xs font-semibold text-gray-800">Required preparation inputs captured</p>
+          <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
+            Select an eligible immutable readiness snapshot in the Verified Asset Readiness card to assemble a frozen package for external professional or provider review. This is not legal, regulatory, or issuance approval.
+          </p>
+        </div>
+      ) : digitalAssetEnabled ? (
+        <div className="border-t border-gray-100 bg-indigo-50/30 px-5 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-0.5">Optional Digital Asset Preparation</p>
+          <p className="text-[10px] text-gray-400">
+            {tokenizationGaps.length} tokenization-specific input{tokenizationGaps.length === 1 ? '' : 's'} still need to be recorded or confirmed. General transaction completeness does not replace these inputs.
+          </p>
+        </div>
+      ) : (
+        <p className="border-t border-gray-100 px-5 py-3 text-[10px] text-gray-400">
+          Transaction readiness reflects the completeness and organization of transaction information across all parties, documents, and verified facts.
+        </p>
+      )}
     </div>
   );
 }
@@ -4963,25 +4879,136 @@ function getLifecycleEvidenceSections(stage) {
   return null;
 }
 
-function getLifecycleAdvanceRecommendation(
-  stages,
-  currentStageIndex,
-  analyses,
-  hasBlockingIssues = false,
-  canonicalDecision,
-) {
-  if (canonicalDecision !== undefined) {
-    if (canonicalDecision?.loading || !canonicalDecision?.recommendationAllowed) return null;
-    const canonicalStage = stages.find(stage =>
-      stage.key === canonicalDecision.nextStage?.key
-    ) || canonicalDecision.nextStage;
-    if (!canonicalStage) return null;
+const FINAL_LIFECYCLE_STAGE_PATTERN = /closing|close|funded|settlement|complete|completed|closed|final/i;
+
+function lifecycleStageMatches(candidate, target) {
+  const targetKey = String(target?.key || target || '').trim().toLowerCase();
+  const targetLabel = String(target?.label || '').trim().toLowerCase();
+  return [candidate?.key, candidate?.label, candidate]
+    .filter(Boolean)
+    .some(value => {
+      const normalized = String(value).trim().toLowerCase();
+      return normalized === targetKey || normalized === targetLabel;
+    });
+}
+
+function lifecycleRequirementStages(item) {
+  return [
+    item?.requiredForStages,
+    item?.required_for_stages,
+    item?.gateStages,
+    item?.gate_stages,
+  ].find(Array.isArray);
+}
+
+function isLifecycleRequirementApplicable(item, nextStage) {
+  const explicitStages = lifecycleRequirementStages(item);
+  if (explicitStages) return explicitStages.some(stage => lifecycleStageMatches(stage, nextStage));
+  if (FINAL_LIFECYCLE_STAGE_PATTERN.test(`${nextStage?.key || ''} ${nextStage?.label || ''}`)) return true;
+  const evidenceSections = getLifecycleEvidenceSections(nextStage) || [];
+  return evidenceSections.includes(String(item?.section || '').toLowerCase());
+}
+
+function lifecycleFieldIsSatisfied(field) {
+  const status = String(field?.status || field?.rawStatus || '').trim().toLowerCase();
+  return ['confirmed', 'verified', 'not_applicable'].includes(status);
+}
+
+function getLifecycleTransitionGate({
+  stages = [],
+  currentStageIndex = 0,
+  nextStage = stages[currentStageIndex + 1],
+  documentStats = {},
+  recordState = null,
+  participantStates = [],
+  unresolvedConflicts = [],
+  requiredApprovals = [],
+  recordHydrated = true,
+} = {}) {
+  if (!nextStage) return { ready: true, eligible: false, nextStage: null, blockers: [] };
+  if (!recordHydrated) {
     return {
-      stage: canonicalStage,
-      evidence: [],
-      reason: canonicalDecision.reason || `The canonical requirements for ${canonicalStage.label || canonicalStage.key} are satisfied.`,
+      ready: false,
+      eligible: false,
+      nextStage,
+      blockers: [{
+        key: 'record-hydrating',
+        text: 'Canonical Transaction Record is still loading',
+        detail: 'Complete the remaining required items before advancing.',
+      }],
     };
   }
+  const blockers = [];
+  (documentStats.missingDocuments || [])
+    .filter(item => isLifecycleRequirementApplicable(item, nextStage))
+    .forEach(item => blockers.push({
+      key: `document-${item.id || item.section || item.label}`,
+      text: `${item.label || item.name || 'Required document'} is required before ${nextStage.label || 'the next stage'}`,
+      detail: 'This required document has not been received.',
+      type: 'document',
+      requirement: item,
+    }));
+  (documentStats.reviewDocuments || [])
+    .filter(item => isLifecycleRequirementApplicable(item, nextStage))
+    .forEach(item => blockers.push({
+      key: `document-review-${item.id || item.section || item.label}`,
+      text: `${item.label || item.name || 'Required document'} needs review before ${nextStage.label || 'the next stage'}`,
+      detail: 'A required document has unresolved review findings.',
+      type: 'document_review',
+      requirement: item,
+    }));
+  (recordState?.requiredFields || [])
+    .filter(field => field?.required !== false && !lifecycleFieldIsSatisfied(field))
+    .forEach(field => blockers.push({
+      key: `record-${field.key || field.field_key || field.label}`,
+      text: `${field.label || field.display_label || field.key || field.field_key || 'Required Transaction Record field'} must be confirmed`,
+      detail: 'This required Transaction Record field is not confirmed.',
+      type: 'record',
+      requirement: field,
+    }));
+  (unresolvedConflicts || []).forEach(conflict => blockers.push({
+    key: `conflict-${conflict.fieldKey || conflict.field_key || conflict.id || conflict.label}`,
+    text: `Resolve ${conflict.label || conflict.display_label || conflict.fieldKey || 'the unresolved Transaction Record conflict'}`,
+    detail: 'A blocking Transaction Record conflict remains unresolved.',
+    type: 'conflict',
+    requirement: conflict,
+  }));
+  const explicitRoles = [
+    nextStage.requiredRoles,
+    nextStage.requiredRoleKeys,
+    nextStage.participantRoles,
+  ].find(Array.isArray);
+  const rolesToCheck = explicitRoles
+    ? participantStates.filter(state => explicitRoles.includes(state.key))
+    : FINAL_LIFECYCLE_STAGE_PATTERN.test(`${nextStage.key || ''} ${nextStage.label || ''}`)
+      ? participantStates.filter(state => state.required)
+      : [];
+  rolesToCheck.filter(state => !state.complete && !state.satisfied).forEach(state => blockers.push({
+    key: `participant-${state.key}`,
+    text: `${state.label || state.key} must be active before ${nextStage.label || 'the next stage'}`,
+    detail: state.invited ? 'This required participant has not completed their required action.' : 'This required participant has not been invited.',
+    type: 'participant',
+    requirement: state,
+  }));
+  (requiredApprovals || [])
+    .filter(approval => !approval?.approved && approval?.status !== 'approved' && approval?.status !== 'confirmed')
+    .forEach(approval => blockers.push({
+      key: `approval-${approval.key || approval.id || approval.label}`,
+      text: `${approval.label || approval.key || 'Required approval'} is still outstanding`,
+      detail: 'This configured approval or condition must be completed before advancing.',
+      type: 'approval',
+      requirement: approval,
+    }));
+  const seen = new Set();
+  const deduped = blockers.filter(blocker => {
+    if (seen.has(blocker.key)) return false;
+    seen.add(blocker.key);
+    return true;
+  });
+  return { ready: true, eligible: deduped.length === 0, nextStage, blockers: deduped };
+}
+
+function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, hasBlockingIssues = false) {
   if (hasBlockingIssues) return null;
   if (!Array.isArray(stages) || currentStageIndex < 0 || currentStageIndex >= stages.length - 1) return null;
   const usableAnalyses = (analyses || []).filter(analysis =>
@@ -5069,10 +5096,9 @@ function hasDocumentReviewFinding(analysis) {
 }
 
 function normalizeRecordCategory(value, key = '', label = '') {
-  const canonicalKey = canonicalizeTransactionRecordKey(key, 'generic');
   const raw = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  const keyCategory = String(canonicalKey || key || '').split('.')[0].toLowerCase();
-  const fieldText = `${canonicalKey || key} ${label}`.toLowerCase();
+  const keyCategory = String(key || '').split('.')[0].toLowerCase();
+  const fieldText = `${key} ${label}`.toLowerCase();
   if (/(units?[\s_-]+(damaged|affected)|properties?[\s_-]+damaged)/.test(fieldText)) {
     return 'asset_identity';
   }
@@ -5170,7 +5196,7 @@ function recordStateFieldForDefinition(definition, recordState) {
     definition?.key,
     definition?.definitionKey,
     definition?.aliasOf,
-  ].filter(Boolean).map(key => canonicalizeTransactionRecordKey(key, 'generic'));
+  ].filter(Boolean);
   const normalizeLabel = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ');
   const label = normalizeLabel(definition?.label);
   const definitionIdentities = new Set(definitions.map(normalizeAttentionFieldKey));
@@ -5682,9 +5708,7 @@ function getRecordFieldIdentitySet(field) {
     field?.canonicalKey,
     field?.persistedKey,
     field?.definitionKey,
-  ].filter(Boolean).map(key => normalizeAttentionFieldKey(
-    canonicalizeTransactionRecordKey(key, 'generic'),
-  )));
+  ].filter(Boolean).map(normalizeAttentionFieldKey));
 }
 
 function getCanonicalRecordFieldCandidates(recordState, recordFields = []) {
@@ -5863,6 +5887,7 @@ function filterStaleRecordActions(
 function dedupeAttentionItems(items = []) {
   const seen = new Set();
   const seenFields = new Set();
+  const seenDocuments = new Set();
   return items.filter(item => {
     const raw = String(item?.title || item?.text || '').trim().toLowerCase();
     const explicitField = [
@@ -5880,6 +5905,11 @@ function dedupeAttentionItems(items = []) {
       if (seenFields.has(fieldKey)) return false;
       seenFields.add(fieldKey);
     }
+    const documentKey = item?.documentKey || getDocumentActionIdentity(item);
+    if (documentKey) {
+      if (seenDocuments.has(documentKey)) return false;
+      seenDocuments.add(documentKey);
+    }
     const key = /repair\s*cost/i.test(raw)
       ? 'repair-cost-discrepancy'
       : /discrepancy|conflict/.test(raw) && /repair|cost/.test(raw)
@@ -5891,62 +5921,36 @@ function dedupeAttentionItems(items = []) {
   });
 }
 
+function getDocumentActionIdentity(item = {}) {
+  const source = item?.routeItem && typeof item.routeItem === 'object'
+    ? { ...item.routeItem, ...item }
+    : item;
+  if (!source?.document && !source?.documentKey) return '';
+  const rawLabel = source.label
+    || source.name
+    || String(source.title || source.text || source.action || '')
+      .replace(/^(request|upload|provide|obtain|send|collect)\s+(a|an|the)?\s*/i, '');
+  return normalizeAttentionText(rawLabel);
+}
+
 function getCanonicalAwaitingRecordFields(recordState) {
-  return getCanonicalRequiredRecordFields(recordState).filter(field =>
+  if (!Array.isArray(recordState?.requiredFields)) return [];
+  const fieldsByIdentity = new Map();
+  recordState.requiredFields.forEach(field => {
+    const identity = [...getRecordFieldIdentitySet(field)][0]
+      || `label:${normalizeAttentionText(field?.label || field?.display_label)}`;
+    if (!identity) return;
+    const current = fieldsByIdentity.get(identity);
+    const currentStatus = normalizeRecordStatus(current);
+    const nextStatus = normalizeRecordStatus(field);
+    if (!current || (currentStatus !== 'confirmed' && nextStatus === 'confirmed')) {
+      fieldsByIdentity.set(identity, field);
+    }
+  });
+  return [...fieldsByIdentity.values()].filter(field =>
     normalizeRecordStatus(field) === 'awaiting'
       && String(field.value ?? field.value_text ?? '').trim()
   );
-}
-
-function getCanonicalRequiredRecordFields(recordState) {
-  if (!Array.isArray(recordState?.requiredFields)) return [];
-  const requiredFields = recordState.requiredFields;
-  const candidates = [
-    ...requiredFields,
-    ...(Array.isArray(recordState?.fields) ? recordState.fields : []),
-  ];
-  const statusPriority = {
-    confirmed: 0,
-    verified: 0,
-    source_changed: 1,
-    conflict: 2,
-    conflicting: 2,
-    awaiting: 3,
-    needs_review: 3,
-    extracted: 3,
-    missing: 4,
-    not_applicable: 5,
-  };
-  const normalizeLabel = value => normalizeAttentionText(value);
-  const matchesRequiredField = (requiredField, candidate) => {
-    const requiredIdentities = getRecordFieldIdentitySet(requiredField);
-    const candidateIdentities = getRecordFieldIdentitySet(candidate);
-    const sharesIdentity = [...requiredIdentities].some(identity =>
-      candidateIdentities.has(identity)
-    );
-    const requiredLabel = normalizeLabel(requiredField?.label || requiredField?.display_label);
-    const candidateLabel = normalizeLabel(candidate?.label || candidate?.display_label);
-    return sharesIdentity || (requiredLabel && requiredLabel === candidateLabel);
-  };
-
-  return requiredFields.map(requiredField => {
-    const matches = candidates
-      .filter(candidate => matchesRequiredField(requiredField, candidate))
-      .sort((a, b) =>
-        (statusPriority[normalizeRecordStatus(a)] ?? 6)
-          - (statusPriority[normalizeRecordStatus(b)] ?? 6)
-      );
-    const resolved = matches[0];
-    if (!resolved || resolved === requiredField) return requiredField;
-    return {
-      ...requiredField,
-      ...resolved,
-      key: requiredField.key || resolved.key,
-      definitionKey: requiredField.definitionKey || resolved.definitionKey,
-      required: true,
-      isRequired: requiredField.isRequired !== false,
-    };
-  });
 }
 
 function mergeTransactionRecordState(previous, incoming) {
@@ -5969,20 +5973,11 @@ function mergeTransactionRecordState(previous, incoming) {
   return merged;
 }
 
-function alignVerifiedAssetReadinessToRecordState(verifiedAssetReadiness, recordState) {
-  if (!verifiedAssetReadiness || !recordState) return verifiedAssetReadiness;
-  const summary = verifiedAssetReadiness.summary || {};
+function getCoordinatorRecordProjection({ recordState = null, readiness = null, hydrationStatus = 'hydrating' } = {}) {
+  const ready = Boolean(recordState) || hydrationStatus === 'ready';
   return {
-    ...verifiedAssetReadiness,
-    summary: {
-      ...summary,
-      confirmed_count: Number.isFinite(Number(recordState.confirmedCount))
-        ? recordState.confirmedCount
-        : summary.confirmed_count || 0,
-      required_count: Number.isFinite(Number(recordState.requiredCount))
-        ? recordState.requiredCount
-        : summary.required_count || 0,
-    },
+    ready,
+    state: ready ? (recordState || readiness?.transaction_record || null) : null,
   };
 }
 
@@ -6120,7 +6115,7 @@ function getRecentCoordinatorChanges(events = [], analyses = [], recordFields = 
     .slice(0, 5);
 }
 
-function KeyTransactionFacts({ facts = [], onTabChange, onOverviewAction }) {
+function KeyTransactionFacts({ facts = [], loading = false, onTabChange, onOverviewAction }) {
   const statusConfig = {
     confirmed: { label: 'Confirmed', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
     awaiting: { label: 'Awaiting confirmation', dot: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -6142,7 +6137,13 @@ function KeyTransactionFacts({ facts = [], onTabChange, onOverviewAction }) {
           Review record →
         </button>
       </div>
-      {facts.length === 0 ? (
+      {loading ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Loading canonical transaction facts">
+          {[1, 2, 3, 4].map(item => (
+            <div key={item} className="h-[90px] animate-pulse rounded-xl border border-gray-100 bg-gray-50/70" />
+          ))}
+        </div>
+      ) : facts.length === 0 ? (
         <p className="mt-4 text-xs text-gray-400">No key facts are recorded yet.</p>
       ) : (
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -6203,8 +6204,7 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || 'The conflict could not be resolved.');
       }
-      const data = await response.json().catch(() => ({}));
-      await onResolved?.(data.state);
+      await onResolved?.();
       onClose?.();
     } catch (resolveError) {
       setError(resolveError.message || 'The conflict could not be resolved.');
@@ -6288,7 +6288,6 @@ function TransactionBrief({
   stages = [],
   currentStage,
   currentStageIndex,
-  canonicalStageDecision,
   events = [],
   loading,
   ownerToken,
@@ -6338,15 +6337,17 @@ function TransactionBrief({
     canonicalRecordState,
   );
   const requiredRecordFields = Array.isArray(canonicalRecordState?.requiredFields)
-    ? getCanonicalRequiredRecordFields(canonicalRecordState)
+    ? canonicalRecordState.requiredFields
     : (recordSchemaKey === 'generated_ai'
       ? generatedRecordDefinitions
       : getRequiredRecordFields(recordSchemaKey));
   const confirmedRecordCount = canonicalRecordState
-    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'confirmed').length
+    ? (canonicalRecordState.confirmedCount || 0)
     : 0;
   const capturedAwaitingConfirmation = Array.isArray(canonicalRecordState?.requiredFields)
-    ? getCanonicalAwaitingRecordFields(canonicalRecordState)
+    ? canonicalRecordState.requiredFields.filter(field =>
+      field.status === 'awaiting' && String(field.value ?? field.value_text ?? '').trim()
+    )
     : [];
   // The Brief must not invent a second conflict projection. The canonical
   // unresolved list is also the source used by WhatNeedsAttention.
@@ -6355,16 +6356,12 @@ function TransactionBrief({
   const goToRecord = field => {
     onOverviewAction?.({ type: 'record', field });
   };
-  const hasCanonicalStageDecision = canonicalStageDecision && !canonicalStageDecision.loading;
-  const hasBlockingIssues = hasCanonicalStageDecision
-    ? canonicalStageDecision.recommendationAllowed !== true
-    : allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
+  const hasBlockingIssues = allConflicts.length > 0 || nextMilestoneBlockers.length > 0;
   const stageRecommendation = getLifecycleAdvanceRecommendation(
     stages,
     currentStageIndex,
     analyses,
     hasBlockingIssues,
-    canonicalStageDecision,
   );
   const openIssueCount = getOpenIssueCount(
     allConflicts,
@@ -6415,18 +6412,6 @@ function TransactionBrief({
           }),
         },
      })),
-    ...(!stageRecommendation && hasCanonicalStageDecision
-      ? (canonicalStageDecision.blockers || [])
-        .filter(blocker => !['required_document', 'transaction_record'].includes(blocker.sourceType))
-        .slice(0, 2)
-        .map(blocker => ({
-          key: `stage-blocker-${blocker.key}`,
-          tone: 'red',
-          text: blocker.label,
-          detail: blocker.detail,
-          action: { label: 'Review stage', onClick: () => setStageDecision('review') },
-        }))
-      : []),
   ].slice(0, 5);
 
   async function acceptStageRecommendation() {
@@ -6747,6 +6732,7 @@ function TransactionBrief({
 
 export {
   getLifecycleAdvanceRecommendation,
+  getLifecycleTransitionGate,
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
@@ -6760,17 +6746,15 @@ export {
   isBorrowerFundsRecordAction,
   normalizeRecordCategory,
   getTransactionRecordCategory,
-  canonicalRecordDefinitionKey,
-  dedupeCanonicalRecordDefinitions,
   getRecordActionTarget,
   normalizeAttentionFieldKey,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
+  getDocumentActionIdentity,
   getCanonicalAwaitingRecordFields,
-  getCanonicalRequiredRecordFields,
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
-  alignVerifiedAssetReadinessToRecordState,
+  getCoordinatorRecordProjection,
   getRecordDefinitionState,
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
@@ -6917,11 +6901,11 @@ function ParticipantOverview({ propertyId, property, pack, role, roleConfig, onT
       if (cancelled) return;
       setChecklistItems(Array.isArray(checklist?.items) ? checklist.items : []);
       setAnalyses(Array.isArray(analysisData?.analyses) ? analysisData.analyses : []);
-      setStage(coordination?.stage || property?.deal_stage || '');
+      setStage(coordination?.stage || '');
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [propertyId, property?.deal_stage, refreshKey]);
+  }, [propertyId, refreshKey]);
 
   const configuredItems = Array.isArray(pack?.documentSchema) ? pack.documentSchema : [];
   const sourceItems = checklistItems.length > 0 ? checklistItems : configuredItems;
@@ -8626,6 +8610,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [recordState, setRecordState]   = useState(null);
+  const [recordHydrationStatus, setRecordHydrationStatus] = useState('hydrating');
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
   const [snapshotHistory, setSnapshotHistory] = useState([]);
@@ -8640,109 +8625,84 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [stageActionError, setStageActionError] = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
   const [recordFocus, setRecordFocus] = useState(null);
-  const [stageDecisionState, setStageDecisionState] = useState(null);
-  const [stageDecisionLoaded, setStageDecisionLoaded] = useState(false);
   const loadSequence = useRef(0);
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
 
-  const load = useCallback(async (updatedTransactionState = null) => {
+  const load = useCallback(async () => {
     if (!propertyId) return;
     // The coordinator shell is useful before secondary panels finish
     // hydrating. Keep the old loading prop for the brief's skeleton only, but
     // do not make the entire Overview wait for every endpoint in the fan-out.
     setLoading(false);
+    setRecordHydrationStatus('hydrating');
     const sequence = ++loadSequence.current;
     const headers = getRoomAuthHeaders(propertyId);
-    const get = (path, fallback) => fetch(`${API_BASE}${path}`, {
-      headers,
-      cache: 'no-store',
-    })
+    const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
       .then(r => r.ok ? r.json() : fallback)
       .catch(() => fallback);
     const apply = (setter, transform = value => value) => data => {
       if (sequence === loadSequence.current) setter(transform(data));
     };
 
-    // Mutation responses include the freshly recalculated canonical state.
-    // Apply it synchronously so a successful action cannot leave the Brief
-    // rendered from the pre-mutation projection while the fan-out completes.
-    if (updatedTransactionState?.recordState && sequence === loadSequence.current) {
-      setRecordState(updatedTransactionState.recordState);
-    }
-
-    const refreshes = [
-      get(`/api/public/deal-room/${propertyId}/brain/briefing`, null)
-        .then(apply(setBriefing)),
-      get(`/api/public/deal-room/${propertyId}/coordination`, null)
-        .then(apply(setCoordination)),
-      get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
-        .then(apply(
-          setStages,
-          stageData => normalizeLifecycleStages(
-            Array.isArray(stageData?.stages) && stageData.stages.length >= 2
-              ? stageData.stages
-              : (pack.stages || []),
-          ),
-        )),
-      get(`/api/public/deal-room/${propertyId}/stage-decision`, { stageDecision: null })
-        .then(data => {
-          if (sequence !== loadSequence.current) return;
-          setStageDecisionState(data?.stageDecision || null);
-          setStageDecisionLoaded(true);
-        }),
-      get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
-        .then(record => {
-          if (sequence !== loadSequence.current) return;
-          setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
-          // The Transaction Record endpoint is the authoritative live
-          // projection for field identity and confirmation counts. Readiness is
-          // a secondary view and may finish with a state read at another
-          // instant; it must not replace this projection.
-          if (record?.record_state) {
-            setRecordState(record.record_state);
-          }
-        }),
-      get(`/api/public/deal-room/${propertyId}/readiness`, null)
-        .then(data => {
-          if (sequence !== loadSequence.current) return;
-          setReadiness(data);
-          // Only use the embedded state when the dedicated record request did
-          // not return one. This prevents a slower readiness response from
-          // resurrecting stale awaiting fields.
-          if (data?.transaction_record) {
-            setRecordState(previous => previous || data.transaction_record);
-          }
-        }),
-      get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
-        .then(apply(setVerifiedAssetReadiness)),
-      get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
-        .then(apply(
-          setSnapshotHistory,
-          snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
-        )),
-      get(`/api/public/deal-room/${propertyId}/digital-asset-packages`, { packages: [] })
-        .then(apply(
-          setPackageHistory,
-          packageData => Array.isArray(packageData?.packages) ? packageData.packages : [],
-        )),
-      get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
-        .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : [])),
-      get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
-        .then(apply(setEvents, eventData => Array.isArray(eventData?.events) ? eventData.events : [])),
-      get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] })
-        .then(apply(setAnalyses, analysisData => Array.isArray(analysisData?.analyses) ? analysisData.analyses : [])),
-    ];
-    // Callers await this promise after mutations, so the Brief and its
-    // supporting panels are refreshed before the mutation is considered done.
-    await Promise.all(refreshes);
+    get(`/api/public/deal-room/${propertyId}/brain/briefing`, null)
+      .then(apply(setBriefing));
+    get(`/api/public/deal-room/${propertyId}/coordination`, null)
+      .then(apply(setCoordination));
+    get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
+      .then(apply(
+        setStages,
+        stageData => normalizeLifecycleStages(
+          Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+            ? stageData.stages
+            : (pack.stages || []),
+        ),
+      ));
+    get(`/api/public/deal-room/${propertyId}/transaction-record`, null)
+      .then(record => {
+        if (sequence !== loadSequence.current) return;
+        if (!record) {
+          setRecordHydrationStatus('unavailable');
+          return;
+        }
+        setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
+        // Always replace the projection when the record endpoint responds.
+        // Keeping the first response allowed a slower readiness request to
+        // leave Overview showing an older proposal-shaped state after confirm.
+        if (record?.record_state) {
+          setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
+        }
+        setRecordHydrationStatus('ready');
+      });
+    get(`/api/public/deal-room/${propertyId}/readiness`, null)
+      .then(data => {
+        if (sequence !== loadSequence.current) return;
+        setReadiness(data);
+      });
+    get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
+      .then(apply(setVerifiedAssetReadiness));
+    get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
+      .then(apply(
+        setSnapshotHistory,
+        snapshotData => Array.isArray(snapshotData?.snapshots) ? snapshotData.snapshots : [],
+      ));
+    get(`/api/public/deal-room/${propertyId}/digital-asset-packages`, { packages: [] })
+      .then(apply(
+        setPackageHistory,
+        packageData => Array.isArray(packageData?.packages) ? packageData.packages : [],
+      ));
+    get(`/api/public/deal-room/${propertyId}/checklist`, { items: [] })
+      .then(apply(setChecklistItems, checklist => Array.isArray(checklist?.items) ? checklist.items : []));
+    get(`/api/public/deal-room/${propertyId}/events`, { events: [] })
+      .then(apply(setEvents, eventData => Array.isArray(eventData?.events) ? eventData.events : []));
+    get(`/api/public/deal-room/${propertyId}/analyses`, { analyses: [] })
+      .then(apply(setAnalyses, analysisData => Array.isArray(analysisData?.analyses) ? analysisData.analyses : []));
   // refreshKey is intentionally included so any document upload (which bumps
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
   // making the Snapshot and WhatNeedsAttention update without waiting 30s.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-    return true;
   }, [propertyId, pack, refreshKey, ownerToken]);
 
   useEffect(() => {
@@ -8903,10 +8863,28 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
-  const alignedVerifiedAssetReadiness = alignVerifiedAssetReadinessToRecordState(
-    verifiedAssetReadiness,
-    canonicalRecordState,
+  const participantStatesForLifecycle = resolveParticipantStates(
+    getExternalParticipantRoles(pack, { isCoordinator: true }),
+    {
+      invites: coordination?.participantInvites || [],
+      submissions: Array.isArray(coordination?.submissions)
+        ? coordination.submissions
+        : (Array.isArray(coordination?.parties) ? coordination.parties : []),
+    },
   );
+  const lifecycleGate = getLifecycleTransitionGate({
+    stages: effectiveStages,
+    currentStageIndex: effectiveStageIndex,
+    nextStage: nextLifecycleStage,
+    documentStats,
+    recordState: canonicalRecordState,
+    participantStates: participantStatesForLifecycle,
+    unresolvedConflicts: getCanonicalUnresolvedConflicts(
+      canonicalRecordState,
+      readiness?.conflicts || [],
+    ),
+    recordHydrated: recordHydrationStatus === 'ready' || Boolean(readiness?.transaction_record),
+  });
   const readinessPct = canonicalRecordState?.requiredCount > 0
     ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
     : (readiness?.transaction_readiness?.overall_pct ?? null);
@@ -9029,19 +9007,23 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // The API's record_state includes the resolved schema, aliases, and the
   // not-applicable denominator. Use it as the single source for every Overview
   // count; the frontend schema is only a pre-load fallback.
-  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
-  const requiredRecordFields = canonicalRecordState?.requiredFields?.length
-    ? getCanonicalRequiredRecordFields(canonicalRecordState)
-    : (recordSchemaKey === 'generated_ai'
-      ? generatedRecordDefinitions
-      : getRequiredRecordFields(recordSchemaKey));
+  const generatedRecordDefinitions = recordProjectionReady
+    ? getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState)
+    : [];
+  const requiredRecordFields = !recordProjectionReady
+    ? []
+    : (canonicalRecordState?.requiredFields?.length
+      ? canonicalRecordState.requiredFields
+      : (recordSchemaKey === 'generated_ai'
+        ? generatedRecordDefinitions
+        : getRequiredRecordFields(recordSchemaKey)));
   const confirmedRequiredCount = canonicalRecordState?.requiredFields?.length
-    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'confirmed').length
+    ? canonicalRecordState.confirmedCount
     : requiredRecordFields.filter(field =>
       getRecordDefinitionState(field, recordFields, canonicalRecordState).status === 'confirmed'
     ).length;
   const capturedRequiredCount = canonicalRecordState?.requiredFields?.length
-    ? requiredRecordFields.filter(field => normalizeRecordStatus(field) === 'awaiting').length
+    ? canonicalRecordState.awaitingRequiredCount
     : requiredRecordFields.filter(definition => {
       return getRecordDefinitionState(definition, recordFields, canonicalRecordState).status === 'awaiting';
     }).length;
@@ -9049,7 +9031,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const lifecycleDateLabel = isGeneratedAiRoom(property) ? 'Target completion' : 'Target close';
 
   async function advanceLifecycleStage() {
-    if (!ownerToken || !nextLifecycleStage || advancingStage) return;
+    if (!ownerToken || !nextLifecycleStage || !lifecycleGate.eligible || advancingStage) return;
     setAdvancingStage(true);
     setStageActionError('');
     try {
@@ -9172,9 +9154,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             stages={stages}
             currentStage={currentStage}
             currentStageIndex={currentStageIndex}
-            canonicalStageDecision={stageDecisionLoaded ? stageDecisionState : { loading: true }}
             events={events}
-            loading={loading}
+             loading={loading || recordProjectionLoading}
             ownerToken={ownerToken}
             onTabChange={onTabChange}
             onOverviewAction={overviewAction}
@@ -9183,27 +9164,35 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         </div>
 
         <div className="mt-6 grid gap-6 border-t border-gray-100 pt-5 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              {readinessPhase === 'complete' ? 'Transaction complete' : 'Record Verification'}
-            </p>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-4xl font-bold tracking-tight text-gray-900">
-                {readinessPct == null ? '—' : `${Math.round(readinessPct)}%`}
-              </span>
-              <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
-            </div>
-            <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Completeness and confirmation of the structured Transaction Record — not a measure of overall transaction readiness.
-            </p>
-            {requiredRecordFields.length > 0 && (
-              <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
-                <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
-                 <p>{capturedRequiredCount} required field{capturedRequiredCount === 1 ? '' : 's'} awaiting confirmation
-                   {canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}</p>
-              </div>
-            )}
-          </div>
+           {recordProjectionLoading ? (
+             <div className="min-h-[150px] rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-4" aria-label="Loading Record Verification">
+               <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
+               <div className="mt-3 h-10 w-24 animate-pulse rounded bg-gray-200" />
+               <p className="mt-3 text-xs text-gray-400">Loading the canonical Transaction Record…</p>
+             </div>
+           ) : (
+             <div>
+               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                 {readinessPhase === 'complete' ? 'Transaction complete' : 'Record Verification'}
+               </p>
+               <div className="mt-1 flex items-baseline gap-2">
+                 <span className="text-4xl font-bold tracking-tight text-gray-900">
+                   {readinessPct == null ? '—' : `${Math.round(readinessPct)}%`}
+                 </span>
+                 <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
+               </div>
+               <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
+                 Completeness and confirmation of the structured Transaction Record — not a measure of overall transaction readiness.
+               </p>
+               {requiredRecordFields.length > 0 && (
+                 <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
+                   <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
+                    <p>{capturedRequiredCount} required field{capturedRequiredCount === 1 ? '' : 's'} awaiting confirmation
+                      {canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}</p>
+                 </div>
+               )}
+             </div>
+           )}
 
           <WhatNeedsAttention
             briefing={briefing}
@@ -9217,7 +9206,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             pack={pack}
             packId={packId}
             property={property}
-            loading={loading}
+             loading={loading || recordProjectionLoading}
             onTabChange={onTabChange}
             propertyId={propertyId}
             isCoordinator
@@ -9227,10 +9216,29 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
 
-        <div className="mt-5">
-         <KeyTransactionFacts facts={keyFacts} onTabChange={onTabChange} onOverviewAction={overviewAction} />
+         <div className="mt-5">
+          <KeyTransactionFacts
+            facts={keyFacts}
+            loading={recordProjectionLoading}
+            onTabChange={onTabChange}
+            onOverviewAction={overviewAction}
+          />
         </div>
 
+        {recordProjectionLoading ? (
+          <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/60 px-5 py-5 text-xs text-gray-400">
+            Loading the editable Transaction Record…
+          </div>
+        ) : (
+          <TransactionDetailsPanel
+            propertyId={propertyId}
+            property={property}
+            pack={pack}
+            recordFields={recordFields}
+            recordState={canonicalRecordState}
+            onSaved={load}
+          />
+        )}
         <StageLifecycleBar
           stages={effectiveStages}
           currentStageKey={currentStageKey}
@@ -9244,20 +9252,41 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Lifecycle action
                 </p>
-                <p className="mt-1 text-xs text-gray-600">
-                  Next stage:{' '}
-                  <span className="font-semibold text-gray-900">
-                    {nextLifecycleStage.icon && `${nextLifecycleStage.icon} `}
-                    {nextLifecycleStage.label}
-                  </span>
-                </p>
+                {lifecycleGate.eligible ? (
+                  <p className="mt-1 text-xs text-gray-600">
+                    Next stage:{' '}
+                    <span className="font-semibold text-gray-900">
+                      {nextLifecycleStage.icon && `${nextLifecycleStage.icon} `}
+                      {nextLifecycleStage.label}
+                    </span>
+                  </p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm font-bold text-red-700">
+                      {nextLifecycleStage.label} not ready
+                    </p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      Complete the remaining required items before advancing.
+                    </p>
+                    {lifecycleGate.blockers.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-[11px] text-red-700">
+                        {lifecycleGate.blockers.slice(0, 4).map(blocker => (
+                          <li key={blocker.key}>• {blocker.text}</li>
+                        ))}
+                        {lifecycleGate.blockers.length > 4 && (
+                          <li>• +{lifecycleGate.blockers.length - 4} more required items in Next Actions</li>
+                        )}
+                      </ul>
+                    )}
+                  </>
+                )}
                 {stageActionError && (
                   <p role="alert" className="mt-1 text-[11px] font-semibold text-red-600">
                     {stageActionError}
                   </p>
                 )}
               </div>
-              {ownerToken ? (
+              {ownerToken && lifecycleGate.eligible ? (
                 <button
                   type="button"
                   onClick={advanceLifecycleStage}
@@ -9313,7 +9342,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         </div>
       </section>
       <VerifiedAssetReadinessCard
-        verifiedAssetReadiness={alignedVerifiedAssetReadiness}
+        verifiedAssetReadiness={verifiedAssetReadiness}
         isDemo={isDemo}
         digitalAssetEnabled={digitalAssetEnabled}
         ownerToken={ownerToken}
@@ -10521,11 +10550,9 @@ export default function DealRoomPage() {
   const { propertyId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedRole = searchParams.get("role") || "owner";
-  const requestedTab = searchParams.get("tab") || "";
   const from = searchParams.get("from") || "";
 
   const inviteToken = searchParams.get("invite") || null;
-  const participantAccessToken = searchParams.get("participant_access") || null;
   const [participantSession, setParticipantSession] = useState(() => getInviteSession(propertyId));
   const [accessRole, setAccessRole] = useState(null);
   const [participantRole, setParticipantRole] = useState(null);
@@ -10557,11 +10584,6 @@ export default function DealRoomPage() {
     setActiveTabRaw(tab);
     trackEvent('workspace_tab_viewed', { tab, workspace_id: propertyId });
   }, [propertyId]);
-  useEffect(() => {
-    if (['overview', 'documents', 'people', 'settings'].includes(requestedTab)) {
-      setActiveTabRaw(requestedTab);
-    }
-  }, [requestedTab]);
   // Pack correction: set when AI thinks the stored pack is wrong for this room
   const [packSuggestion, setPackSuggestion] = useState(null); // { suggestedPack, currentPack }
   const [repackLoading, setRepackLoading] = useState(false);
@@ -10590,7 +10612,7 @@ export default function DealRoomPage() {
       setLoadingApi(false);
       return;
     }
-    if ((inviteToken || participantAccessToken) && !participantSession) return;
+    if (inviteToken && !participantSession) return;
     fetch(`${API_BASE}/api/public/deal-room/${propertyId}`, {
       headers: getRoomAuthHeaders(propertyId),
     })
@@ -10630,7 +10652,7 @@ export default function DealRoomPage() {
         setPackReady(false);
         setLoadingApi(false);
       });
-  }, [propertyId, inviteToken, participantAccessToken, participantSession]);
+  }, [propertyId, inviteToken, participantSession]);
 
   // Checkout success stores the owner credential before redirecting here. Keep
   // the coordinator boundary tied to that credential, not to ?role=owner.
@@ -10742,7 +10764,7 @@ export default function DealRoomPage() {
           plan: "deal",
           propertyId,
           propertyName: property?.property_name || property?.name || propertyId,
-          email: "dev@kontraplatform.com",
+          email: "hello@kontraplatform.com",
           role: "owner",
         }),
       });
@@ -10828,7 +10850,8 @@ export default function DealRoomPage() {
     : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
-  // Public illustrative rooms retain their completed readiness exhibits.
+  // Public illustrative rooms predate the creation toggle and intentionally
+  // retain their completed readiness exhibits.
   const isTokenization  = isDemo || isDigitalAssetLayerEnabled(apiProperty, pack);
   const isTokenizationRelevant = isTokenization;
 
@@ -10837,13 +10860,12 @@ export default function DealRoomPage() {
   // ("Rendered more hooks than during the previous render").
   usePageTitle(property?.name || property?.property_name);
 
-  if ((inviteToken || participantAccessToken) && !participantSession) {
+  if (inviteToken && !participantSession) {
     return (
       <DealRoomPinGate
         propertyId={propertyId}
         role={requestedRole}
         inviteToken={inviteToken}
-        accessToken={participantAccessToken}
         onUnlocked={handleParticipantUnlocked}
       />
     );
@@ -10960,33 +10982,6 @@ export default function DealRoomPage() {
           <p className="text-gray-500 text-sm mb-6">This link may have expired or the property ID is incorrect.</p>
           <Link to="/" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ background: "#800020" }}>Back to Kontra</Link>
-        </div>
-      </PublicLayout>
-    );
-  }
-
-  // A role query parameter is presentation metadata, not authorization. Do
-  // not render a misleading participant workspace when a notification deep
-  // link is opened without the verified owner token or invite session.
-  const hasVerifiedWorkspaceAccess = isDemo
-    || ['owner', 'participant'].includes(property?.access?.mode);
-  if (isCustom && !isDemo && !loadingApi && !hasVerifiedWorkspaceAccess) {
-    return (
-      <PublicLayout hideFooter>
-        <div className="min-h-[60vh] flex items-center justify-center px-6">
-          <div className="max-w-lg w-full rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center">
-            <div className="text-3xl mb-3">🔒</div>
-            <h1 className="text-lg font-bold text-gray-900 mb-2">Verify workspace access</h1>
-            <p className="text-sm leading-relaxed text-gray-600">
-              This workspace requires a verified owner or participant session. Open the invitation again or sign in to your Kontra deal rooms before continuing.
-            </p>
-            <Link
-              to="/my-deal-rooms"
-              className="mt-5 inline-flex rounded-xl bg-[#800020] px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Open My Deal Rooms
-            </Link>
-          </div>
         </div>
       </PublicLayout>
     );
@@ -11263,23 +11258,6 @@ export default function DealRoomPage() {
 
             {activeTab === 'settings' && isCoordinator && (
               <div className="space-y-4">
-                <DigitalAssetTogglePanel
-                  propertyId={pid}
-                  property={property}
-                  pack={pack}
-                  onEnabledChange={(enabled) => {
-                    setApiProperty(current => current
-                      ? {
-                          ...current,
-                          metadata_values: {
-                            ...(current.metadata_values || {}),
-                            digital_asset_enabled: enabled,
-                          },
-                        }
-                      : current);
-                    if (enabled) setActiveTab('overview');
-                  }}
-                />
                 <TransactionDetailsPanel propertyId={pid} property={property} pack={pack} />
               </div>
             )}
@@ -11472,6 +11450,7 @@ export default function DealRoomPage() {
                 role={role}
                 packId={packId}
                 propertyType={property.property_type || property.type}
+                isDemo={isDemo}
               />
             )}
 

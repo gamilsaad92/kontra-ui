@@ -34,42 +34,6 @@ const STAGE_META_DEFAULTS = {
 };
 const DEFAULT_STAGE_ICON = '📌';
 
-function normalizeChecklistRole(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
-}
-
-// Saved checklist rows are authoritative once a coordinator edits the room.
-// The pack schema remains a fallback for legacy rows and older rooms. Custom
-// rows have no schema counterpart, so they stay in the progress calculation.
-function getEffectiveChecklistItems(checklistItems = [], documentSchema = []) {
-  const schemaByKey = new Map(
-    (documentSchema || []).flatMap(item => [
-      [item.id, item],
-      [item.section, item],
-    ].filter(([key]) => key)),
-  );
-  const source = Array.isArray(checklistItems) && checklistItems.length > 0
-    ? checklistItems
-    : (documentSchema || []);
-
-  return source.map(item => {
-    const configured = schemaByKey.get(item.id) || schemaByKey.get(item.section);
-    const assignedTo = Array.isArray(item.assignedTo) && item.assignedTo.length > 0
-      ? item.assignedTo
-      : (configured?.assignedTo || []);
-    return configured ? { ...configured, ...item, assignedTo } : { ...item, assignedTo };
-  });
-}
-
-function getChecklistItemsForRole(checklistItems, role, documentSchema = []) {
-  const normalizedRole = normalizeChecklistRole(role);
-  return getEffectiveChecklistItems(checklistItems, documentSchema).filter(item =>
-    (item.assignedTo || []).some(assignedRole =>
-      normalizeChecklistRole(assignedRole) === normalizedRole
-    )
-  );
-}
-
 function enrichStage(s) {
   const meta = STAGE_META_DEFAULTS[s.key] || {};
   return {
@@ -296,7 +260,7 @@ function ManageStagesPanel({ stages, currentStageKey, propertyId, onSave, onCanc
 }
 
 // ── Main DealCoordinationPanel ────────────────────────────────────────────────
-export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID, propertyType }) {
+export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID, propertyType, isDemo = false }) {
   const workflowPack = getWorkflowPack(packId);
   const PACK_STAGES = workflowPack.stages;
   const ROLE_META = Object.fromEntries(workflowPack.roles.map(r => [r.key, r]));
@@ -315,7 +279,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   // Custom stages state
   const [customStages, setCustomStages] = useState(null); // null = use pack default
   const [showManage, setShowManage] = useState(false);
-  const [checklistItems, setChecklistItems] = useState([]);
+  const [lifecycleGate, setLifecycleGate] = useState(isDemo ? { eligible: true } : null);
 
   const fetchCoordination = useCallback(async () => {
     try {
@@ -349,29 +313,30 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     }
   }, [propertyId]);
 
-  const fetchChecklist = useCallback(async () => {
+  const fetchLifecycleGate = useCallback(async () => {
+    if (isDemo) return;
     try {
-      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/lifecycle-gate`, {
         headers: getRoomAuthHeaders(propertyId),
       });
       if (!res.ok) return;
-      const json = await res.json();
-      setChecklistItems(Array.isArray(json.items) ? json.items : []);
+      setLifecycleGate(await res.json());
     } catch {
-      // Keep the workflow-pack schema as the fallback for older rooms.
+      // Keep the control unavailable until the canonical gate is known.
     }
-  }, [propertyId]);
+  }, [isDemo, propertyId]);
 
   useEffect(() => {
     fetchCoordination();
     fetchStages();
-    fetchChecklist();
-    const interval = setInterval(() => {
-      fetchCoordination();
-      fetchChecklist();
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [fetchCoordination, fetchStages, fetchChecklist]);
+    fetchLifecycleGate();
+    const interval = setInterval(fetchCoordination, 20000);
+    const gateInterval = setInterval(fetchLifecycleGate, 20000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(gateInterval);
+    };
+  }, [fetchCoordination, fetchStages, fetchLifecycleGate]);
 
   // Effective stages: custom (if saved) or pack default
   const effectiveStages = customStages || PACK_STAGES;
@@ -446,7 +411,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   // The last stage in the effective list acts as "funded" (deal complete)
   const isLastStage = stageIdx === effectiveStages.length - 1 && stageIdx >= 0;
   const canManage = !!ROLE_META[role]?.canManage;
-  const canAdvance = canManage && !isLastStage;
+  const canAdvance = canManage && !isLastStage && lifecycleGate?.eligible === true;
   const canSetStatus = canManage;
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
@@ -457,15 +422,13 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
 
   // Context-aware Signal Ready subtext: does this role have assigned documents?
   const documentSchema = workflowPack.getDocumentSchema?.(propertyType) || [];
-  const effectiveChecklist = getEffectiveChecklistItems(checklistItems, documentSchema);
-  const myAssignedDocs = getChecklistItemsForRole(effectiveChecklist, role);
+  const myAssignedDocs = documentSchema.filter(d => (d.assignedTo || []).includes(role));
 
   // Per-party upload progress — "X/Y docs" in each party card
   const assignedCountByRole = {};
-  for (const doc of effectiveChecklist) {
+  for (const doc of documentSchema) {
     for (const r of (doc.assignedTo || [])) {
-      const normalizedRole = normalizeChecklistRole(r);
-      assignedCountByRole[normalizedRole] = (assignedCountByRole[normalizedRole] || 0) + 1;
+      assignedCountByRole[r] = (assignedCountByRole[r] || 0) + 1;
     }
   }
 
@@ -511,6 +474,26 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                     ⚠ {requiredRoles.filter(r => !submittedRoles.has(r)).length} required{' '}
                     {requiredRoles.filter(r => !submittedRoles.has(r)).length === 1 ? 'party' : 'parties'} pending
                   </p>
+                )}
+              </div>
+            )}
+            {canManage && !isLastStage && lifecycleGate && !lifecycleGate.eligible && (
+              <div className="max-w-[220px] text-right">
+                <p className="text-xs font-bold text-red-700">
+                  {effectiveStages[stageIdx + 1]?.label || 'Next stage'} not ready
+                </p>
+                <p className="mt-0.5 text-[9px] font-medium text-gray-500">
+                  Complete the remaining required items before advancing.
+                </p>
+                {lifecycleGate.blockers?.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-[9px] text-red-700">
+                    {lifecycleGate.blockers.slice(0, 3).map(blocker => (
+                      <li key={blocker.key}>• {blocker.text}</li>
+                    ))}
+                    {lifecycleGate.blockers.length > 3 && (
+                      <li>• +{lifecycleGate.blockers.length - 3} more in Next Actions</li>
+                    )}
+                  </ul>
                 )}
               </div>
             )}
@@ -746,9 +729,3 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
     </div>
   );
 }
-
-export {
-  getEffectiveChecklistItems,
-  getChecklistItemsForRole,
-  normalizeChecklistRole,
-};

@@ -16,17 +16,16 @@ const {
   isBorrowerFundsRecordAction,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
+  getDocumentActionIdentity,
+  getLifecycleTransitionGate,
   getCanonicalAwaitingRecordFields,
-  getCanonicalRequiredRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
+  getCoordinatorRecordProjection,
   getRecordDefinitionState,
   mergeTransactionRecordState,
-  alignVerifiedAssetReadinessToRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
-  canonicalRecordDefinitionKey,
-  dedupeCanonicalRecordDefinitions,
   getRecordActionTarget,
   normalizeAttentionFieldKey,
   getCurrentProvenanceGap,
@@ -158,42 +157,6 @@ describe('coordinator transaction brief logic', () => {
       expect.objectContaining({ stage: expect.objectContaining({ key: 'approved' }) })
     );
     expect(getLifecycleAdvanceRecommendation(stages, 0, analyses, true)).toBeNull();
-  });
-
-  test('suppresses a milestone recommendation when the canonical stage decision has blockers', () => {
-    const analyses = [{ section: 'purchase_agreement', processing_status: 'complete', analysis: { summary: 'Executed' } }];
-
-    expect(getLifecycleAdvanceRecommendation(
-      stages,
-      0,
-      analyses,
-      false,
-      {
-        recommendationAllowed: false,
-        nextStage: stages[1],
-        blockers: [{ key: 'required-document:financials', label: 'Financial Statements', detail: 'A required document is missing.' }],
-      },
-    )).toBeNull();
-  });
-
-  test('uses the canonical stage decision when all stage conditions are satisfied', () => {
-    const recommendation = getLifecycleAdvanceRecommendation(
-      stages,
-      0,
-      [],
-      true,
-      {
-        recommendationAllowed: true,
-        currentStage: stages[0],
-        nextStage: stages[1],
-        reason: 'The canonical requirements for Approved are satisfied.',
-      },
-    );
-
-    expect(recommendation).toEqual(expect.objectContaining({
-      stage: stages[1],
-      reason: 'The canonical requirements for Approved are satisfied.',
-    }));
   });
 
   test('counts conflicts as open issues even when there are no checklist blockers', () => {
@@ -466,6 +429,120 @@ describe('coordinator transaction brief logic', () => {
     ])).toHaveLength(1);
   });
 
+  test('deduplicates request and upload actions for the same document', () => {
+    expect(dedupeAttentionItems([
+      {
+        title: 'Request Financial Due Diligence Report',
+        document: true,
+        label: 'Financial Due Diligence Report',
+      },
+      {
+        title: 'Upload Financial Due Diligence Report',
+        document: true,
+        label: 'Financial Due Diligence Report',
+      },
+      {
+        title: 'Upload Tax Due Diligence Report',
+        document: true,
+        label: 'Tax Due Diligence Report',
+      },
+    ]).map(item => item.title)).toEqual([
+      'Request Financial Due Diligence Report',
+      'Upload Tax Due Diligence Report',
+    ]);
+    expect(getDocumentActionIdentity({
+      title: 'Upload Financial Due Diligence Report',
+      document: true,
+    })).toBe('financial due diligence report');
+  });
+
+  test('blocks a due-diligence to closing transition when canonical requirements remain outstanding', () => {
+    const stages = [
+      { key: 'due_diligence', label: 'Due Diligence' },
+      {
+        key: 'closing',
+        label: 'Closing',
+        requiredRoles: ['financial_advisor', 'lender'],
+      },
+    ];
+    const requiredDocuments = Array.from({ length: 11 }, (_, index) => ({
+      id: `document-${index + 1}`,
+      label: `Required Document ${index + 1}`,
+      section: `document_${index + 1}`,
+      required: true,
+    }));
+    const gate = getLifecycleTransitionGate({
+      stages,
+      currentStageIndex: 0,
+      documentStats: {
+        missingDocuments: requiredDocuments.slice(3),
+        reviewDocuments: [],
+      },
+      recordState: {
+        requiredFields: Array.from({ length: 16 }, (_, index) => ({
+          key: `transaction.field_${index + 1}`,
+          label: `Required Field ${index + 1}`,
+          required: true,
+          status: index < 13 ? 'confirmed' : 'missing',
+        })),
+      },
+      participantStates: [
+        { key: 'financial_advisor', label: 'Financial Advisor', required: true, invited: false, complete: false },
+        { key: 'lender', label: 'Lender', required: false, invited: true, complete: false },
+      ],
+      unresolvedConflicts: [],
+    });
+
+    expect(gate.eligible).toBe(false);
+    expect(gate.blockers.map(blocker => blocker.type)).toEqual(expect.arrayContaining([
+      'document',
+      'record',
+      'participant',
+    ]));
+    expect(gate.blockers.map(blocker => blocker.text)).toEqual(expect.arrayContaining([
+      'Required Document 4 is required before Closing',
+      'Required Field 14 must be confirmed',
+      'Financial Advisor must be active before Closing',
+      'Lender must be active before Closing',
+    ]));
+  });
+
+  test('allows the next lifecycle stage once all transition requirements are satisfied', () => {
+    const stages = [
+      { key: 'due_diligence', label: 'Due Diligence' },
+      { key: 'closing', label: 'Closing', requiredRoles: ['financial_advisor'] },
+    ];
+    const documents = [
+      { id: 'purchase-agreement', label: 'Purchase Agreement', section: 'purchase_agreement', required: true },
+      { id: 'financials', label: 'Financials', section: 'financials', required: true },
+    ];
+    const gate = getLifecycleTransitionGate({
+      stages,
+      currentStageIndex: 0,
+      documentStats: {
+        missingDocuments: [],
+        reviewDocuments: [],
+        receivedDocuments: documents,
+      },
+      recordState: {
+        requiredFields: [
+          { key: 'transaction.value', label: 'Transaction value', required: true, status: 'confirmed' },
+        ],
+      },
+      participantStates: [
+        { key: 'financial_advisor', label: 'Financial Advisor', required: true, invited: true, complete: true },
+      ],
+      unresolvedConflicts: [],
+    });
+
+    expect(gate).toEqual(expect.objectContaining({
+      ready: true,
+      eligible: true,
+      nextStage: stages[1],
+      blockers: [],
+    }));
+  });
+
   test('builds awaiting actions from canonical required fields, not stale raw rows', () => {
     const recordState = {
       requiredFields: [
@@ -509,114 +586,6 @@ describe('coordinator transaction brief logic', () => {
     ], recordState)).toEqual([]);
   });
 
-  test('removes a confirmation recommendation after the refreshed state confirms the field', () => {
-    const awaiting = {
-      requiredFields: [{
-        key: 'transaction.purchase_price',
-        label: 'Purchase price',
-        value: '$14,000,000',
-        status: 'awaiting',
-      }],
-    };
-    const confirmed = {
-      requiredFields: [{
-        key: 'transaction.purchase_price',
-        label: 'Purchase price',
-        value: '$14,000,000',
-        status: 'confirmed',
-      }],
-    };
-
-    expect(getCanonicalAwaitingRecordFields(awaiting)).toHaveLength(1);
-    expect(getCanonicalAwaitingRecordFields(confirmed)).toEqual([]);
-    expect(filterStaleRecordActions([
-      { title: 'Confirm Purchase price', field_key: 'transaction.purchase_price' },
-    ], confirmed)).toEqual([]);
-  });
-
-  test('shows a confirmation recommendation again when a confirmed field returns to awaiting', () => {
-    const refreshed = {
-      requiredFields: [{
-        key: 'transaction.purchase_price',
-        label: 'Purchase price',
-        value: '$14,000,000',
-        status: 'awaiting',
-      }],
-    };
-
-    expect(getCanonicalAwaitingRecordFields(refreshed)).toEqual([
-      refreshed.requiredFields[0],
-    ]);
-  });
-
-  test('uses the confirmed field row when the required projection is stale', () => {
-    const state = {
-      requiredFields: [
-        {
-          key: 'transaction.closing_date',
-          label: 'Target Closing Date',
-          value: 'October 28, 2026',
-          status: 'awaiting',
-        },
-        {
-          key: 'transaction.structure',
-          label: 'Transaction Structure',
-          value: 'Stock Purchase',
-          status: 'awaiting',
-        },
-      ],
-      fields: [
-        {
-          key: 'transaction.closing_date',
-          label: 'Target Closing Date',
-          value: 'October 28, 2026',
-          status: 'confirmed',
-        },
-        {
-          key: 'transaction.structure',
-          label: 'Transaction Structure',
-          value: 'Stock Purchase',
-          status: 'confirmed',
-        },
-      ],
-    };
-
-    expect(getCanonicalRequiredRecordFields(state).map(field => field.status)).toEqual([
-      'confirmed',
-      'confirmed',
-    ]);
-    expect(getCanonicalAwaitingRecordFields(state)).toEqual([]);
-  });
-
-  test('deduplicates category definitions and rendered rows by canonical identity', () => {
-    const definitions = dedupeCanonicalRecordDefinitions([
-      { key: 'parties.seller', label: 'Seller Entity', category: 'parties' },
-      { key: 'seller_entity', label: 'Seller Entity', category: 'parties' },
-      { key: 'parties.buyer', label: 'Buyer Entity', category: 'parties' },
-      { key: 'buyer_entity', label: 'Buyer Entity', category: 'parties' },
-      { key: 'transaction.transaction_structure', label: 'Transaction Structure', category: 'transaction' },
-      { key: 'transaction_structure', label: 'Transaction Structure', category: 'transaction' },
-      { key: 'transaction.closing_date', label: 'Target Closing Date', category: 'transaction' },
-      { key: 'target_closing_date', label: 'Target Closing Date', category: 'transaction' },
-    ]);
-
-    expect(definitions).toHaveLength(4);
-    expect(definitions.map(field => canonicalRecordDefinitionKey(field))).toEqual([
-      'parties.seller',
-      'parties.buyer',
-      'transaction.transaction_structure',
-      'transaction.closing_date',
-    ]);
-    expect(new Set(definitions.map(field => field.key)).size).toBe(definitions.length);
-
-    const partyRows = definitions.filter(field => field.category === 'parties');
-    const transactionRows = definitions.filter(field => field.category === 'transaction');
-    expect(partyRows).toHaveLength(2);
-    expect(transactionRows).toHaveLength(2);
-    expect(new Set(partyRows.map(field => field.key)).size).toBe(partyRows.length);
-    expect(new Set(transactionRows.map(field => field.key)).size).toBe(transactionRows.length);
-  });
-
   test('replaces a previous canonical array when the newer response is empty', () => {
     const previous = {
       requiredFields: [{ key: 'financial.borrower_funds_advanced', status: 'awaiting', value: '90,000' }],
@@ -638,24 +607,38 @@ describe('coordinator transaction brief logic', () => {
     }));
   });
 
-  test('keeps the Digital Asset card on the live canonical record denominator', () => {
-    const verifiedAssetReadiness = {
-      summary: {
-        confirmed_count: 13,
-        required_count: 18,
-        unresolved_exception_count: 2,
+  test('does not expose readiness fallback data while the canonical record is hydrating', () => {
+    const readiness = {
+      transaction_record: {
+        requiredCount: 0,
+        confirmedCount: 0,
+        requiredFields: [],
       },
     };
 
-    expect(alignVerifiedAssetReadinessToRecordState(verifiedAssetReadiness, {
-      confirmedCount: 15,
-      requiredCount: 18,
+    expect(getCoordinatorRecordProjection({
+      readiness,
+      hydrationStatus: 'hydrating',
     })).toEqual({
-      summary: {
-        confirmed_count: 15,
-        required_count: 18,
-        unresolved_exception_count: 2,
-      },
+      ready: false,
+      state: null,
+    });
+  });
+
+  test('preserves the last resolved canonical record during a refresh', () => {
+    const recordState = {
+      requiredCount: 16,
+      confirmedCount: 13,
+      requiredFields: [{ key: 'transaction.value', status: 'confirmed' }],
+    };
+
+    expect(getCoordinatorRecordProjection({
+      recordState,
+      readiness: { transaction_record: { requiredCount: 0, confirmedCount: 0 } },
+      hydrationStatus: 'hydrating',
+    })).toEqual({
+      ready: true,
+      state: recordState,
     });
   });
 
