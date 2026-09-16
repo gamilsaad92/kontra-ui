@@ -16,6 +16,10 @@ const { readTransactionState } = require('./transactionState');
 const {
   projectDocumentChecklist,
 } = require('./documentStatus');
+const {
+  getChecklistItemAssignedRoles,
+  hasDocumentRole,
+} = require('./documentAssignmentAccess');
 const { buildStageDecision } = require('./stageDecision');
 const {
   isTokenizationQuestion,
@@ -446,6 +450,47 @@ async function loadGroundingAnalyses(propertyId) {
   return [];
 }
 
+function buildParticipantRequirementState(projectedChecklist, role, submission) {
+  const assignedItems = (Array.isArray(projectedChecklist) ? projectedChecklist : [])
+    .filter(item => hasDocumentRole(getChecklistItemAssignedRoles(item), role));
+  const requiredItems = assignedItems.filter(item => item.required === true);
+  const completedRequiredItems = requiredItems.filter(item => item.documentReceived === true);
+  const missingRequiredItems = requiredItems.filter(item => item.documentReceived !== true);
+  const reviewItems = assignedItems.filter(item => item.documentNeedsReview === true);
+
+  return {
+    submissionRecorded: Boolean(submission),
+    submittedDocumentCount: Number(submission?.doc_count || 0),
+    submittedAt: submission?.submitted_at || null,
+    assignedCount: assignedItems.length,
+    requiredCount: requiredItems.length,
+    completedRequiredCount: completedRequiredItems.length,
+    missingRequiredCount: missingRequiredItems.length,
+    complete: Boolean(submission)
+      && requiredItems.length > 0
+      && completedRequiredItems.length === requiredItems.length,
+    documents: assignedItems.map(item => ({
+      id: item.id || item.document_id || item.documentId || null,
+      section: item.section || item.category || null,
+      label: item.label || item.name || item.id || 'Assigned document',
+      required: item.required === true,
+      status: item.documentState,
+      received: item.documentReceived === true,
+      needsReview: item.documentNeedsReview === true,
+    })),
+    missingRequiredDocuments: missingRequiredItems.map(item => ({
+      id: item.id || item.document_id || item.documentId || null,
+      section: item.section || item.category || null,
+      label: item.label || item.name || item.id || 'Required document',
+    })),
+    reviewDocuments: reviewItems.map(item => ({
+      id: item.id || item.document_id || item.documentId || null,
+      section: item.section || item.category || null,
+      label: item.label || item.name || item.id || 'Assigned document',
+    })),
+  };
+}
+
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
   const [transactionState, tasks, analyses, { data: participants }, { data: participantInvites }] = await Promise.all([
@@ -466,6 +511,7 @@ async function buildGroundedContext(propertyId) {
     Array.isArray(room?.checklist_items) ? room.checklist_items : [],
     analyses,
   );
+  const projectedChecklist = documentProjection.items;
   const activeAnalyses = documentProjection.activeAnalyses;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal
@@ -567,6 +613,11 @@ async function buildGroundedContext(propertyId) {
         invited: !!invite,
         documentCount: Number(submission?.doc_count || 0),
         submittedAt: submission?.submitted_at || null,
+        assignedRequirements: buildParticipantRequirementState(
+          projectedChecklist,
+          role.key,
+          submission,
+        ),
       };
     });
   const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantContext);
@@ -807,6 +858,12 @@ The participants array is the live People state for this room. Do not import rol
 generic template or from outside this room. A populated Transaction Record field with status
 "awaiting_confirmation" is a known fact awaiting coordinator confirmation, not a missing or
 incomplete field; do not describe it as awaiting completion.
+Each participant's assignedRequirements object is the canonical role-scoped document assignment
+and submission projection. For questions about whether a participant completed their assigned
+requirement, use only that participant's assignedRequirements: requiredCount, completedRequiredCount,
+missingRequiredDocuments, and complete. Do not use transaction-wide missing_documents or unrelated
+participants' documents to mark that role incomplete. You may separately note that the transaction
+has other missing documents outside the participant's assignment.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
 When asked whether the transaction should advance, follow stage_decision exactly. Give a direct yes/no recommendation for the immediate next stage and name the recorded blockers; do not answer with a document inventory instead.
@@ -838,6 +895,10 @@ and explicit blocking tasks with evidence. A non_blocking_open_tasks item is not
 blockers array is empty, say that no blocker is recorded instead of inferring one.
 The transaction_context.participants array is the live People state for this room. Never add
 Buyer, Seller, Legal Advisor, Financial Advisor, or any other role unless it is present there.
+For participant-completion questions, use only the named participant's assignedRequirements
+projection. It is role-scoped to the persisted checklist assignments and canonical participant
+submission. Do not treat transaction-wide missing_documents as missing requirements for that
+participant; mention those separately only when useful.
 The transaction_record_review array contains populated facts awaiting coordinator confirmation;
 these are not missing or incomplete and must not be described as awaiting completion.
 
@@ -859,6 +920,48 @@ function isStageDecisionQuestion(question) {
   const text = String(question || '');
   return /\b(?:advance|proceed|move\s+forward|next\s+stage|progress|ready)\b/i.test(text)
     && /\b(?:should|can|recommend|decision|transaction|deal|closing|stage)\b/i.test(text);
+}
+
+function findParticipantCompletionTarget(ctx, question) {
+  const text = String(question || '').toLowerCase();
+  if (!/\b(?:complete|completed|finish|finished|done|fulfilled)\b/.test(text)) return null;
+  if (!/\b(?:assigned|required|requirement|document|upload|submission)\b/.test(text)) return null;
+  const participants = ctx.transactionContext?.participants || [];
+  return participants.find(participant => {
+    const role = String(participant.role || '').toLowerCase();
+    const label = String(participant.label || '').toLowerCase();
+    return [role, label].some(value => value && text.includes(value));
+  }) || null;
+}
+
+function buildParticipantCompletionAnswer(ctx, participant) {
+  const requirements = participant.assignedRequirements || {};
+  const label = participant.label || participant.role || 'The participant';
+  const requiredCount = Number(requirements.requiredCount || 0);
+  const completedCount = Number(requirements.completedRequiredCount || 0);
+  const missing = Array.isArray(requirements.missingRequiredDocuments)
+    ? requirements.missingRequiredDocuments
+    : [];
+  const documentNames = (requirements.documents || [])
+    .filter(document => document.required && document.received)
+    .map(document => document.label)
+    .filter(Boolean);
+
+  if (requiredCount === 0) {
+    return `${label} has no currently assigned required document recorded in the live checklist.`;
+  }
+  if (requirements.complete === true) {
+    const uploaded = documentNames.length > 0
+      ? ` Completed assigned document${documentNames.length === 1 ? '' : 's'}: ${documentNames.join(', ')}.`
+      : '';
+    const transactionNote = Array.isArray(ctx.missingDocuments) && ctx.missingDocuments.length > 0
+      ? ' The transaction may still have other outstanding required documents outside this role’s assignment.'
+      : '';
+    return `Yes — ${label} has completed their currently assigned requirement (${completedCount} of ${requiredCount} required assigned documents uploaded and processed).${uploaded}${transactionNote}`;
+  }
+
+  const missingLabels = missing.map(document => document.label).filter(Boolean);
+  return `No — ${label} has completed ${completedCount} of ${requiredCount} required assigned documents.${missingLabels.length ? ` Still required: ${missingLabels.join(', ')}.` : ''}`;
 }
 
 function buildStageDecisionAnswer(ctx) {
@@ -1138,18 +1241,25 @@ async function askQuestion(propertyId, question) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
   const ctx = await buildGroundedContext(propertyId);
-  if (isStageDecisionQuestion(question)) {
+  const participantCompletionTarget = findParticipantCompletionTarget(ctx, question);
+  if (participantCompletionTarget) {
     return {
-      answer: buildStageDecisionAnswer(ctx),
-      citedTaskIds: (ctx.stageDecision?.blockers || [])
-        .map(blocker => blocker.taskId)
-        .filter(Boolean),
+      answer: buildParticipantCompletionAnswer(ctx, participantCompletionTarget),
+      citedTaskIds: [],
     };
   }
   if (isDocumentStatusQuestion(question)) {
     return {
       answer: buildDocumentStatusAnswer(ctx),
       citedTaskIds: [],
+    };
+  }
+  if (isStageDecisionQuestion(question)) {
+    return {
+      answer: buildStageDecisionAnswer(ctx),
+      citedTaskIds: (ctx.stageDecision?.blockers || [])
+        .map(blocker => blocker.taskId)
+        .filter(Boolean),
     };
   }
   const openai = getOpenAI();

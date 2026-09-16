@@ -34,6 +34,7 @@ const {
   askQuestion,
   buildGroundedContext,
   getLiveMissingDocuments,
+  askContextToPrompt,
   getBriefing,
   clearBriefingCache,
 } = require('./lib/operationsManager');
@@ -334,6 +335,12 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       required: true,
       assignedTo: ['attorney'],
       status: 'pending',
+    }, {
+      section: 'financials',
+      label: 'Financial Statements',
+      required: true,
+      assignedTo: ['owner'],
+      status: 'missing',
     }];
     mockReadTransactionState.mockResolvedValue({
       packId: 'ws_harbor_ridge',
@@ -394,28 +401,54 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         submissionStatus: 'submitted',
         inviteStatus: 'active',
         documentCount: 1,
+        assignedRequirements: expect.objectContaining({
+          submissionRecorded: true,
+          requiredCount: 1,
+          completedRequiredCount: 1,
+          missingRequiredCount: 0,
+          complete: true,
+          documents: [
+            expect.objectContaining({
+              label: 'Legal Due Diligence Report',
+              required: true,
+              received: true,
+            }),
+          ],
+        }),
       }),
     ]);
-    expect(context.groundedBlockers).toEqual([]);
+    expect(context.groundedBlockers).toEqual([
+      expect.objectContaining({
+        sourceType: 'required_document',
+        label: 'Financial Statements',
+      }),
+    ]);
     expect(context.openTasks).toEqual([]);
+    expect(context.missingDocuments).toEqual([
+      expect.objectContaining({ label: 'Financial Statements' }),
+    ]);
 
-    await askQuestion(
+    const promptContext = JSON.parse(askContextToPrompt(context));
+    expect(promptContext.transaction_context.participants).toEqual([
+      expect.objectContaining({
+        role: 'attorney',
+        assignedRequirements: expect.objectContaining({
+          requiredCount: 1,
+          completedRequiredCount: 1,
+          complete: true,
+        }),
+      }),
+    ]);
+
+    const answer = await askQuestion(
       'harbor-ridge-production-regression',
       'Has the Legal Advisor completed their currently assigned requirement?',
     );
-    const userMessage = mockOpenAICompletion.mock.calls.at(-1)[0].messages
-      .find(message => message.role === 'user');
-    const groundedPrompt = JSON.parse(
-      userMessage.content.replace(/^Workspace context:\n/, '').split('\n\nQuestion:')[0],
-    );
-    expect(groundedPrompt.blockers).toEqual([]);
-    expect(groundedPrompt.transaction_context.participants).toEqual([
-      expect.objectContaining({
-        role: 'attorney',
-        label: 'Legal Advisor',
-        submissionStatus: 'submitted',
-      }),
-    ]);
+    expect(answer.answer).toContain('Yes');
+    expect(answer.answer).toContain('Legal Due Diligence Report');
+    expect(answer.answer).toContain('1 of 1');
+    expect(answer.answer).toContain('other outstanding required documents outside this role');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
