@@ -272,10 +272,17 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
-function filterTasksToLiveParticipants(tasks, participantDefinitions) {
+function filterTasksToLiveParticipants(tasks, participantDefinitions, participants = []) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
+  const completedParticipantKeys = new Set((participants || [])
+    .filter(participant => ['submitted', 'complete', 'completed'].includes(
+      String(participant?.submissionStatus || participant?.status || '').toLowerCase(),
+    ) || Number(participant?.documentCount || participant?.doc_count || 0) > 0)
+    .map(participant => participant.role));
   return (Array.isArray(tasks) ? tasks : []).filter(task =>
-    !isParticipantTask(task) || liveParticipantKeys.has(subjectRoleOf(task))
+    !isParticipantTask(task)
+      || (liveParticipantKeys.has(subjectRoleOf(task))
+        && !completedParticipantKeys.has(subjectRoleOf(task)))
   );
 }
 
@@ -334,8 +341,7 @@ function buildGroundedBlockers({
       const participant = participantRows.find(row => row.role === role.key);
       const participantStatus = String(participant?.status || '').toLowerCase();
       const inviteStatus = String(participant?.inviteStatus || '').toLowerCase();
-      const submitted = JOINED_PARTICIPANT_INVITE_STATUSES.has(inviteStatus)
-        || ['submitted', 'complete', 'completed'].includes(participantStatus)
+      const submitted = ['submitted', 'complete', 'completed'].includes(participantStatus)
         || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
       if (submitted) return;
 
@@ -554,6 +560,7 @@ async function buildGroundedContext(propertyId) {
       const invite = liveInvites.find(item => item.role_key === role.key);
       return {
         role: role.key,
+        label: role.label || getPackRoleLabel(packId, role.key),
         name: submission?.name || null,
         status: submission?.status || invite?.status || null,
         submissionStatus: submission?.status || null,
@@ -563,7 +570,7 @@ async function buildGroundedContext(propertyId) {
         submittedAt: submission?.submitted_at || null,
       };
     });
-  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions);
+  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantContext);
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
@@ -578,7 +585,7 @@ async function buildGroundedContext(propertyId) {
     recordState,
     missingDocuments,
     participants: participantContext,
-    tasks,
+    tasks: groundedTasks,
     participantDefinitions,
     conflicts,
   });

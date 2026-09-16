@@ -22,6 +22,9 @@ const {
 } = require('../lib/documentVersions');
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
+const {
+  syncParticipantSubmissionFromDocument,
+} = require('../lib/participantSubmissionState');
 
 const router = express.Router();
 let transactionFieldExtractor = null;
@@ -845,6 +848,14 @@ Return only valid JSON. No extra text.`;
         propertyId: property_id, section, filename: _name, analysis: result,
         role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
+      if (uploadAccess.mode === 'participant') {
+        await syncParticipantSubmissionFromDocument({
+          supabase,
+          propertyId: property_id,
+          role,
+          email: uploadAccess.email,
+        });
+      }
       console.log(`[deal_analyses] ${section} saved (analyze-document) — fresh content analysis persisted`);
       logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }

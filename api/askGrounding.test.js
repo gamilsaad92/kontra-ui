@@ -1,4 +1,4 @@
-const workflowStages = require('../../shared/workflowStages.json');
+const workflowStages = require('../shared/workflowStages.json');
 const { getPackRoleConfig } = require('./lib/dealRoomHelpers');
 
 const mockReadTransactionState = jest.fn();
@@ -77,7 +77,7 @@ function setupSupabaseQueries(packId) {
   });
 }
 
-function setupCustomRoomQueries(roles, participantRows = [], invites = []) {
+function setupCustomRoomQueries(roles, participantRows = [], invites = [], analyses = []) {
   mockSupabaseFrom.mockImplementation(table => {
     const result = table === 'custom_workflow_packs'
       ? { config: { roles } }
@@ -85,6 +85,8 @@ function setupCustomRoomQueries(roles, participantRows = [], invites = []) {
         ? participantRows
         : table === 'deal_room_invites'
           ? invites
+          : table === 'deal_analyses'
+            ? analyses
           : [];
     const chain = {
       select: () => chain,
@@ -317,6 +319,103 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');
     expect(JSON.stringify(context)).not.toContain('Financial Advisor');
+  });
+
+  test('uses the canonical participant submission after an assigned Legal Advisor upload', async () => {
+    const roles = [{
+      key: 'attorney',
+      label: 'Legal Advisor',
+      required: true,
+      invitable: true,
+    }];
+    const checklist = [{
+      section: 'legal_due_diligence_report',
+      label: 'Legal Due Diligence Report',
+      required: true,
+      assignedTo: ['attorney'],
+      status: 'pending',
+    }];
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'ws_harbor_ridge',
+      room: {
+        property_id: 'harbor-ridge-production-regression',
+        property_name: 'Harbor Ridge Manufacturing Acquisition',
+        workflow_pack_id: 'ws_harbor_ridge',
+        workflow_pack_config: { roles, documents: checklist },
+        deal_type: 'other',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+      },
+      recordState: {
+        schemaKey: 'generated_ai',
+        fields: [],
+        requiredFields: [],
+        requiredCount: 0,
+        confirmedCount: 0,
+        awaitingRequiredCount: 0,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      conflicts: [],
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([{
+      id: 'stale-attorney-task',
+      task_type: 'missing_participant',
+      source_id: 'missing-role:attorney',
+      source_type: 'party_role',
+      status: 'pending',
+      blocking: true,
+      title: 'Legal Advisor has no participant submission on record',
+      evidence: ['No party_submissions record found for role "attorney".'],
+    }]);
+    setupCustomRoomQueries(
+      roles,
+      [{ role: 'attorney', status: 'submitted', doc_count: 1 }],
+      [{ role_key: 'attorney', status: 'active' }],
+      [{
+        id: 'legal-dd-report',
+        section: 'legal_due_diligence_report',
+        filename: 'legal-due-diligence-report.pdf',
+        processing_status: 'extracted',
+        is_active: true,
+        superseded_at: null,
+        analysis: { summary: 'Legal due diligence report analyzed.', pending: false },
+        created_at: '2026-09-16T00:00:00.000Z',
+      }],
+    );
+
+    const context = await buildGroundedContext('harbor-ridge-production-regression');
+    expect(context.transactionContext.participants).toEqual([
+      expect.objectContaining({
+        role: 'attorney',
+        label: 'Legal Advisor',
+        submissionStatus: 'submitted',
+        inviteStatus: 'active',
+        documentCount: 1,
+      }),
+    ]);
+    expect(context.groundedBlockers).toEqual([]);
+    expect(context.openTasks).toEqual([]);
+
+    await askQuestion(
+      'harbor-ridge-production-regression',
+      'Has the Legal Advisor completed their currently assigned requirement?',
+    );
+    const userMessage = mockOpenAICompletion.mock.calls.at(-1)[0].messages
+      .find(message => message.role === 'user');
+    const groundedPrompt = JSON.parse(
+      userMessage.content.replace(/^Workspace context:\n/, '').split('\n\nQuestion:')[0],
+    );
+    expect(groundedPrompt.blockers).toEqual([]);
+    expect(groundedPrompt.transaction_context.participants).toEqual([
+      expect.objectContaining({
+        role: 'attorney',
+        label: 'Legal Advisor',
+        submissionStatus: 'submitted',
+      }),
+    ]);
   });
 
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
