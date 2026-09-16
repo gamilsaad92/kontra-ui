@@ -2875,10 +2875,10 @@ app.get('/api/admin/pilot-workspaces', async (req, res) => {
       const pid = room.property_id;
       const [docsRes, submissionsRes] = await Promise.all([
         supabase.from('deal-documents').select('id', { count: 'exact', head: true }).eq('property_id', pid),
-        supabase.from('party_submissions').select('updated_at').eq('property_id', pid).order('updated_at', { ascending: false }).limit(1),
+        supabase.from('party_submissions').select('submitted_at').eq('property_id', pid).order('submitted_at', { ascending: false }).limit(1),
       ]);
       const docCount    = docsRes.count ?? 0;
-      const lastActivity = submissionsRes.data?.[0]?.updated_at || null;
+      const lastActivity = submissionsRes.data?.[0]?.submitted_at || null;
       return {
         ...room,
         pack_label:    PILOT_PACK_LABELS[room.workflow_pack_id] || room.workflow_pack_id,
@@ -4409,7 +4409,7 @@ app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
     const [roomRes, analysesRes, partiesRes] = await Promise.all([
       supabase.from('deal_rooms').select('*').eq('property_id', propertyId).eq('status', 'active').maybeSingle(),
       supabase.from('deal_analyses').select('id, section, filename, analysis, uploaded_by_role, created_at').eq('property_id', propertyId).order('created_at', { ascending: true }),
-      supabase.from('party_submissions').select('role, name, status, doc_count, submitted_at, notes').eq('property_id', propertyId),
+      supabase.from('party_submissions').select('role, name, doc_count, submitted_at, notes').eq('property_id', propertyId),
     ]);
     if (roomRes.error) throw roomRes.error;
     if (!roomRes.data) return res.status(404).json({ error: 'Deal room not found' });
@@ -8204,11 +8204,18 @@ app.patch('/api/public/deal-room/:propertyId/submissions/:subRole/status', async
   const { status, status_note, updater_role } = req.body || {};
   const VALID_STATUS = ['submitted', 'needs_revision', 'approved', 'rejected'];
   if (!VALID_STATUS.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  if (status !== 'submitted') {
+    return res.status(409).json({
+      error: 'participant_status_not_supported',
+      message: 'Participant submissions store canonical presence, document count, notes, and submission time; they do not store lifecycle status values.',
+    });
+  }
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can change participant status');
     const { error } = await supabase.from('party_submissions').update({
-      status, status_note: status_note || null, status_updated_at: new Date().toISOString(),
+      submitted_at: new Date().toISOString(),
+      notes: status_note || null,
     }).eq('property_id', propertyId).eq('role', subRole);
     if (error) throw error;
     const STATUS_LABELS = { submitted: 'Submitted', needs_revision: 'Needs Revision', approved: 'Approved', rejected: 'Rejected' };
