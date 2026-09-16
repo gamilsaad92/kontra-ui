@@ -19,6 +19,7 @@ const {
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
+  getCoordinatorRecordProjection,
   getRecordDefinitionState,
   mergeTransactionRecordState,
   normalizeRecordCategory,
@@ -488,6 +489,41 @@ describe('coordinator transaction brief logic', () => {
       unresolvedConflicts: [],
       confirmedCount: 0,
     }));
+  });
+
+  test('does not expose readiness fallback data while the canonical record is hydrating', () => {
+    const readiness = {
+      transaction_record: {
+        requiredCount: 0,
+        confirmedCount: 0,
+        requiredFields: [],
+      },
+    };
+
+    expect(getCoordinatorRecordProjection({
+      readiness,
+      hydrationStatus: 'hydrating',
+    })).toEqual({
+      ready: false,
+      state: null,
+    });
+  });
+
+  test('preserves the last resolved canonical record during a refresh', () => {
+    const recordState = {
+      requiredCount: 16,
+      confirmedCount: 13,
+      requiredFields: [{ key: 'transaction.value', status: 'confirmed' }],
+    };
+
+    expect(getCoordinatorRecordProjection({
+      recordState,
+      readiness: { transaction_record: { requiredCount: 0, confirmedCount: 0 } },
+      hydrationStatus: 'hydrating',
+    })).toEqual({
+      ready: true,
+      state: recordState,
+    });
   });
 
   test('removes a stale extracted funds action after canonical confirmation', () => {

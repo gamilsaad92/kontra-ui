@@ -5823,6 +5823,14 @@ function mergeTransactionRecordState(previous, incoming) {
   return merged;
 }
 
+function getCoordinatorRecordProjection({ recordState = null, readiness = null, hydrationStatus = 'hydrating' } = {}) {
+  const ready = Boolean(recordState) || hydrationStatus === 'ready';
+  return {
+    ready,
+    state: ready ? (recordState || readiness?.transaction_record || null) : null,
+  };
+}
+
 function getCanonicalUnresolvedConflicts(recordState) {
   const persisted = Array.isArray(recordState?.unresolvedConflicts)
     ? recordState.unresolvedConflicts
@@ -5957,7 +5965,7 @@ function getRecentCoordinatorChanges(events = [], analyses = [], recordFields = 
     .slice(0, 5);
 }
 
-function KeyTransactionFacts({ facts = [], onTabChange, onOverviewAction }) {
+function KeyTransactionFacts({ facts = [], loading = false, onTabChange, onOverviewAction }) {
   const statusConfig = {
     confirmed: { label: 'Confirmed', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
     awaiting: { label: 'Awaiting confirmation', dot: 'bg-blue-500', text: 'text-blue-700', bg: 'bg-blue-50' },
@@ -5979,7 +5987,13 @@ function KeyTransactionFacts({ facts = [], onTabChange, onOverviewAction }) {
           Review record →
         </button>
       </div>
-      {facts.length === 0 ? (
+      {loading ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Loading canonical transaction facts">
+          {[1, 2, 3, 4].map(item => (
+            <div key={item} className="h-[90px] animate-pulse rounded-xl border border-gray-100 bg-gray-50/70" />
+          ))}
+        </div>
+      ) : facts.length === 0 ? (
         <p className="mt-4 text-xs text-gray-400">No key facts are recorded yet.</p>
       ) : (
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -6588,6 +6602,7 @@ export {
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
+  getCoordinatorRecordProjection,
   getRecordDefinitionState,
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
@@ -8443,6 +8458,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [stages, setStages]             = useState([]);
   const [recordFields, setRecordFields] = useState([]);
   const [recordState, setRecordState]   = useState(null);
+  const [recordHydrationStatus, setRecordHydrationStatus] = useState('hydrating');
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
   const [snapshotHistory, setSnapshotHistory] = useState([]);
@@ -8469,6 +8485,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     // hydrating. Keep the old loading prop for the brief's skeleton only, but
     // do not make the entire Overview wait for every endpoint in the fan-out.
     setLoading(false);
+    setRecordHydrationStatus('hydrating');
     const sequence = ++loadSequence.current;
     const headers = getRoomAuthHeaders(propertyId);
     const get = (path, fallback) => fetch(`${API_BASE}${path}`, { headers })
@@ -8491,9 +8508,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             : (pack.stages || []),
         ),
       ));
-    get(`/api/public/deal-room/${propertyId}/transaction-record`, { fields: [] })
+    get(`/api/public/deal-room/${propertyId}/transaction-record`, null)
       .then(record => {
         if (sequence !== loadSequence.current) return;
+        if (!record) {
+          setRecordHydrationStatus('unavailable');
+          return;
+        }
         setRecordFields(Array.isArray(record?.fields) ? record.fields : []);
         // Always replace the projection when the record endpoint responds.
         // Keeping the first response allowed a slower readiness request to
@@ -8501,14 +8522,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         if (record?.record_state) {
           setRecordState(previous => mergeTransactionRecordState(previous, record.record_state));
         }
+        setRecordHydrationStatus('ready');
       });
     get(`/api/public/deal-room/${propertyId}/readiness`, null)
       .then(data => {
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
-        if (data?.transaction_record) {
-          setRecordState(previous => mergeTransactionRecordState(previous, data.transaction_record));
-        }
       });
     get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
       .then(apply(setVerifiedAssetReadiness));
@@ -8814,12 +8833,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // The API's record_state includes the resolved schema, aliases, and the
   // not-applicable denominator. Use it as the single source for every Overview
   // count; the frontend schema is only a pre-load fallback.
-  const generatedRecordDefinitions = getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState);
-  const requiredRecordFields = canonicalRecordState?.requiredFields?.length
-    ? canonicalRecordState.requiredFields
-    : (recordSchemaKey === 'generated_ai'
-      ? generatedRecordDefinitions
-      : getRequiredRecordFields(recordSchemaKey));
+  const generatedRecordDefinitions = recordProjectionReady
+    ? getEffectiveRecordDefinitions(recordSchemaKey, property, recordFields, canonicalRecordState)
+    : [];
+  const requiredRecordFields = !recordProjectionReady
+    ? []
+    : (canonicalRecordState?.requiredFields?.length
+      ? canonicalRecordState.requiredFields
+      : (recordSchemaKey === 'generated_ai'
+        ? generatedRecordDefinitions
+        : getRequiredRecordFields(recordSchemaKey)));
   const confirmedRequiredCount = canonicalRecordState?.requiredFields?.length
     ? canonicalRecordState.confirmedCount
     : requiredRecordFields.filter(field =>
@@ -8958,7 +8981,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             currentStage={currentStage}
             currentStageIndex={currentStageIndex}
             events={events}
-            loading={loading}
+             loading={loading || recordProjectionLoading}
             ownerToken={ownerToken}
             onTabChange={onTabChange}
             onOverviewAction={overviewAction}
@@ -8967,27 +8990,35 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         </div>
 
         <div className="mt-6 grid gap-6 border-t border-gray-100 pt-5 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.3fr)]">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              {readinessPhase === 'complete' ? 'Transaction complete' : 'Record Verification'}
-            </p>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-4xl font-bold tracking-tight text-gray-900">
-                {readinessPct == null ? '—' : `${Math.round(readinessPct)}%`}
-              </span>
-              <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
-            </div>
-            <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
-              Completeness and confirmation of the structured Transaction Record — not a measure of overall transaction readiness.
-            </p>
-            {requiredRecordFields.length > 0 && (
-              <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
-                <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
-                 <p>{capturedRequiredCount} required field{capturedRequiredCount === 1 ? '' : 's'} awaiting confirmation
-                   {canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}</p>
-              </div>
-            )}
-          </div>
+           {recordProjectionLoading ? (
+             <div className="min-h-[150px] rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-4" aria-label="Loading Record Verification">
+               <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
+               <div className="mt-3 h-10 w-24 animate-pulse rounded bg-gray-200" />
+               <p className="mt-3 text-xs text-gray-400">Loading the canonical Transaction Record…</p>
+             </div>
+           ) : (
+             <div>
+               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                 {readinessPhase === 'complete' ? 'Transaction complete' : 'Record Verification'}
+               </p>
+               <div className="mt-1 flex items-baseline gap-2">
+                 <span className="text-4xl font-bold tracking-tight text-gray-900">
+                   {readinessPct == null ? '—' : `${Math.round(readinessPct)}%`}
+                 </span>
+                 <span className="text-xs font-semibold text-gray-500">{readinessStatus}</span>
+               </div>
+               <p className="mt-1 max-w-xs text-xs leading-relaxed text-gray-400">
+                 Completeness and confirmation of the structured Transaction Record — not a measure of overall transaction readiness.
+               </p>
+               {requiredRecordFields.length > 0 && (
+                 <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
+                   <p>{confirmedRequiredCount} of {requiredRecordFields.length} required fields confirmed</p>
+                    <p>{capturedRequiredCount} required field{capturedRequiredCount === 1 ? '' : 's'} awaiting confirmation
+                      {canonicalRecordState?.awaitingOptionalCount ? ` · ${canonicalRecordState.awaitingOptionalCount} optional` : ''}</p>
+                 </div>
+               )}
+             </div>
+           )}
 
           <WhatNeedsAttention
             briefing={briefing}
@@ -9001,7 +9032,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             pack={pack}
             packId={packId}
             property={property}
-            loading={loading}
+             loading={loading || recordProjectionLoading}
             onTabChange={onTabChange}
             propertyId={propertyId}
             isCoordinator
@@ -9011,18 +9042,29 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           />
         </div>
 
-        <div className="mt-5">
-         <KeyTransactionFacts facts={keyFacts} onTabChange={onTabChange} onOverviewAction={overviewAction} />
+         <div className="mt-5">
+          <KeyTransactionFacts
+            facts={keyFacts}
+            loading={recordProjectionLoading}
+            onTabChange={onTabChange}
+            onOverviewAction={overviewAction}
+          />
         </div>
 
-        <TransactionDetailsPanel
-          propertyId={propertyId}
-          property={property}
-          pack={pack}
-          recordFields={recordFields}
-          recordState={canonicalRecordState}
-          onSaved={load}
-        />
+        {recordProjectionLoading ? (
+          <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/60 px-5 py-5 text-xs text-gray-400">
+            Loading the editable Transaction Record…
+          </div>
+        ) : (
+          <TransactionDetailsPanel
+            propertyId={propertyId}
+            property={property}
+            pack={pack}
+            recordFields={recordFields}
+            recordState={canonicalRecordState}
+            onSaved={load}
+          />
+        )}
         <StageLifecycleBar
           stages={effectiveStages}
           currentStageKey={currentStageKey}
