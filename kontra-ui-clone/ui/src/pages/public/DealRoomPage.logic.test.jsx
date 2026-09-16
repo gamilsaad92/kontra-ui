@@ -16,6 +16,7 @@ const {
   isBorrowerFundsRecordAction,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
+  getDocumentActionIdentity,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   getCoordinatorRecordFacts,
@@ -425,6 +426,33 @@ describe('coordinator transaction brief logic', () => {
         routeItem: { field_key: 'financial.borrower_advanced_funds' },
       },
     ])).toHaveLength(1);
+  });
+
+  test('deduplicates request and upload actions for the same document', () => {
+    expect(dedupeAttentionItems([
+      {
+        title: 'Request Financial Due Diligence Report',
+        document: true,
+        label: 'Financial Due Diligence Report',
+      },
+      {
+        title: 'Upload Financial Due Diligence Report',
+        document: true,
+        label: 'Financial Due Diligence Report',
+      },
+      {
+        title: 'Upload Tax Due Diligence Report',
+        document: true,
+        label: 'Tax Due Diligence Report',
+      },
+    ]).map(item => item.title)).toEqual([
+      'Request Financial Due Diligence Report',
+      'Upload Tax Due Diligence Report',
+    ]);
+    expect(getDocumentActionIdentity({
+      title: 'Upload Financial Due Diligence Report',
+      document: true,
+    })).toBe('financial due diligence report');
   });
 
   test('builds awaiting actions from canonical required fields, not stale raw rows', () => {

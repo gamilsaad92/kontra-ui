@@ -3324,6 +3324,7 @@ function WhatNeedsAttention({
   };
   const documentActions = missingDocuments.map((document, index) => ({
     id: `missing-document-${document.id || document.section || index}`,
+    documentKey: getDocumentActionIdentity(document),
     urgency: isCurrentStageDocument(document) ? 'high' : 'medium',
     title: (() => {
       const assignedRoles = document.assignedTo || document.assigned_to || [];
@@ -3392,12 +3393,14 @@ function WhatNeedsAttention({
         return {
           title: `Upload ${document}`,
           document: true,
+          documentKey: getDocumentActionIdentity({ label: document, document: true }),
         };
       }
       return {
         ...document,
         title: `Upload ${document.label || document.name || 'required document'}`,
         document: true,
+        documentKey: getDocumentActionIdentity({ ...document, document: true }),
       };
     }) : []),
   ], documentStats), recordState, recordFields, canonicalActionKeys)
@@ -5755,6 +5758,7 @@ function filterStaleRecordActions(
 function dedupeAttentionItems(items = []) {
   const seen = new Set();
   const seenFields = new Set();
+  const seenDocuments = new Set();
   return items.filter(item => {
     const raw = String(item?.title || item?.text || '').trim().toLowerCase();
     const explicitField = [
@@ -5772,6 +5776,11 @@ function dedupeAttentionItems(items = []) {
       if (seenFields.has(fieldKey)) return false;
       seenFields.add(fieldKey);
     }
+    const documentKey = item?.documentKey || getDocumentActionIdentity(item);
+    if (documentKey) {
+      if (seenDocuments.has(documentKey)) return false;
+      seenDocuments.add(documentKey);
+    }
     const key = /repair\s*cost/i.test(raw)
       ? 'repair-cost-discrepancy'
       : /discrepancy|conflict/.test(raw) && /repair|cost/.test(raw)
@@ -5781,6 +5790,18 @@ function dedupeAttentionItems(items = []) {
     seen.add(key);
     return true;
   });
+}
+
+function getDocumentActionIdentity(item = {}) {
+  const source = item?.routeItem && typeof item.routeItem === 'object'
+    ? { ...item.routeItem, ...item }
+    : item;
+  if (!source?.document && !source?.documentKey) return '';
+  const rawLabel = source.label
+    || source.name
+    || String(source.title || source.text || source.action || '')
+      .replace(/^(request|upload|provide|obtain|send|collect)\s+(a|an|the)?\s*/i, '');
+  return normalizeAttentionText(rawLabel);
 }
 
 function getCanonicalAwaitingRecordFields(recordState) {
@@ -6599,6 +6620,7 @@ export {
   normalizeAttentionFieldKey,
   getHazardLossOperationalFieldDefinitions,
   dedupeAttentionItems,
+  getDocumentActionIdentity,
   getCanonicalAwaitingRecordFields,
   getCanonicalUnresolvedConflicts,
   mergeTransactionRecordState,
