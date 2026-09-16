@@ -62,6 +62,47 @@ async function syncParticipantSubmissionFromDocument({
   return data || payload;
 }
 
+function deriveParticipantSubmissionRows(submissions = [], analyses = []) {
+  const rowsByRole = new Map(
+    (Array.isArray(submissions) ? submissions : [])
+      .filter(row => row?.role)
+      .map(row => [String(row.role).trim().toLowerCase().replace(/\s+/g, '_'), row]),
+  );
+  const evidenceByRole = new Map();
+
+  (Array.isArray(analyses) ? analyses : []).forEach(analysis => {
+    const role = String(analysis?.uploaded_by_role || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (!role || analysis?.section === 'cross_document_verification') return;
+    const processingStatus = String(analysis?.processing_status || '').toLowerCase();
+    if (processingStatus === 'failed' || analysis?.analysis?.pending === true) return;
+    const evidence = evidenceByRole.get(role) || [];
+    evidence.push(analysis);
+    evidenceByRole.set(role, evidence);
+  });
+
+  for (const [role, evidence] of evidenceByRole.entries()) {
+    const existing = rowsByRole.get(role);
+    const latestEvidence = evidence
+      .slice()
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0))[0];
+    const evidenceCount = evidence.length;
+    const existingCount = Number(existing?.doc_count || 0);
+    const derived = {
+      role: existing?.role || role,
+      name: existing?.name || role,
+      email: existing?.email || null,
+      doc_count: Math.max(existingCount, evidenceCount),
+      submitted_at: existing?.submitted_at || latestEvidence?.created_at || null,
+      notes: existing?.notes || null,
+      submissionSource: existing ? 'party_submissions_and_active_evidence' : 'active_role_evidence',
+    };
+    rowsByRole.set(role, existing ? { ...existing, ...derived } : derived);
+  }
+
+  return [...rowsByRole.values()];
+}
+
 module.exports = {
+  deriveParticipantSubmissionRows,
   syncParticipantSubmissionFromDocument,
 };

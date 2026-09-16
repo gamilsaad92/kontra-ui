@@ -71,6 +71,7 @@ const {
   buildGroundedContext,
 } = require('./lib/operationsManager');
 const {
+  deriveParticipantSubmissionRows,
   syncParticipantSubmissionFromDocument,
 } = require('./lib/participantSubmissionState');
 const verificationRouter = require('./routers/verification');
@@ -6172,19 +6173,23 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
     const [roomRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
       supabase.from('deal_rooms').select('deal_stage, property_name').eq('property_id', propertyId).maybeSingle(),
       supabase.from('party_submissions').select('*').eq('property_id', propertyId),
-      supabase.from('deal_analyses').select('uploaded_by_role').eq('property_id', propertyId),
+      supabase.from('deal_analyses').select('id, section, analysis, uploaded_by_role, created_at, processing_status, is_active, superseded_at').eq('property_id', propertyId),
       supabase.from('deal_room_invites')
         .select('role_key, status, last_used_at, expires_at, revoked_at')
         .eq('property_id', propertyId),
     ]);
     const stage = roomRes.data?.deal_stage || 'uploading';
-    const allSubmissions = submissionsRes.data || [];
+    const activeAnalyses = selectActiveDocumentVersions(analysesRes.data || []);
+    const allSubmissions = deriveParticipantSubmissionRows(
+      submissionsRes.data || [],
+      activeAnalyses,
+    );
     const submissions = access.mode === 'participant'
       ? allSubmissions.filter(s => s.role === access.role)
       : allSubmissions;
     const safeSubmissions = submissions.map(({ email, ...submission }) => submission);
     const docsByRole = {};
-    (analysesRes.data || []).forEach(a => {
+    activeAnalyses.forEach(a => {
       if (a.uploaded_by_role && (access.mode !== 'participant' || a.uploaded_by_role === access.role)) {
         docsByRole[a.uploaded_by_role] = (docsByRole[a.uploaded_by_role] || 0) + 1;
       }

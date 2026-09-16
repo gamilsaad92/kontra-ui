@@ -20,6 +20,9 @@ const {
   getChecklistItemAssignedRoles,
   hasDocumentRole,
 } = require('./documentAssignmentAccess');
+const {
+  deriveParticipantSubmissionRows,
+} = require('./participantSubmissionState');
 const { buildStageDecision } = require('./stageDecision');
 const {
   isTokenizationQuestion,
@@ -352,6 +355,7 @@ function buildGroundedBlockers({
       const submissionStatus = participant?.submissionStatus ?? null;
       const invitationStatus = participant?.inviteStatus ?? null;
       const documentCount = Number(participant?.documentCount || participant?.doc_count || 0);
+      const submissionSource = participant?.submissionSource || null;
       blockers.push({
         sourceType: 'required_participant',
         role: role.key,
@@ -361,7 +365,9 @@ function buildGroundedBlockers({
         invitationStatus,
         evidence: [
           submissionStatus || documentCount > 0
-            ? `party_submissions has a canonical submission for role "${role.key}" with ${documentCount} submitted document(s).`
+            ? submissionSource === 'active_role_evidence'
+              ? `No party_submissions row exists for role "${role.key}", but active uploaded evidence tagged to that role contains ${documentCount} document(s); completion is derived from that evidence for this read.`
+              : `party_submissions has a canonical submission for role "${role.key}" with ${documentCount} submitted document(s).`
             : `No party_submissions record exists for required role "${role.key}".`,
           invitationStatus
             ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
@@ -423,9 +429,9 @@ function buildGroundedBlockers({
 // requirement; never treat a schema mismatch as an empty live evidence set.
 async function loadGroundingAnalyses(propertyId) {
   const selects = [
-    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
-    'id, section, filename, analysis, created_at, processing_status',
-    'id, section, filename, analysis, created_at',
+    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status',
+    'id, section, filename, analysis, uploaded_by_role, created_at',
   ];
   let lastError = null;
 
@@ -596,10 +602,14 @@ async function buildGroundedContext(propertyId) {
       && new Date(invite.expires_at).getTime() <= Date.now()) return false;
     return liveParticipantKeys.has(invite.role_key);
   });
+  const effectiveParticipants = deriveParticipantSubmissionRows(
+    participants || [],
+    activeAnalyses,
+  );
   const participantContext = participantDefinitions
     .filter(role => role.invitable !== false && !role.legacyOnly)
     .map(role => {
-      const submission = (participants || []).find(item =>
+       const submission = effectiveParticipants.find(item =>
         item?.role === role.key
       );
       const invite = liveInvites.find(item => item.role_key === role.key);
@@ -613,6 +623,7 @@ async function buildGroundedContext(propertyId) {
         invited: !!invite,
         documentCount: Number(submission?.doc_count || 0),
         submittedAt: submission?.submitted_at || null,
+         submissionSource: submission?.submissionSource || (submission ? 'party_submissions' : null),
         assignedRequirements: buildParticipantRequirementState(
           projectedChecklist,
           role.key,
@@ -934,6 +945,22 @@ function findParticipantCompletionTarget(ctx, question) {
   }) || null;
 }
 
+function findParticipantDocumentTarget(ctx, question) {
+  const text = String(question || '').toLowerCase();
+  if (!/\b(?:document|documents|file|files|checklist|submission|submit|uploaded|received)\b/.test(text)) {
+    return null;
+  }
+  if (!/\b(?:assigned|specifically|exactly|need|needed|missing|blocked|have|which|what)\b/.test(text)) {
+    return null;
+  }
+  const participants = ctx.transactionContext?.participants || [];
+  return participants.find(participant => {
+    const role = String(participant.role || '').toLowerCase();
+    const label = String(participant.label || '').toLowerCase();
+    return [role, label].some(value => value && text.includes(value));
+  }) || null;
+}
+
 function buildParticipantCompletionAnswer(ctx, participant) {
   const requirements = participant.assignedRequirements || {};
   const label = participant.label || participant.role || 'The participant';
@@ -962,6 +989,32 @@ function buildParticipantCompletionAnswer(ctx, participant) {
 
   const missingLabels = missing.map(document => document.label).filter(Boolean);
   return `No — ${label} has completed ${completedCount} of ${requiredCount} required assigned documents.${missingLabels.length ? ` Still required: ${missingLabels.join(', ')}.` : ''}`;
+}
+
+function buildParticipantDocumentAnswer(ctx, participant) {
+  const requirements = participant.assignedRequirements || {};
+  const label = participant.label || participant.role || 'The participant';
+  const documents = Array.isArray(requirements.documents) ? requirements.documents : [];
+  const statusFor = document => document.received
+    ? `${document.label} — uploaded and processed${document.needsReview ? ' (needs coordinator review)' : ''}`
+    : `${document.label} — not submitted`;
+  const assignedSummary = documents.length > 0
+    ? documents.map(statusFor).join('; ')
+    : 'No checklist documents are currently assigned to this role.';
+  const missingRequired = documents
+    .filter(document => document.required && !document.received)
+    .map(document => document.label)
+    .filter(Boolean);
+  const submissionNote = participant.submissionSource === 'active_role_evidence'
+    ? ` No party_submissions row is currently stored for ${label}, but the participant state is derived from active evidence uploaded under the ${participant.role} role; re-upload is not required.`
+    : '';
+  const blockerNote = missingRequired.length > 0
+    ? ` ${label} is currently blocked only by these assigned required document${missingRequired.length === 1 ? '' : 's'}: ${missingRequired.join(', ')}.`
+    : ` ${label} has no missing assigned required documents.`;
+  const transactionNote = Array.isArray(ctx.missingDocuments) && ctx.missingDocuments.length > 0
+    ? ' Other transaction-wide missing documents are not assigned to this role unless they appear in the list above.'
+    : '';
+  return `${label} assigned-document status: ${assignedSummary}.${blockerNote}${submissionNote}${transactionNote}`;
 }
 
 function buildStageDecisionAnswer(ctx) {
@@ -1245,6 +1298,13 @@ async function askQuestion(propertyId, question) {
   if (participantCompletionTarget) {
     return {
       answer: buildParticipantCompletionAnswer(ctx, participantCompletionTarget),
+      citedTaskIds: [],
+    };
+  }
+  const participantDocumentTarget = findParticipantDocumentTarget(ctx, question);
+  if (participantDocumentTarget) {
+    return {
+      answer: buildParticipantDocumentAnswer(ctx, participantDocumentTarget),
       citedTaskIds: [],
     };
   }

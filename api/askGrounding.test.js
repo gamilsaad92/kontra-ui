@@ -451,6 +451,152 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
+  test('keeps legacy Buyer evidence role-scoped when the participant row is absent', async () => {
+    const roles = [{
+      key: 'buyer',
+      label: 'Buyer',
+      required: true,
+      invitable: true,
+    }];
+    const checklist = [{
+      section: 'buyer_due_diligence_questionnaire',
+      label: 'Buyer Due Diligence Questionnaire',
+      required: true,
+      assignedTo: ['buyer'],
+      status: 'missing',
+    }, {
+      section: 'buyer_management_confirmation',
+      label: 'Buyer Management Confirmation',
+      required: true,
+      assignedTo: ['buyer'],
+      status: 'missing',
+    }, {
+      section: 'financial_due_diligence_report',
+      label: 'Financial Due Diligence Report',
+      required: true,
+      assignedTo: ['owner'],
+      status: 'missing',
+    }, {
+      section: 'tax_due_diligence_report',
+      label: 'Tax Due Diligence Report',
+      required: true,
+      assignedTo: ['owner'],
+      status: 'missing',
+    }];
+    const buyerAnalyses = [{
+      id: 'buyer-questionnaire',
+      section: 'buyer_due_diligence_questionnaire',
+      filename: 'Buyer_Due_Diligence_Questionnaire_Test.docx',
+      uploaded_by_role: 'buyer',
+      processing_status: 'extracted',
+      is_active: true,
+      superseded_at: null,
+      analysis: { summary: 'Buyer questionnaire received.', pending: false },
+      created_at: '2026-09-16T10:00:00.000Z',
+    }, {
+      id: 'buyer-management-confirmation',
+      section: 'buyer_management_confirmation',
+      filename: 'Buyer_Management_Confirmation_CONFLICT_TEST.docx',
+      uploaded_by_role: 'buyer',
+      processing_status: 'complete',
+      is_active: true,
+      superseded_at: null,
+      analysis: { summary: 'Buyer management confirmation received.', pending: false },
+      created_at: '2026-09-16T11:00:00.000Z',
+    }];
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'ws_harbor_ridge',
+      room: {
+        property_id: 'harbor-ridge-buyer-legacy-regression',
+        property_name: 'Harbor Ridge Manufacturing Acquisition',
+        workflow_pack_id: 'ws_harbor_ridge',
+        workflow_pack_config: { roles, documents: checklist },
+        deal_type: 'other',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+      },
+      recordState: {
+        schemaKey: 'generated_ai',
+        fields: [],
+        requiredFields: [],
+        requiredCount: 0,
+        confirmedCount: 0,
+        awaitingRequiredCount: 0,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      conflicts: [],
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([{
+      id: 'stale-buyer-task',
+      task_type: 'missing_participant',
+      source_id: 'missing-role:buyer',
+      source_type: 'party_role',
+      status: 'pending',
+      blocking: true,
+      title: 'Buyer has no participant submission on record',
+      evidence: ['No party_submissions record found for role "buyer".'],
+    }]);
+    setupCustomRoomQueries(
+      roles,
+      [],
+      [{ role_key: 'buyer', status: 'active' }],
+      buyerAnalyses,
+    );
+
+    const context = await buildGroundedContext('harbor-ridge-buyer-legacy-regression');
+    const buyer = context.transactionContext.participants.find(participant => participant.role === 'buyer');
+    expect(buyer).toEqual(expect.objectContaining({
+      submissionStatus: 'submitted',
+      documentCount: 2,
+      submissionSource: 'active_role_evidence',
+      assignedRequirements: expect.objectContaining({
+        submissionRecorded: true,
+        requiredCount: 2,
+        completedRequiredCount: 2,
+        missingRequiredCount: 0,
+        complete: true,
+      }),
+    }));
+    expect(context.groundedBlockers).toEqual([
+      expect.objectContaining({
+        sourceType: 'required_document',
+        label: 'Financial Due Diligence Report',
+      }),
+      expect.objectContaining({
+        sourceType: 'required_document',
+        label: 'Tax Due Diligence Report',
+      }),
+    ]);
+    expect(context.groundedBlockers).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceType: 'required_participant', role: 'buyer' }),
+    ]));
+    expect(context.openTasks).toEqual([]);
+
+    const blockedAnswer = await askQuestion(
+      'harbor-ridge-buyer-legacy-regression',
+      'Why is the Buyer currently blocked, and what exactly does the Buyer still need to submit?',
+    );
+    expect(blockedAnswer.answer).toContain('Buyer assigned-document status');
+    expect(blockedAnswer.answer).toContain('Buyer Due Diligence Questionnaire');
+    expect(blockedAnswer.answer).toContain('Buyer Management Confirmation');
+    expect(blockedAnswer.answer).not.toContain('Financial Due Diligence Report');
+    expect(blockedAnswer.answer).not.toContain('Tax Due Diligence Report');
+
+    const assignmentAnswer = await askQuestion(
+      'harbor-ridge-buyer-legacy-regression',
+      'What documents are currently assigned specifically to the Buyer, and which of those assigned documents have or have not been submitted?',
+    );
+    expect(assignmentAnswer.answer).toContain('Buyer Due Diligence Questionnaire — uploaded and processed');
+    expect(assignmentAnswer.answer).toContain('Buyer Management Confirmation — uploaded and processed');
+    expect(assignmentAnswer.answer).not.toContain('Financial Due Diligence Report');
+    expect(assignmentAnswer.answer).not.toContain('Tax Due Diligence Report');
+    expect(assignmentAnswer.answer).toContain('re-upload is not required');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
     const recordState = {
       schemaKey: 'generated_ai',
