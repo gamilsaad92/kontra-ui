@@ -817,11 +817,18 @@ async function buildGroundedContext(propertyId) {
           satisfied: requirement?.documentReceived === true,
         };
       }),
-      participantStates: ['buyer', 'legal_advisor'].map(roleKey => {
-        const state = participantContext.find(item => item.role === roleKey);
+      participantStates: [
+        { label: 'Buyer', keys: ['buyer'] },
+        { label: 'Legal Advisor', keys: ['legal_advisor', 'attorney', 'counsel', 'legal_counsel'] },
+      ].map(target => {
+        const state = participantContext.find(item =>
+          target.keys.includes(item.role)
+            || target.label.toLowerCase() === String(item.label || '').toLowerCase()
+        );
         const requirements = state?.assignedRequirements || {};
         return {
-          role: roleKey,
+          role: target.label,
+          matchedRoleKey: state?.role || null,
           inviteStatus: state?.inviteStatus || null,
           invited: state?.invited === true,
           submissionRecorded: requirements.submissionRecorded === true,
