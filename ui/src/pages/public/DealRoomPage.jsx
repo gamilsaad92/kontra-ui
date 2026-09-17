@@ -3696,7 +3696,7 @@ function WhatNeedsAttention({
   }
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+    <section data-coordinator-next-actions className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">What needs attention</p>
         <p className="mt-1 text-sm font-bold text-gray-900">
@@ -5008,19 +5008,28 @@ function getLifecycleTransitionGate({
   return { ready: true, eligible: deduped.length === 0, nextStage, blockers: deduped };
 }
 
-function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, hasBlockingIssues = false) {
-  if (hasBlockingIssues) return null;
+function getLifecycleAdvanceRecommendation(
+  stages,
+  currentStageIndex,
+  analyses,
+  hasBlockingIssues = false,
+  transitionGate = null,
+) {
+  if (hasBlockingIssues && !transitionGate) return null;
   if (!Array.isArray(stages) || currentStageIndex < 0 || currentStageIndex >= stages.length - 1) return null;
   const usableAnalyses = (analyses || []).filter(analysis =>
     !['failed', 'uploaded', 'processing', 'retrying'].includes(String(analysis.processing_status || '').toLowerCase())
       && analysis.analysis?.pending !== true
   );
   const uploadedSections = new Set(usableAnalyses.map(analysis => String(analysis.section || '').toLowerCase()));
-  const laterStage = stages.slice(currentStageIndex + 1).find((stage) => {
+  const evidenceStage = stages.slice(currentStageIndex + 1).find((stage) => {
     const evidenceSections = getLifecycleEvidenceSections(stage);
     return evidenceSections?.some(section => uploadedSections.has(String(section).toLowerCase()));
   });
+  if (!evidenceStage) return null;
+  const laterStage = transitionGate?.nextStage || evidenceStage;
   if (!laterStage) return null;
+  if (transitionGate && !lifecycleStageMatches(evidenceStage, laterStage)) return null;
   const evidenceSections = getLifecycleEvidenceSections(laterStage) || [];
   const evidence = evidenceSections
     .filter(section => uploadedSections.has(String(section).toLowerCase()))
@@ -5028,6 +5037,8 @@ function getLifecycleAdvanceRecommendation(stages, currentStageIndex, analyses, 
   return {
     stage: laterStage,
     evidence,
+    eligible: transitionGate ? transitionGate.eligible === true : !hasBlockingIssues,
+    blockers: transitionGate?.blockers || [],
     reason: evidence.length > 1
       ? `${evidence.slice(0, 2).join(' and ')} are already on file.`
       : `${evidence[0] || 'Supporting evidence'} is already on file.`,
@@ -6294,6 +6305,7 @@ function TransactionBrief({
   onTabChange,
   onRefresh,
   onOverviewAction,
+  transitionGate = null,
 }) {
   const [stageDecision, setStageDecision] = useState('');
   const [stageActionError, setStageActionError] = useState('');
@@ -6362,20 +6374,38 @@ function TransactionBrief({
     currentStageIndex,
     analyses,
     hasBlockingIssues,
+    transitionGate,
   );
+  const stageBlockerSummary = (stageRecommendation?.blockers || [])
+    .slice(0, 3)
+    .map(blocker => blocker.text)
+    .filter(Boolean);
+  const reviewNextActions = () => {
+    document.querySelector('[data-coordinator-next-actions]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const openIssueCount = getOpenIssueCount(
     allConflicts,
     nextMilestoneBlockers,
     documentStats.reviewDocuments.length,
   );
   const recommendationItems = [
-    ...(stageRecommendation && !hasBlockingIssues && stageDecision !== 'kept'
+    ...(stageRecommendation && stageDecision !== 'kept'
       ? [{
           key: 'stage',
-          tone: 'blue',
-          text: `Consider advancing from ${currentStage?.label || 'the current stage'} to ${stageRecommendation.stage.label}`,
-          detail: stageRecommendation.reason,
-          action: { label: 'Review stage', onClick: () => setStageDecision('review') },
+          tone: stageRecommendation.eligible ? 'blue' : 'amber',
+          text: stageRecommendation.eligible
+            ? `Consider advancing from ${currentStage?.label || 'the current stage'} to ${stageRecommendation.stage.label}`
+            : `${stageRecommendation.stage.label} is not ready`,
+          detail: stageRecommendation.eligible
+            ? stageRecommendation.reason
+            : stageBlockerSummary.length > 0
+              ? `Complete the gating requirements in Next Actions: ${stageBlockerSummary.join('; ')}.`
+              : 'Complete the gating requirements in Next Actions before advancing.',
+          action: {
+            label: stageRecommendation.eligible ? 'Review stage' : 'Review Next Actions',
+            onClick: stageRecommendation.eligible ? () => setStageDecision('review') : reviewNextActions,
+          },
         }]
       : []),
      ...allConflicts.slice(0, 2).map(field => ({
@@ -6660,19 +6690,45 @@ function TransactionBrief({
       )}
 
       {stageRecommendation && stageDecision !== 'kept' && (
-        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+        <div className={`mt-4 rounded-xl border px-4 py-3 ${
+          stageRecommendation.eligible
+            ? 'border-blue-100 bg-blue-50/60'
+            : 'border-amber-100 bg-amber-50/70'
+        }`}>
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 text-blue-600">↗</span>
+            <span className={`mt-0.5 ${stageRecommendation.eligible ? 'text-blue-600' : 'text-amber-600'}`}>
+              {stageRecommendation.eligible ? '↗' : '!'}
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Stage recommendation — coordinator decision required</p>
+              <p className={`text-[10px] font-bold uppercase tracking-wider ${
+                stageRecommendation.eligible ? 'text-blue-700' : 'text-amber-700'
+              }`}>
+                {stageRecommendation.eligible
+                  ? 'Stage recommendation — coordinator decision required'
+                  : 'Stage recommendation — blocked by canonical requirements'}
+              </p>
               <p className="mt-1 text-sm font-semibold text-gray-900">
-                Evidence suggests {stageRecommendation.stage.label}
+                {stageRecommendation.eligible
+                  ? `Evidence suggests ${stageRecommendation.stage.label}`
+                  : `${stageRecommendation.stage.label} not ready`}
               </p>
               <p className="mt-0.5 text-xs text-gray-600">
-                Current stage: {currentStage?.label || 'Not reported'} · {stageRecommendation.reason}
+                Current stage: {currentStage?.label || 'Not reported'} · {
+                  stageRecommendation.eligible
+                    ? stageRecommendation.reason
+                    : 'Evidence is informational only until the canonical lifecycle requirements are satisfied.'
+                }
               </p>
+              {!stageRecommendation.eligible && stageBlockerSummary.length > 0 && (
+                <ul className="mt-2 space-y-1 text-[11px] text-amber-900">
+                  {stageBlockerSummary.map(blocker => <li key={blocker}>• {blocker}</li>)}
+                  {(stageRecommendation.blockers || []).length > stageBlockerSummary.length && (
+                    <li>• See Next Actions for the remaining gating requirements.</li>
+                  )}
+                </ul>
+              )}
               {stageActionError && <p className="mt-2 text-[11px] font-semibold text-red-600">{stageActionError}</p>}
-              <div className="mt-3 flex flex-wrap gap-2">
+              {stageRecommendation.eligible && <div className="mt-3 flex flex-wrap gap-2">
                  <button
                   type="button"
                   onClick={acceptStageRecommendation}
@@ -6689,7 +6745,16 @@ function TransactionBrief({
                 >
                   Keep current stage
                 </button>
-              </div>
+              </div>}
+              {!stageRecommendation.eligible && (
+                <button
+                  type="button"
+                  onClick={reviewNextActions}
+                  className="relative z-10 mt-3 cursor-pointer rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-[10px] font-bold text-amber-800 transition hover:bg-amber-50"
+                >
+                  Review Next Actions
+                </button>
+              )}
               {!ownerToken && <p className="mt-2 text-[10px] text-amber-700">Owner authorization is required to accept a stage change.</p>}
             </div>
           </div>
@@ -9153,6 +9218,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             recordState={canonicalRecordState}
             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             readiness={readiness}
+            transitionGate={lifecycleGate}
             stages={stages}
             currentStage={currentStage}
             currentStageIndex={currentStageIndex}

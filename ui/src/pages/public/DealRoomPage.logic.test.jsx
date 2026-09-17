@@ -159,6 +159,54 @@ describe('coordinator transaction brief logic', () => {
     expect(getLifecycleAdvanceRecommendation(stages, 0, analyses, true)).toBeNull();
   });
 
+  test('keeps evidence informational when the canonical lifecycle gate blocks advancement', () => {
+    const harborRidgeStages = [
+      { key: 'due_diligence', label: 'Due Diligence' },
+      { key: 'closing', label: 'Closing' },
+    ];
+    const transitionGate = getLifecycleTransitionGate({
+      stages: harborRidgeStages,
+      currentStageIndex: 0,
+      documentStats: {
+        missingDocuments: [{
+          id: 'purchase-agreement',
+          label: 'Purchase Agreement',
+          section: 'purchase_agreement',
+          required: true,
+        }],
+        reviewDocuments: [],
+      },
+      recordState: {
+        requiredFields: [{
+          key: 'transaction.purchase_price',
+          label: 'Purchase price',
+          required: true,
+          status: 'missing',
+        }],
+      },
+      participantStates: [],
+      unresolvedConflicts: [],
+    });
+    const recommendation = getLifecycleAdvanceRecommendation(
+      harborRidgeStages,
+      0,
+      [{ section: 'purchase_agreement', processing_status: 'complete', analysis: { summary: 'On file' } }],
+      false,
+      transitionGate,
+    );
+
+    expect(transitionGate.eligible).toBe(false);
+    expect(recommendation).toEqual(expect.objectContaining({
+      stage: harborRidgeStages[1],
+      eligible: false,
+      evidence: ['purchase agreement'],
+    }));
+    expect(recommendation.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: 'Purchase Agreement is required before Closing' }),
+      expect.objectContaining({ text: 'Purchase price must be confirmed' }),
+    ]));
+  });
+
   test('counts conflicts as open issues even when there are no checklist blockers', () => {
     expect(getOpenIssueCount([{ key: 'legal.title_status' }], [])).toBe(1);
     expect(getOpenIssueCount([], [{ key: 'next-doc-purchase_agreement' }])).toBe(1);
