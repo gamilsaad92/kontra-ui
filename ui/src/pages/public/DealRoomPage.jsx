@@ -5049,6 +5049,15 @@ function getOpenIssueCount(conflicts = [], nextMilestoneBlockers = [], documentR
   return conflicts.length + nextMilestoneBlockers.length + documentReviewCount;
 }
 
+function getRecordVerificationStatusLabel(readinessPct, fallbackLabel = '') {
+  if (Number.isFinite(readinessPct)) {
+    return readinessPct >= 80 ? 'Record Verified'
+      : readinessPct >= 55 ? 'Needs Review'
+        : readinessPct === 0 ? 'Getting Started' : 'Needs Attention';
+  }
+  return fallbackLabel === 'Closing Ready' ? 'Record Verified' : (fallbackLabel || 'Building');
+}
+
 const RECORD_EMPTY_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
 const RECORD_CONFLICT_STATUSES = new Set(['conflicting', 'conflict', 'source_changed']);
 const RECORD_AWAITING_STATUSES = new Set(['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation']);
@@ -6798,6 +6807,7 @@ function TransactionBrief({
 export {
   getLifecycleAdvanceRecommendation,
   getLifecycleTransitionGate,
+  getRecordVerificationStatusLabel,
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
@@ -8956,11 +8966,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
     : (readiness?.transaction_readiness?.overall_pct ?? null);
   const readinessStatus = canonicalRecordState?.requiredCount > 0
-    ? (readinessPct >= 80 ? 'Closing Ready'
-      : readinessPct >= 55 ? 'Needs Review'
-        : readinessPct === 0 ? 'Getting Started' : 'Needs Attention')
-    : (readiness?.transaction_readiness?.status
-      || (readinessPct === 0 ? 'Getting Started' : 'Building'));
+    ? getRecordVerificationStatusLabel(readinessPct)
+    : getRecordVerificationStatusLabel(readinessPct, readiness?.transaction_readiness?.status);
   const recordSchemaKey = canonicalRecordState?.schemaKey
     || getEffectiveRecordSchemaKey(property, packId, pack);
   const overviewAction = useCallback((action = {}) => {

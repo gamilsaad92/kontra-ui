@@ -4,6 +4,7 @@ global.TextDecoder = TextDecoder;
 
 const {
   getLifecycleAdvanceRecommendation,
+  getRecordVerificationStatusLabel,
   getNextMilestoneBlockers,
   getOpenIssueCount,
   hasDocumentReviewFinding,
@@ -211,6 +212,12 @@ describe('coordinator transaction brief logic', () => {
     expect(getOpenIssueCount([{ key: 'legal.title_status' }], [])).toBe(1);
     expect(getOpenIssueCount([], [{ key: 'next-doc-purchase_agreement' }])).toBe(1);
     expect(getOpenIssueCount([], [], 2)).toBe(2);
+  });
+
+  test('labels the canonical record percentage as record verification, not closing readiness', () => {
+    expect(getRecordVerificationStatusLabel(81)).toBe('Record Verified');
+    expect(getRecordVerificationStatusLabel(13)).toBe('Needs Attention');
+    expect(getRecordVerificationStatusLabel(null, 'Closing Ready')).toBe('Record Verified');
   });
 
   test('adds a required participant blocker tied to the next milestone', () => {
