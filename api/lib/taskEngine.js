@@ -17,11 +17,13 @@ const {
   sendResendEmail,
   logEvent,
 } = require('./dealRoomHelpers');
+const { TRANSACTION_NOTIFICATION_FROM } = require('./emailConfig');
 const { emit } = require('./eventBus');
 const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
+const { resolveParticipantCompletions } = require('./participantCompletion');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -171,7 +173,6 @@ async function createTask(propertyId, fields) {
     ),
   };
   const { data, error } = await supabase.from('deal_room_tasks').insert(row).select('*').single();
-  let createdTask = data;
   if (error) {
     if (error.code === '23505' || /duplicate|unique/i.test(error.message || '')) return null;
     const legacyRow = {
@@ -182,22 +183,13 @@ async function createTask(propertyId, fields) {
     };
     const legacy = await supabase.from('deal_room_tasks').insert(legacyRow).select('*').single();
     if (legacy.error) { console.warn('[taskEngine] createTask:', legacy.error.message); return null; }
-    createdTask = legacy.data;
+    return legacy.data;
   }
   emit('task.created', {
-    propertyId,
-    taskId: createdTask.id,
-    taskType: createdTask.task_type,
-    title: createdTask.title,
-    ownerType: createdTask.owner_type || fields.ownerType,
-    ownerRole: createdTask.owner_role || fields.ownerRole,
-    requiredApproverRole: createdTask.required_approver_role || fields.requiredApproverRole,
-    blocking: createdTask.blocking === true || fields.blocking === true,
-    sourceType: createdTask.source_type || fields.sourceType,
-    sourceId: createdTask.source_id || fields.sourceId,
-    correlationId,
+    propertyId, taskId: data.id, taskType: data.task_type,
+    sourceType: data.source_type, sourceId: data.source_id, correlationId,
   }, { correlationId, source: fields.sourceAgent || 'task-engine' });
-  return createdTask;
+  return data;
 }
 
 async function updateTaskStatus(taskId, status) {
@@ -362,7 +354,7 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       if (!RESEND_KEY) throw new Error('Email delivery is not configured');
       await sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from: TRANSACTION_NOTIFICATION_FROM,
         to: action.to,
         subject: action.subject,
         html: action.html || `<p>${action.body || ''}</p>`,
@@ -443,10 +435,11 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const packId = await getRoomPackId(propertyId);
   const roleConfig = await getLiveRoleConfig(packId);
 
-  const [existingRes, submissionsRes, analysesRes] = await Promise.all([
+  const [existingRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role, email, name, doc_count, submitted_at').eq('property_id', propertyId),
+    supabase.from('party_submissions').select('role, email, name, status, doc_count, submitted_at').eq('property_id', propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
+    supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
   ]);
 
   const existing = existingRes.data || [];
@@ -456,6 +449,16 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   const analyses = selectActiveDocumentVersions(analysesRes.data || []);
   const transactionState = await readTransactionState(propertyId);
+  const participantCompletions = resolveParticipantCompletions(roleConfig.roles || [], {
+    checklist: Array.isArray(transactionState.room?.checklist_items)
+      ? transactionState.room.checklist_items
+      : [],
+    invites: invitesRes.data || [],
+    submissions,
+  });
+  const completedParticipantRoles = new Set(
+    participantCompletions.filter(state => state.complete).map(state => state.role)
+  );
 
   const hasExistingTask = (taskType, sourceId) => existing.some(t =>
     t.task_type === taskType && t.source_id === sourceId);
@@ -474,17 +477,17 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   for (const role of requiredRoles) {
     const sub = submissions.find(s => s.role === role.key);
-    if (sub) continue;
+    if (sub || completedParticipantRoles.has(role.key)) continue;
     const sourceId = `missing-role:${role.key}`;
     if (hasExistingTask('missing_participant', sourceId)) continue;
     const roleLabel = role.label || getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
-     title: `${roleLabel} has not submitted required documents yet`,
-     description: `The ${roleLabel} role is required for this deal type, but no submission has been received yet.`,
+      title: `${roleLabel} has no participant submission on record`,
+      description: `The ${roleLabel} role is required for this deal type, but party_submissions has no record for this role.`,
       ownerType: 'ai',
       ownerRole: 'owner',
-       evidence: [`No submission has been received for the ${roleLabel} role.`],
+      evidence: [`No party_submissions record found for role "${role.key}" (${roleLabel}).`],
       draftAction: null,
       sourceType: 'party_role',
       sourceId,
@@ -496,7 +499,38 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     if (task) created.push(task);
   }
 
-  // 2) Document analysis flags — insurance/expiration language surfaced by AI review.
+  // 2) Stuck-pending submission — a submission row exists but is not complete.
+  for (const sub of submissions) {
+    if (completedParticipantRoles.has(sub.role)) continue;
+    if (sub.status !== 'pending' && sub.status !== 'invited') continue;
+    const sourceId = `pending-submission:${sub.role}`;
+    if (hasExistingTask('pending_submission', sourceId)) continue;
+    const roleLabel = roleConfig.roles.find(role => role.key === sub.role)?.label
+      || getPackRoleLabel(packId, sub.role);
+    const task = await createTask(propertyId, {
+      taskType: 'pending_submission',
+      title: `${roleLabel} has a pending participant submission`,
+      description: `${sub.name || roleLabel} has a party_submissions record with status "${sub.status}" but has not completed the submission.`,
+      ownerType: 'ai',
+      ownerRole: sub.role,
+      evidence: [`party_submissions.status = "${sub.status}" for role "${sub.role}" (submission not yet complete).`],
+      draftAction: sub.email ? {
+        type: 'email',
+        to: sub.email,
+        subject: `Reminder: your documents for this deal room`,
+        body: `Hi ${sub.name || roleLabel}, this is a reminder to complete your document submission for this deal room when you have a moment.`,
+      } : null,
+      sourceType: 'party_submission',
+      sourceId,
+      category: 'participant',
+      blocking: false,
+      severity: 'medium',
+      correlationId: options.correlationId,
+    });
+    if (task) created.push(task);
+  }
+
+  // 3) Document analysis flags — insurance/expiration language surfaced by AI review.
   const EXPIRY_HINT = /expir|renew|lapsed?\b/i;
   const MISSING_HINT = /missing (appendix|schedule|exhibit|attachment)/i;
   for (const doc of analyses) {

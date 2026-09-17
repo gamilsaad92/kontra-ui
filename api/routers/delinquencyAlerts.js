@@ -1,6 +1,7 @@
 const express = require('express');
 const nodemailer = require('nodemailer');
 const { triggerWebhooks } = require('../webhooks');
+const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
 let twilioClient;
 try {
   twilioClient = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
@@ -29,7 +30,7 @@ router.post('/loans/:loanId/alerts/delinquency', async (req, res) => {
       try {
         await transporter.sendMail({
           to: email,
-          from: 'noreply@example.com',
+          from: TRANSACTION_NOTIFICATION_FROM,
           subject: 'Delinquency Alert',
           text,
         });

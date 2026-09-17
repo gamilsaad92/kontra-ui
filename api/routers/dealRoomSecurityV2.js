@@ -28,6 +28,7 @@ const crypto    = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { supabase: fallbackSupabase } = require('../db');
 const { callPrivate }  = require('../lib/privateDb');
+const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
 
 const router = express.Router();
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -40,7 +41,7 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 
 // ── Resend email sender ──────────────────────────────────────────────────────
 const RESEND_KEY  = process.env.RESEND_API_KEY;
-const FROM_EMAIL  = 'Kontra <notifications@kontraplatform.com>';
+const FROM_EMAIL  = TRANSACTION_NOTIFICATION_FROM;
 const BASE_URL    = process.env.APP_BASE_URL || 'https://kontraplatform.com';
 
 async function sendResendEmail({ to, subject, text, html }) {

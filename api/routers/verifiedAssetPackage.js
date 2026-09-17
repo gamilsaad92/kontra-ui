@@ -20,7 +20,8 @@ const { getRoomPackId, getPackStageConfig } = require('../lib/dealRoomHelpers');
 const { selectActiveDocumentVersions } = require('../lib/documentVersions');
 const { readTransactionState, getHazardLossRepairGate } = require('../lib/transactionState');
 const { buildVerifiedAssetHandoff } = require('../lib/verifiedAssetHandoff');
-const OpenAI = require('openai');
+const { createInstitutionalOpenAIClient } = require('../lib/openaiClient');
+const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
 const cache = require('../cache');
 
 // ── Share token helpers ──────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ function verifyShareToken(token) {
   return { propertyId, expiresAt };
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
+const openai = createInstitutionalOpenAIClient();
 
 // ── Required document sections per pack + property type ──────────────────────
 const REQUIRED_SECTIONS = {
@@ -159,7 +160,7 @@ async function buildVAP(propertyId) {
       .eq('property_id', propertyId)
       .order('created_at', { ascending: true }),
     supabase.from('party_submissions')
-      .select('role, name, submitted_at')
+      .select('role, name, status, submitted_at')
       .eq('property_id', propertyId),
     readTransactionState(propertyId),
     supabase.from('transaction_record_approvals')
@@ -519,7 +520,7 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
             method: 'POST',
             headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              from: 'Kontra Platform <notifications@kontraplatform.com>',
+              from: TRANSACTION_NOTIFICATION_FROM,
               to: [email],
               subject: `Verified Transaction Package — ${assetName}`,
               html: `
