@@ -13,23 +13,20 @@ const {
 } = require('./dealRoomHelpers');
 const { listTasksForRoom } = require('./taskEngine');
 const { readTransactionState } = require('./transactionState');
-const {
-  projectDocumentChecklist,
-} = require('./documentStatus');
-const {
-  getChecklistItemAssignedRoles,
-  hasDocumentRole,
-} = require('./documentAssignmentAccess');
-const {
-  deriveParticipantSubmissionRows,
-} = require('./participantSubmissionState');
-const { buildStageDecision } = require('./stageDecision');
+const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
   buildTokenizationPrompt,
   buildTokenizationAnswerPrefix,
 } = require('./tokenizationGuidance');
+const { safeAIErrorMetadata } = require('./openaiClient');
+const {
+  resolveParticipantCompletions,
+  normalizeParticipantRole,
+  participantRoleMatches,
+} = require('./participantCompletion');
+const { getLifecycleTransitionGate } = require('./lifecycleGate');
 
 let _deps = null;
 function getDependencies() {
@@ -43,8 +40,8 @@ function getDependencies() {
 let _openai = null;
 function getOpenAI() {
   if (!_openai && process.env.OPENAI_API_KEY) {
-    const OpenAI = require('openai');
-    _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const { createInstitutionalOpenAIClient } = require('./openaiClient');
+    _openai = createInstitutionalOpenAIClient();
   }
   return _openai;
 }
@@ -91,27 +88,12 @@ function participantTaskTitle(packId, task, participantDefinitions = []) {
   const role = participantDefinitions.find(item => item.key === roleKey);
   const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
   if (task.task_type === 'missing_participant' && roleLabel) {
-    return `${roleLabel} has not submitted required documents yet`;
+    return `${roleLabel} has no participant submission on record`;
   }
   if (task.task_type === 'pending_submission' && roleLabel) {
-    return `${roleLabel} has a pending document submission`;
+    return `${roleLabel} has a pending participant submission`;
   }
   return task.title;
-}
-
-function participantTaskEvidence(packId, task, participantDefinitions = []) {
-  if (!isParticipantTask(task)) return taskEvidence(task);
-  const roleKey = subjectRoleOf(task);
-  const role = participantDefinitions.find(item => item.key === roleKey);
-  const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
-  if (!roleLabel) return taskEvidence(task);
-  if (task.task_type === 'missing_participant') {
-    return [`No submission has been received for the ${roleLabel} role.`];
-  }
-  if (task.task_type === 'pending_submission') {
-    return [`${roleLabel} has a submission that is not yet complete.`];
-  }
-  return taskEvidence(task);
 }
 
 function computeChainStatus(packId, tasks) {
@@ -185,20 +167,7 @@ function taskEvidence(task) {
   return [];
 }
 
-function buildPackLifecycle(packId, stageKey, generatedProposal = null, customStages = null) {
-  if (Array.isArray(customStages) && customStages.length >= 2) {
-    const stages = customStages
-      .filter(stage => stage?.key)
-      .map(stage => ({ key: stage.key, label: stage.label || stage.key }));
-    const current = stages.find(stage => stage.key === stageKey) || null;
-    return {
-      source: 'room_custom_stage_configuration',
-      packId,
-      currentStageKey: stageKey || null,
-      currentStageLabel: current?.label || null,
-      stages,
-    };
-  }
+function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
   if (generatedProposal?.stages?.length) {
     const stages = generatedProposal.stages.map(stage => ({ key: stage.key, label: stage.name }));
     const current = stages.find(stage => stage.key === stageKey) || null;
@@ -221,6 +190,43 @@ function buildPackLifecycle(packId, stageKey, generatedProposal = null, customSt
     currentStageLabel: current?.label || (stageKey ? getPackStageLabel(packId, stageKey) : null),
     stages: stages.map(stage => ({ key: stage.key, label: stage.label })),
   };
+}
+
+function getNextLifecycleStage(lifecycle) {
+  const stages = Array.isArray(lifecycle?.stages) ? lifecycle.stages : [];
+  const currentIndex = stages.findIndex(stage =>
+    stage.key === lifecycle?.currentStageKey
+  );
+  return currentIndex >= 0 ? stages[currentIndex + 1] || null : null;
+}
+
+function buildCanonicalLifecycleGate({
+  lifecycle,
+  recordState,
+  requiredDocuments = [],
+  receivedDocuments = [],
+  reviewDocuments = [],
+  participantStates = [],
+} = {}) {
+  const stages = Array.isArray(lifecycle?.stages) ? lifecycle.stages : [];
+  const currentStage = stages.find(stage => stage.key === lifecycle?.currentStageKey) || null;
+  const nextStage = getNextLifecycleStage(lifecycle);
+  return getLifecycleTransitionGate({
+    stages,
+    currentStage,
+    nextStage,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+    requiredFields: recordState?.requiredFields || [],
+    participantStates: participantStates.map(state => ({
+      ...state,
+      key: state.key || state.role,
+    })),
+    unresolvedConflicts: recordState?.unresolvedConflicts || [],
+    requiredApprovals: nextStage?.requiredApprovals || nextStage?.requiredConditions || [],
+    recordHydrated: Boolean(recordState),
+  });
 }
 
 const ACTIVE_PARTICIPANT_INVITE_STATUSES = new Set([
@@ -294,17 +300,15 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
-function filterTasksToLiveParticipants(tasks, participantDefinitions, participants = []) {
+function filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions = []) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
-  const completedParticipantKeys = new Set((participants || [])
-    .filter(participant => ['submitted', 'complete', 'completed'].includes(
-      String(participant?.submissionStatus || participant?.status || '').toLowerCase(),
-    ) || Number(participant?.documentCount || participant?.doc_count || 0) > 0)
-    .map(participant => participant.role));
+  const completedParticipantKeys = new Set((participantCompletions || [])
+    .filter(state => state.complete)
+    .map(state => normalizeParticipantRole(state.role)));
   return (Array.isArray(tasks) ? tasks : []).filter(task =>
     !isParticipantTask(task)
       || (liveParticipantKeys.has(subjectRoleOf(task))
-        && !completedParticipantKeys.has(subjectRoleOf(task)))
+        && !completedParticipantKeys.has(normalizeParticipantRole(subjectRoleOf(task))))
   );
 }
 
@@ -350,6 +354,7 @@ function buildGroundedBlockers({
   (Array.isArray(missingDocuments) ? missingDocuments : []).forEach(document => {
     blockers.push({
       sourceType: 'required_document',
+      id: document.id || null,
       label: document.label,
       section: document.section || null,
       evidence: [`Required checklist item "${document.label}" is not complete.`],
@@ -360,33 +365,41 @@ function buildGroundedBlockers({
     .filter(role => role.required && role.invitable !== false
       && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
     .forEach(role => {
-      const participant = participantRows.find(row => row.role === role.key);
-      const inviteStatus = String(participant?.inviteStatus || '').toLowerCase();
-      const submitted = Boolean(participant?.submissionStatus)
-        || Number(participant?.documentCount || participant?.doc_count || 0) > 0;
-      if (submitted) return;
+      const participant = participantRows.find(row =>
+        normalizeParticipantRole(row.role) === normalizeParticipantRole(role.key)
+      );
+      const legacyComplete = participant?.complete !== true
+        && !participant?.inviteStatus
+        && (
+          ['submitted', 'complete', 'completed'].includes(
+            String(participant?.submissionStatus || participant?.status || '').toLowerCase(),
+          )
+          || Number(participant?.documentCount || participant?.doc_count || 0) > 0
+        );
+      if (participant?.complete === true || legacyComplete) return;
 
       const roleLabel = role.label || getPackRoleLabel(packId, role.key);
       const submissionStatus = participant?.submissionStatus ?? null;
       const invitationStatus = participant?.inviteStatus ?? null;
       const documentCount = Number(participant?.documentCount || participant?.doc_count || 0);
-      const submissionSource = participant?.submissionSource || null;
+      const assignedDocumentBlocker = participant?.unresolvedRequiredDocumentCount > 0
+        ? `${roleLabel} has ${participant.unresolvedRequiredDocumentCount} assigned required document(s) that are not complete.`
+        : null;
       blockers.push({
         sourceType: 'required_participant',
         role: role.key,
         label: roleLabel,
-        status: 'missing',
+        status: participant?.status || 'missing',
         submissionStatus,
         invitationStatus,
         evidence: [
-          submissionStatus || documentCount > 0
-            ? submissionSource === 'role_uploaded_evidence'
-              ? `No submission has been received for the ${roleLabel} role.`
-              : `${roleLabel} has ${documentCount} submitted document(s).`
-            : `No submission has been received for the ${roleLabel} role.`,
+          assignedDocumentBlocker || submissionStatus || documentCount > 0
+            ? assignedDocumentBlocker
+              || `party_submissions.status = "${submissionStatus || 'not recorded'}" for role "${role.key}" with ${documentCount} submitted document(s).`
+            : `No party_submissions record exists for required role "${role.key}".`,
           invitationStatus
-            ? `${roleLabel} invitation status is "${invitationStatus}".`
-            : `No active invitation is recorded for ${roleLabel}.`,
+            ? `deal_room_invites.status = "${invitationStatus}" for role "${role.key}".`
+            : `No current active deal_room_invites.status is recorded for role "${role.key}"; this does not establish prior invitation history.`,
         ],
       });
     });
@@ -432,7 +445,7 @@ function buildGroundedBlockers({
         taskId: task.id,
         label: participantTaskTitle(packId, task, effectiveParticipantDefinitions),
         status: task.status,
-         evidence: participantTaskEvidence(packId, task, effectiveParticipantDefinitions),
+        evidence: taskEvidence(task),
       });
     });
 
@@ -444,22 +457,19 @@ function buildGroundedBlockers({
 // requirement; never treat a schema mismatch as an empty live evidence set.
 async function loadGroundingAnalyses(propertyId) {
   const selects = [
-    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status, is_active, superseded_at',
-    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status',
-    'id, section, filename, analysis, uploaded_by_role, created_at',
+    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
   ];
   let lastError = null;
 
   for (const select of selects) {
-    // The coordinator checklist reads the complete room evidence set before
-    // selecting active versions. A row limit here can make an older, received
-    // document disappear from AI grounding while it remains visible to the
-    // coordinator.
     const result = await supabase
       .from('deal_analyses')
       .select(select)
       .eq('property_id', propertyId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(30);
     if (!result.error) return result.data || [];
     lastError = result.error;
     if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) break;
@@ -471,47 +481,6 @@ async function loadGroundingAnalyses(propertyId) {
   return [];
 }
 
-function buildParticipantRequirementState(projectedChecklist, role, submission) {
-  const assignedItems = (Array.isArray(projectedChecklist) ? projectedChecklist : [])
-    .filter(item => hasDocumentRole(getChecklistItemAssignedRoles(item), role));
-  const requiredItems = assignedItems.filter(item => item.required === true);
-  const completedRequiredItems = requiredItems.filter(item => item.documentReceived === true);
-  const missingRequiredItems = requiredItems.filter(item => item.documentReceived !== true);
-  const reviewItems = assignedItems.filter(item => item.documentNeedsReview === true);
-
-  return {
-    submissionRecorded: Boolean(submission),
-    submittedDocumentCount: Number(submission?.doc_count || 0),
-    submittedAt: submission?.submitted_at || null,
-    assignedCount: assignedItems.length,
-    requiredCount: requiredItems.length,
-    completedRequiredCount: completedRequiredItems.length,
-    missingRequiredCount: missingRequiredItems.length,
-    complete: Boolean(submission)
-      && requiredItems.length > 0
-      && completedRequiredItems.length === requiredItems.length,
-    documents: assignedItems.map(item => ({
-      id: item.id || item.document_id || item.documentId || null,
-      section: item.section || item.category || null,
-      label: item.label || item.name || item.id || 'Assigned document',
-      required: item.required === true,
-      status: item.documentState,
-      received: item.documentReceived === true,
-      needsReview: item.documentNeedsReview === true,
-    })),
-    missingRequiredDocuments: missingRequiredItems.map(item => ({
-      id: item.id || item.document_id || item.documentId || null,
-      section: item.section || item.category || null,
-      label: item.label || item.name || item.id || 'Required document',
-    })),
-    reviewDocuments: reviewItems.map(item => ({
-      id: item.id || item.document_id || item.documentId || null,
-      section: item.section || item.category || null,
-      label: item.label || item.name || item.id || 'Assigned document',
-    })),
-  };
-}
-
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
   const [transactionState, tasks, analyses, { data: participants }, { data: participantInvites }] = await Promise.all([
@@ -520,20 +489,15 @@ async function buildGroundedContext(propertyId) {
     loadGroundingAnalyses(propertyId),
     supabase
       .from('party_submissions')
-      .select('role, name, doc_count, submitted_at')
+      .select('role, name, status, doc_count, submitted_at')
       .eq('property_id', propertyId),
     supabase
       .from('deal_room_invites')
       .select('role_key, status, expires_at, revoked_at')
       .eq('property_id', propertyId),
   ]);
+  const activeAnalyses = selectActiveDocumentVersions(analyses);
   const room = transactionState.room;
-  const documentProjection = projectDocumentChecklist(
-    Array.isArray(room?.checklist_items) ? room.checklist_items : [],
-    analyses,
-  );
-  const projectedChecklist = documentProjection.items;
-  const activeAnalyses = documentProjection.activeAnalyses;
   const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal
     || room?.metadata_values?.generated_proposal
@@ -558,24 +522,24 @@ async function buildGroundedContext(propertyId) {
       const role = participantDefinitions.find(item => item.key === roleKey);
       const roleLabel = role?.label || (roleKey ? getPackRoleLabel(packId, roleKey) : null);
       if (t.task_type === 'missing_participant' && roleLabel) {
-        return `The ${roleLabel} role is required, but no submission has been received yet.`;
+        return `The ${roleLabel} role is required, but party_submissions has no record for this role.`;
       }
       if (t.task_type === 'pending_submission' && roleLabel) {
-        return `${roleLabel} has a submission that is not yet complete.`;
+        return `${roleLabel} has a party_submissions record that is not yet complete.`;
       }
       return t.description || null;
     })(),
     ownedBy: t.owner_type === 'ai' ? 'AI' : getPackRoleLabel(packId, t.owner_role || 'unknown'),
     ownerRole: t.owner_role,
     status: t.status,
-     evidence: participantTaskEvidence(packId, t, participantDefinitions),
+    evidence: Array.isArray(t.evidence) ? t.evidence : [],
     hasDraftAction: !!t.draft_action,
     dueAt: t.due_at,
     createdAt: t.created_at,
   });
 
-  const checklist = documentProjection.items;
-  const missingDocuments = documentProjection.missingDocuments;
+  const checklist = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
+  const missingDocuments = getLiveMissingDocuments(checklist, activeAnalyses);
   const populatedRecordFields = (recordState.fields || [])
     .filter(field => field.value !== null && field.value !== undefined
       && String(field.value).trim()
@@ -615,63 +579,58 @@ async function buildGroundedContext(propertyId) {
     if (['pending', 'invited', 'sent'].includes(status)
       && invite?.expires_at
       && new Date(invite.expires_at).getTime() <= Date.now()) return false;
-    return liveParticipantKeys.has(invite.role_key);
+    return participantDefinitions.some(role => participantRoleMatches(role, invite.role_key));
   });
-  const effectiveParticipants = deriveParticipantSubmissionRows(
-    participants || [],
-    activeAnalyses,
+  const participantCompletions = resolveParticipantCompletions(participantDefinitions, {
+    checklist: checklist.map(item => ({
+      ...item,
+      status: isDocumentRequirementReceived(item, activeAnalyses) ? 'uploaded' : item.status,
+    })),
+    invites: liveInvites,
+    submissions: participants || [],
+  });
+  const participantCompletionByRole = new Map(
+    participantCompletions.map(state => [normalizeParticipantRole(state.role), state])
   );
   const participantContext = participantDefinitions
-    .filter(role => role.invitable !== false && !role.legacyOnly)
-    .map(role => {
-       const submission = effectiveParticipants.find(item =>
-        item?.role === role.key
-      );
-      const invite = liveInvites.find(item => item.role_key === role.key);
-      return {
-        role: role.key,
-        label: role.label || getPackRoleLabel(packId, role.key),
-        name: submission?.name || null,
-        status: submission ? 'submitted' : (invite?.status || null),
-        submissionStatus: submission ? 'submitted' : null,
-        inviteStatus: invite?.status || null,
-        invited: !!invite,
-        documentCount: Number(submission?.doc_count || 0),
-        submittedAt: submission?.submitted_at || null,
-         submissionSource: submission?.submissionSource || (submission ? 'recorded_submission' : null),
-        assignedRequirements: buildParticipantRequirementState(
-          projectedChecklist,
-          role.key,
-          submission,
-        ),
-      };
-    });
-  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantContext);
+    .filter(role => {
+      if (role.invitable === false) return false;
+      if (!role.legacyOnly) return true;
+      const state = participantCompletionByRole.get(normalizeParticipantRole(role.key));
+      return state?.invited || state?.assignedRequiredDocumentCount > 0;
+    })
+    .map(role => ({
+      name: (participants || []).find(item => participantRoleMatches(role, item?.role))?.name || null,
+       required: role.required !== false,
+       invitable: role.invitable !== false,
+       ...(participantCompletionByRole.get(normalizeParticipantRole(role.key)) || {}),
+     }));
+  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions);
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
-  const lifecycle = buildPackLifecycle(
-    packId,
-    room?.deal_stage || null,
-    generatedProposal,
-    room?.stages_config,
+  const lifecycle = buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal);
+  const requiredDocuments = checklist.filter(item =>
+    item?.required
+      && !['not_applicable', 'na', 'n_a'].includes(
+        String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+      )
   );
-  const groundedBlockers = buildGroundedBlockers({
-    packId,
-    recordState,
-    missingDocuments,
-    participants: participantContext,
-    tasks: groundedTasks,
-    participantDefinitions,
-    conflicts,
-  });
-  const stageDecision = buildStageDecision({
+  const receivedDocuments = requiredDocuments.filter(item =>
+    isDocumentRequirementReceived(item, activeAnalyses)
+  );
+  const reviewDocuments = requiredDocuments.filter(item =>
+    ['review', 'needs_review', 'pending_review', 'needs_attention', 'attention'].includes(
+      String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+    )
+  );
+  const lifecycleGate = buildCanonicalLifecycleGate({
     lifecycle,
-    checklist,
     recordState,
-    readiness: transactionState.readiness,
-    groundedBlockers,
-    packId,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+    participantStates: participantContext,
   });
   const recordStateFields = recordState.fields || [];
   const meaningfulRecordField = key => recordStateFields.find(field =>
@@ -741,12 +700,11 @@ async function buildGroundedContext(propertyId) {
       documents: documentFindings,
       activeDocumentState: {
         count: activeAnalyses.length,
-        documents: documentProjection.activeDocumentStates.map(item => ({
+        documents: activeAnalyses.map(item => ({
           id: item.id || null,
           section: item.section || null,
           filename: item.filename || null,
           processingStatus: item.processing_status || (item.analysis?.pending === true ? 'processing' : 'complete'),
-          status: item.documentState,
         })),
         missingRequirements: missingDocuments,
       },
@@ -788,9 +746,17 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
-      lifecycle,
-      stageDecision,
-      groundedBlockers,
+    lifecycle,
+    lifecycleGate,
+    groundedBlockers: buildGroundedBlockers({
+      packId,
+      recordState,
+      missingDocuments,
+      participants: participantContext,
+      tasks: groundedTasks,
+      participantDefinitions,
+      conflicts,
+    }),
     transactionContext,
     recordState,
     readiness: transactionState.readiness,
@@ -816,7 +782,6 @@ function contextToPrompt(ctx) {
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
-      stage_decision: ctx.stageDecision,
       transaction_record_facts: ctx.recordFacts,
       transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
@@ -851,7 +816,6 @@ function askContextToPrompt(ctx) {
       recently_resolved_tasks: ctx.recentlyResolved,
       missing_documents: ctx.missingDocuments,
       active_document_state: ctx.transactionContext.evidence.activeDocumentState,
-      stage_decision: ctx.stageDecision,
       transaction_record_facts: ctx.recordFacts,
       transaction_record_review: ctx.transactionContext.record.awaitingConfirmation,
       document_findings: ctx.documentFindings,
@@ -862,37 +826,87 @@ function askContextToPrompt(ctx) {
   );
 }
 
+// A checklist row describes a requirement, while deal_analyses describes the
+// evidence that has actually arrived. A requirement is not missing merely
+// because its latest analysis is still being processed.
+const DOCUMENT_RECEIVED_STATUSES = new Set([
+  'uploaded', 'processing', 'retrying', 'analyzing', 'analyzed',
+  'complete', 'completed', 'approved', 'ai_complete', 'received',
+]);
+
+function normalizedDocumentText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function documentRequirementMatchesAnalysis(requirement, analysis) {
+  const requirementSection = normalizedDocumentText(requirement?.section || requirement?.category);
+  const analysisSection = normalizedDocumentText(analysis?.section);
+  if (requirementSection && analysisSection && requirementSection === analysisSection) return true;
+
+  const requirementLabels = [
+    requirement?.label,
+    requirement?.name,
+    requirement?.document_type,
+    requirement?.documentType,
+  ].map(normalizedDocumentText).filter(Boolean);
+  const analysisLabels = [
+    analysis?.filename,
+    analysis?.document_type,
+    analysis?.documentType,
+    analysis?.analysis?.document_type,
+    analysis?.analysis?.documentType,
+    analysis?.analysis?.title,
+  ].map(normalizedDocumentText).filter(Boolean);
+  return requirementLabels.some(label =>
+    analysisLabels.some(candidate =>
+      label === candidate
+        || (label.length > 2 && candidate.includes(label))
+        || (candidate.length > 2 && label.includes(candidate)),
+    )
+  );
+}
+
 function isDocumentRequirementReceived(requirement, activeAnalyses = []) {
-  return projectDocumentChecklist([requirement], activeAnalyses)
-    .items[0]?.documentReceived === true;
+  const status = String(requirement?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['not_applicable', 'na', 'n_a'].includes(status)) return false;
+  if (requirement?.uploaded === true || requirement?.uploaded === 'true') return true;
+  if (DOCUMENT_RECEIVED_STATUSES.has(status)) return true;
+  return activeAnalyses.some(analysis =>
+    analysis
+      && analysis.is_active !== false
+      && !analysis.superseded_at
+      && documentRequirementMatchesAnalysis(requirement, analysis)
+  );
 }
 
 function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
-  return projectDocumentChecklist(checklist, activeAnalyses).missingDocuments;
+  return (Array.isArray(checklist) ? checklist : [])
+    .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
+    .slice(0, 30)
+    .map(item => ({
+      id: item.id || item.document_id || item.documentId || null,
+      label: item.label || item.name || item.id || 'Required document',
+      section: item.section || item.category || null,
+    }));
 }
 
 const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction deal room (which may be CRE acquisition, business acquisition, or fundraising — follow the deal context provided).
-You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, stage_decision, transaction_record_facts, document_findings). Never invent
+You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
 Treat active_document_state as the source of truth for document receipt: an active uploaded,
-processing, retrying, failed, or completed document has been received and must not be described as
-missing. A document with status "needs_review" is received evidence that needs coordinator review,
-not a missing document.
+processing, retrying, or completed document has been received and must not be described as missing.
 Only list a document as missing when it appears in missing_documents.
 The participants array is the live People state for this room. Do not import roles from a
 generic template or from outside this room. A populated Transaction Record field with status
 "awaiting_confirmation" is a known fact awaiting coordinator confirmation, not a missing or
 incomplete field; do not describe it as awaiting completion.
-Each participant's assignedRequirements object is the canonical role-scoped document assignment
-and submission projection. For questions about whether a participant completed their assigned
-requirement, use only that participant's assignedRequirements: requiredCount, completedRequiredCount,
-missingRequiredDocuments, and complete. Do not use transaction-wide missing_documents or unrelated
-participants' documents to mark that role incomplete. You may separately note that the transaction
-has other missing documents outside the participant's assignment.
 
 Answer as a quiet transaction-workspace guide: explain findings, summarize what is missing, identify the next action, and give concise daily briefs when asked. Cite the specific task, document finding, record fact, or checklist item behind every claim.
-When asked whether the transaction should advance, follow stage_decision exactly. Give a direct yes/no recommendation for the immediate next stage and name the recorded blockers; do not answer with a document inventory instead.
 This is AI-prepared operational guidance, not legal, regulatory, tax, investment, or settlement advice. Never claim that Kontra verified a legal or regulatory requirement, determined an exemption, approved an offering, or established eligibility. Use preparation, coordination, professional-review, and external-provider-handoff language instead.
 Tokenization and digital-asset preparation are optional downstream paths. They never replace the transaction workflow and must not be presented as a default outcome.
 
@@ -911,20 +925,12 @@ documents, or requirements from general CRE, lending, legal, or financial knowle
 LIFECYCLE RULE: The lifecycle object is the only source for current stage and stage order. Use its
 resolved Workflow Pack and room stage exactly. Never substitute a generic lending or CRE lifecycle.
 
-STAGE DECISION RULE: stage_decision is the canonical operational recommendation. When the user asks
-whether the transaction should advance, answer directly from recommendationAllowed, nextStage, reason,
-and blockers. Do not replace that decision with a list of uploaded documents.
-
 BLOCKER RULE: The blockers array is the complete factual blocker list. It contains only required
 document gaps, required participant state, canonical required Transaction Record gaps/conflicts,
 and explicit blocking tasks with evidence. A non_blocking_open_tasks item is not a blocker. If the
 blockers array is empty, say that no blocker is recorded instead of inferring one.
 The transaction_context.participants array is the live People state for this room. Never add
 Buyer, Seller, Legal Advisor, Financial Advisor, or any other role unless it is present there.
-For participant-completion questions, use only the named participant's assignedRequirements
-projection. It is role-scoped to the persisted checklist assignments and canonical participant
-submission. Do not treat transaction-wide missing_documents as missing requirements for that
-participant; mention those separately only when useful.
 The transaction_record_review array contains populated facts awaiting coordinator confirmation;
 these are not missing or incomplete and must not be described as awaiting completion.
 
@@ -935,150 +941,6 @@ optional digital-asset preparation gaps.
 
 This is coordination and preparation guidance, not legal, regulatory, investment, settlement,
 issuance, custody, or eligibility advice. Keep every factual statement tied to a provided source.`;
-
-function isDocumentStatusQuestion(question) {
-  const text = String(question || '');
-  return /\b(?:document|documents|file|files|paperwork|checklist)\b/i.test(text)
-    && /\b(?:missing|required|received|uploaded|processing|submitted|status|have|need)\b/i.test(text);
-}
-
-function isStageDecisionQuestion(question) {
-  const text = String(question || '');
-  return /\b(?:advance|proceed|move\s+forward|next\s+stage|progress|ready)\b/i.test(text)
-    && /\b(?:should|can|recommend|decision|transaction|deal|closing|stage)\b/i.test(text);
-}
-
-function findParticipantCompletionTarget(ctx, question) {
-  const text = String(question || '').toLowerCase();
-  if (!/\b(?:complete|completed|finish|finished|done|fulfilled)\b/.test(text)) return null;
-  if (!/\b(?:assigned|required|requirement|document|upload|submission)\b/.test(text)) return null;
-  const participants = ctx.transactionContext?.participants || [];
-  return participants.find(participant => {
-    const role = String(participant.role || '').toLowerCase();
-    const label = String(participant.label || '').toLowerCase();
-    return [role, label].some(value => value && text.includes(value));
-  }) || null;
-}
-
-function findParticipantDocumentTarget(ctx, question) {
-  const text = String(question || '').toLowerCase();
-  if (!/\b(?:document|documents|file|files|checklist|submission|submit|uploaded|received)\b/.test(text)) {
-    return null;
-  }
-  if (!/\b(?:assigned|specifically|exactly|need|needed|missing|blocked|have|which|what)\b/.test(text)) {
-    return null;
-  }
-  const participants = ctx.transactionContext?.participants || [];
-  return participants.find(participant => {
-    const role = String(participant.role || '').toLowerCase();
-    const label = String(participant.label || '').toLowerCase();
-    return [role, label].some(value => value && text.includes(value));
-  }) || null;
-}
-
-function buildParticipantCompletionAnswer(ctx, participant) {
-  const requirements = participant.assignedRequirements || {};
-  const label = participant.label || participant.role || 'The participant';
-  const requiredCount = Number(requirements.requiredCount || 0);
-  const completedCount = Number(requirements.completedRequiredCount || 0);
-  const missing = Array.isArray(requirements.missingRequiredDocuments)
-    ? requirements.missingRequiredDocuments
-    : [];
-  const documentNames = (requirements.documents || [])
-    .filter(document => document.required && document.received)
-    .map(document => document.label)
-    .filter(Boolean);
-
-  if (requiredCount === 0) {
-    return `${label} has no currently assigned required document recorded in the live checklist.`;
-  }
-  if (requirements.complete === true) {
-    const uploaded = documentNames.length > 0
-      ? ` Completed assigned document${documentNames.length === 1 ? '' : 's'}: ${documentNames.join(', ')}.`
-      : '';
-    const transactionNote = Array.isArray(ctx.missingDocuments) && ctx.missingDocuments.length > 0
-      ? ' The transaction may still have other outstanding required documents outside this role’s assignment.'
-      : '';
-    return `Yes — ${label} has completed their currently assigned requirement (${completedCount} of ${requiredCount} required assigned documents uploaded and processed).${uploaded}${transactionNote}`;
-  }
-
-  const missingLabels = missing.map(document => document.label).filter(Boolean);
-  return `No — ${label} has completed ${completedCount} of ${requiredCount} required assigned documents.${missingLabels.length ? ` Still required: ${missingLabels.join(', ')}.` : ''}`;
-}
-
-function buildParticipantDocumentAnswer(ctx, participant) {
-  const requirements = participant.assignedRequirements || {};
-  const label = participant.label || participant.role || 'The participant';
-  const documents = Array.isArray(requirements.documents) ? requirements.documents : [];
-  const statusFor = document => document.received
-    ? `${document.label} — uploaded and processed${document.needsReview ? ' (needs coordinator review)' : ''}`
-    : `${document.label} — not submitted`;
-  const assignedSummary = documents.length > 0
-    ? documents.map(statusFor).join('; ')
-    : 'No checklist documents are currently assigned to this role.';
-  const missingRequired = documents
-    .filter(document => document.required && !document.received)
-    .map(document => document.label)
-    .filter(Boolean);
-  const submissionNote = participant.submissionSource === 'role_uploaded_evidence'
-    ? ` No separate submission has been recorded for ${label}, but active documents uploaded by this role confirm the participant state; re-upload is not required.`
-    : '';
-  const blockerNote = missingRequired.length > 0
-    ? ` ${label} is currently blocked only by these assigned required document${missingRequired.length === 1 ? '' : 's'}: ${missingRequired.join(', ')}.`
-    : ` ${label} has no missing assigned required documents.`;
-  const transactionNote = Array.isArray(ctx.missingDocuments) && ctx.missingDocuments.length > 0
-    ? ' Other transaction-wide missing documents are not assigned to this role unless they appear in the list above.'
-    : '';
-  return `${label} assigned-document status: ${assignedSummary}.${blockerNote}${submissionNote}${transactionNote}`;
-}
-
-function buildStageDecisionAnswer(ctx) {
-  const decision = ctx.stageDecision;
-  if (!decision) {
-    return 'The live stage decision is unavailable right now; refresh the room and try again.';
-  }
-  if (!decision.nextStage) {
-    return decision.reason || 'The current workflow stage has no later stage configured.';
-  }
-  if (decision.recommendationAllowed) {
-    return `Yes — the transaction can advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key}. ${decision.reason}`;
-  }
-  const blockers = (decision.blockers || [])
-    .slice(0, 5)
-    .map(blocker => `${blocker.label}: ${blocker.detail}`)
-    .join(' ');
-  return `No — do not advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key} yet. ${blockers || decision.reason}`;
-}
-
-function buildDocumentStatusAnswer(ctx) {
-  const missing = Array.isArray(ctx.missingDocuments) ? ctx.missingDocuments : [];
-  const received = ctx.transactionContext?.evidence?.activeDocumentState?.documents || [];
-  const receivedLabels = received
-    .map(document => document.filename || document.section)
-    .filter(Boolean);
-  const reviewLabels = received
-    .filter(document => document.status === 'needs_review')
-    .map(document => document.filename || document.section)
-    .filter(Boolean);
-
-  if (missing.length === 0) {
-    const reviewNote = reviewLabels.length > 0
-      ? ` Documents needing review: ${reviewLabels.join(', ')}.`
-      : '';
-    return receivedLabels.length > 0
-      ? `No required documents are currently missing. The live room shows received evidence for: ${receivedLabels.join(', ')}.${reviewNote}`
-      : 'No required documents are currently missing, and no active document evidence is recorded in the live room.';
-  }
-
-  const missingLabels = missing.map(document => document.label || document.section || 'Required document');
-  const receivedNote = receivedLabels.length > 0
-    ? ` The live room also shows received evidence for: ${receivedLabels.join(', ')}.`
-    : '';
-  const reviewNote = reviewLabels.length > 0
-    ? ` Documents needing review: ${reviewLabels.join(', ')}.`
-    : '';
-  return `Currently missing required documents: ${missingLabels.join(', ')}.${receivedNote}${reviewNote}`;
-}
 
 // ── Morning briefing ──────────────────────────────────────────────────────────
 async function getBriefing(propertyId) {
@@ -1215,7 +1077,7 @@ The closing_chain in context shows which step is active. Focus only on the EARLI
     setCache(propertyId, result);
     return result;
   } catch (err) {
-    console.error('[operationsManager] getBriefing LLM error:', err.message);
+    console.error('[operationsManager] getBriefing LLM error:', safeAIErrorMetadata(err));
     return fallback();
   }
 }
@@ -1303,39 +1165,144 @@ function buildFallbackBriefing(ctx) {
   };
 }
 
+function isParticipantCompletionQuestion(question) {
+  const text = String(question || '');
+  return /\b(?:participant|party|role|advisor|counsel|representative)\b/i.test(text)
+    && /\b(?:complete|completed|finish|finished|done|uploaded|submitted|requirement)\b/i.test(text);
+}
+
+function buildParticipantCompletionAnswer(ctx, question) {
+  const participants = ctx.transactionContext?.participants || [];
+  const normalizedQuestion = String(question || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  const participant = participants.find(item => [item.role, item.label, item.shortLabel]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase().replace(/[^a-z0-9]+/g, ' '))
+    .some(identity => identity && normalizedQuestion.includes(identity)));
+  if (!participant) {
+    return 'The live participant state does not identify which role this question refers to.';
+  }
+  if (participant.complete) {
+    const assignedCount = Number(participant.assignedRequiredDocumentCount || 0);
+    return `Yes — ${participant.label || participant.role} is complete based on the live joined participant state.${
+      assignedCount > 0
+        ? ` All ${assignedCount} assigned required document(s) are complete.`
+        : ' No assigned required documents remain for this role.'
+    }`;
+  }
+  const remaining = Number(participant.unresolvedRequiredDocumentCount || 0);
+  return `No — ${participant.label || participant.role} is not complete yet.${
+    remaining > 0
+      ? ` ${remaining} assigned required document(s) remain incomplete.`
+      : ' The live participant state does not show a completed joined requirement.'
+  }`;
+}
+
+function classifyLifecycleQuestion(question) {
+  const text = String(question || '').trim();
+  if (!/\b(?:advance|advancing|proceed|move|progress)\b/i.test(text)) return null;
+
+  if (/\b(?:what\s+(?:would\s+)?need(?:s)?\s+to\s+happen|what\s+remains|what\s+must\s+be\s+completed|what\s+still\s+needs\s+to\s+be\s+done|what\s+do\s+we\s+need)\b/i.test(text)) {
+    return 'actionable';
+  }
+  if (/\b(?:all|complete|every|everything|full)\b[\s\S]*\b(?:requirement|blocker|blocking)\b/i.test(text)
+    || /\b(?:requirement|blocker|blocking)\b[\s\S]*\b(?:all|complete|every|everything|currently)\b/i.test(text)) {
+    return 'comprehensive';
+  }
+  if (/\b(?:is|are|can|could|should)\b[\s\S]*\b(?:ready|eligible|advance|proceed|move)\b/i.test(text)
+    || /\bready\s+to\s+advance\b/i.test(text)) {
+    return 'eligibility';
+  }
+  return null;
+}
+
+function lifecycleAnswerBlockers(ctx) {
+  const gateBlockers = Array.isArray(ctx.lifecycleGate?.blockers)
+    ? ctx.lifecycleGate.blockers
+    : [];
+  const blockers = gateBlockers.map(blocker => ({
+      ...blocker,
+      label: blocker.text || blocker.label || blocker.key,
+      evidence: [blocker.detail].filter(Boolean),
+    }));
+  const seen = new Set(blockers.map(blocker => lifecycleBlockerIdentity(blocker)));
+  (Array.isArray(ctx.groundedBlockers) ? ctx.groundedBlockers : []).forEach(blocker => {
+    const identity = lifecycleBlockerIdentity(blocker);
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      blockers.push(blocker);
+    }
+  });
+  return blockers;
+}
+
+function lifecycleBlockerIdentity(blocker) {
+  const type = blocker?.type || blocker?.sourceType || 'blocker';
+  if (type === 'document' || type === 'document_review' || type === 'required_document') {
+    const requirement = blocker.requirement || {};
+    return `document:${requirement.id || blocker.id || requirement.section || blocker.section || blocker.label}`;
+  }
+  if (type === 'participant' || type === 'required_participant') {
+    const requirement = blocker.requirement || {};
+    return `participant:${requirement.key || requirement.role || blocker.role || blocker.label}`;
+  }
+  if (type === 'record' || type === 'transaction_record' || type === 'transaction_record_conflict') {
+    const requirement = blocker.requirement || {};
+    return `record:${requirement.key || blocker.key || blocker.label}`;
+  }
+  return `${type}:${blocker.taskId || blocker.key || blocker.conflictId || blocker.label}`;
+}
+
+function buildLifecycleQuestionAnswer(ctx, questionType) {
+  const targetLabel = ctx.lifecycleGate?.nextStage?.label || 'the next stage';
+  const blockers = lifecycleAnswerBlockers(ctx);
+  const citedTaskIds = blockers.map(blocker => blocker.taskId).filter(Boolean);
+  if (blockers.length === 0) {
+    if (questionType === 'eligibility') {
+      return {
+        answer: `Yes — the workspace has no recorded blocker to advancing to ${targetLabel}.`,
+        citedTaskIds,
+      };
+    }
+    return {
+      answer: `No recorded requirements are currently blocking advancement to ${targetLabel}.`,
+      citedTaskIds,
+    };
+  }
+
+  const requirements = blockers.map(blocker => blocker.label || blocker.text || blocker.key);
+  if (questionType === 'eligibility') {
+    return {
+      answer: `No — the workspace is not eligible to advance to ${targetLabel} yet. Current blockers: ${requirements.join('; ')}.`,
+      citedTaskIds,
+    };
+  }
+  if (questionType === 'comprehensive') {
+    return {
+      answer: `The requirements currently blocking advancement to ${targetLabel} are: ${requirements.join('; ')}.`,
+      citedTaskIds,
+    };
+  }
+  return {
+    answer: `Before advancing to ${targetLabel}, complete these requirements: ${requirements.join('; ')}.`,
+    citedTaskIds,
+  };
+}
+
 // ── Answer engine ─────────────────────────────────────────────────────────────
 async function askQuestion(propertyId, question) {
   if (!question || !question.trim()) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
   const ctx = await buildGroundedContext(propertyId);
-  const participantCompletionTarget = findParticipantCompletionTarget(ctx, question);
-  if (participantCompletionTarget) {
+  if (isParticipantCompletionQuestion(question)) {
     return {
-      answer: buildParticipantCompletionAnswer(ctx, participantCompletionTarget),
+      answer: buildParticipantCompletionAnswer(ctx, question),
       citedTaskIds: [],
     };
   }
-  const participantDocumentTarget = findParticipantDocumentTarget(ctx, question);
-  if (participantDocumentTarget) {
-    return {
-      answer: buildParticipantDocumentAnswer(ctx, participantDocumentTarget),
-      citedTaskIds: [],
-    };
-  }
-  if (isDocumentStatusQuestion(question)) {
-    return {
-      answer: buildDocumentStatusAnswer(ctx),
-      citedTaskIds: [],
-    };
-  }
-  if (isStageDecisionQuestion(question)) {
-    return {
-      answer: buildStageDecisionAnswer(ctx),
-      citedTaskIds: (ctx.stageDecision?.blockers || [])
-        .map(blocker => blocker.taskId)
-        .filter(Boolean),
-    };
+  const lifecycleQuestionType = classifyLifecycleQuestion(question);
+  if (lifecycleQuestionType) {
+    return buildLifecycleQuestionAnswer(ctx, lifecycleQuestionType);
   }
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)
@@ -1355,8 +1322,8 @@ async function askQuestion(propertyId, question) {
         citedTaskIds: ctx.openTasks.map(t => t.id),
       };
     }
-      return {
-        answer: `AI reasoning is temporarily unavailable. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
+    return {
+      answer: `AI reasoning is temporarily unavailable. There are ${ctx.openTasks.length} open task(s) in this workspace.`,
       citedTaskIds: ctx.openTasks.map(t => t.id),
     };
   }
@@ -1390,7 +1357,7 @@ ${tokenizationGuidance ? `\n${buildTokenizationPrompt(tokenizationGuidance)}` : 
       citedTaskIds: Array.isArray(parsed.citedTaskIds) ? parsed.citedTaskIds : [],
     };
   } catch (err) {
-    console.error('[operationsManager] askQuestion LLM error:', err.message);
+    console.error('[operationsManager] askQuestion LLM error:', safeAIErrorMetadata(err));
     return {
       answer: tokenizationGuidance
         ? `${buildTokenizationAnswerPrefix(tokenizationGuidance)}\n\nAI explanation is temporarily unavailable; use the recorded facts and preparation gaps above.`
@@ -1517,7 +1484,7 @@ Respond as JSON:
     setCachedStandup(propertyId, result);
     return result;
   } catch (err) {
-    console.error('[operationsManager] getStandup LLM error:', err.message);
+    console.error('[operationsManager] getStandup LLM error:', safeAIErrorMetadata(err));
     return fallback();
   }
 }
@@ -1530,7 +1497,10 @@ function clearCache(propertyId) {
 module.exports = {
   buildGroundedContext,
   buildPackLifecycle,
+  buildCanonicalLifecycleGate,
   buildGroundedBlockers,
+  classifyLifecycleQuestion,
+  buildLifecycleQuestionAnswer,
   getLiveMissingDocuments,
   isDocumentRequirementReceived,
   askContextToPrompt,

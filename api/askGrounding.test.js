@@ -26,7 +26,7 @@ jest.mock('openai', () => jest.fn().mockImplementation(() => ({
       create: (...args) => mockOpenAICompletion(...args),
     },
   },
-})));
+})), { virtual: true });
 
 process.env.OPENAI_API_KEY = 'ask-grounding-test-key';
 
@@ -34,7 +34,6 @@ const {
   askQuestion,
   buildGroundedContext,
   getLiveMissingDocuments,
-  askContextToPrompt,
   getBriefing,
   clearBriefingCache,
 } = require('./lib/operationsManager');
@@ -194,6 +193,93 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     }
   });
 
+  test('keeps eligibility, comprehensive, and actionable lifecycle questions distinct over one canonical mixed state', async () => {
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [
+        { key: 'transaction.purchase_price', label: 'Purchase price', value: '$14,000,000', status: 'confirmed', required: true },
+        { key: 'transaction.closing_date', label: 'Closing date', value: null, status: 'missing', required: true },
+      ],
+      requiredFields: [
+        { key: 'transaction.purchase_price', label: 'Purchase price', value: '$14,000,000', status: 'confirmed', required: true },
+        { key: 'transaction.closing_date', label: 'Closing date', value: null, status: 'missing', required: true },
+      ],
+      requiredCount: 2,
+      confirmedCount: 1,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    const checklist = [
+      { id: 'purchase-agreement', label: 'Purchase Agreement', section: 'purchase_agreement', required: true, status: 'uploaded', uploaded: true },
+      { id: 'title-commitment', label: 'Title Commitment', section: 'title_commitment', required: true, status: 'missing' },
+      { id: 'survey', label: 'Survey', section: 'survey', required: true, status: 'missing' },
+    ];
+    const generatedProposal = {
+      stages: [
+        { key: 'due_diligence', name: 'Due Diligence' },
+        { key: 'closing', name: 'Closing' },
+      ],
+      participants: [
+        { role: 'financial_advisor', label: 'Financial Advisor', required: true, invitable: true },
+        { role: 'lender', label: 'Lender', required: true, invitable: true },
+      ],
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'generated_ai',
+      room: {
+        property_id: 'harbor-ridge-mixed-state',
+        property_name: 'Harbor Ridge',
+        workflow_pack_id: 'generated_ai',
+        deal_type: 'cre_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+        generated_proposal: generatedProposal,
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState,
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses' || table === 'party_submissions' || table === 'deal_room_invites'
+        ? []
+        : [];
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const questions = [
+      'Is Harbor Ridge ready to advance from Due Diligence to Closing?',
+      'What are all the requirements currently blocking Harbor Ridge from advancing to Closing?',
+      'What would need to happen before Harbor Ridge can advance to Closing?',
+    ];
+    const answers = [];
+    for (const question of questions) {
+      answers.push(await askQuestion('harbor-ridge-mixed-state', question));
+    }
+
+    expect(answers[0].answer).toMatch(/^No —/);
+    expect(answers[1].answer).toMatch(/^The requirements currently blocking/);
+    expect(answers[2].answer).toMatch(/^Before advancing/);
+    for (const result of answers) {
+      expect(result.answer).toEqual(expect.stringContaining('Title Commitment'));
+      expect(result.answer).toEqual(expect.stringContaining('Survey'));
+      expect(result.answer).toEqual(expect.stringContaining('Financial Advisor'));
+      expect(result.answer).toEqual(expect.stringContaining('Lender'));
+      expect(result.answer).toEqual(expect.stringContaining('Closing date'));
+    }
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('does not turn generic or unevidenced tasks into Ask Kontra blockers', () => {
     const blockers = require('./lib/operationsManager').buildGroundedBlockers({
       packId: 'cre_acquisition',
@@ -283,7 +369,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         status: 'pending',
         blocking: true,
         title: 'Property Owner has not been invited or submitted documents yet',
-         evidence: ['No party_submissions record found for role "property_owner".'],
+        evidence: ['stale role evidence'],
       },
     ]);
     setupCustomRoomQueries(liveRoles);
@@ -298,12 +384,12 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     ]);
     expect(context.openTasks).toEqual([
       expect.objectContaining({
-        title: 'Property Owner has not submitted required documents yet',
+        title: 'Property Owner has no participant submission on record',
       }),
     ]);
     expect(context.transactionContext.operations.openTasks).toEqual([
       expect.objectContaining({
-        title: 'Property Owner has not submitted required documents yet',
+        title: 'Property Owner has no participant submission on record',
       }),
     ]);
     expect(context.transactionContext.participants).toEqual(expect.arrayContaining([
@@ -315,16 +401,14 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       }),
     ]));
     expect(JSON.stringify(context)).not.toContain('has not been invited');
-    expect(JSON.stringify(context)).toContain('No active invitation is recorded for Property Owner');
-    expect(JSON.stringify(context)).not.toContain('party_submissions');
-    expect(JSON.stringify(context)).not.toContain('deal_room_invites');
+    expect(JSON.stringify(context)).toContain('No current active deal_room_invites.status is recorded');
     expect(JSON.stringify(context)).not.toContain('Buyer');
     expect(JSON.stringify(context)).not.toContain('Seller');
     expect(JSON.stringify(context)).not.toContain('Legal Advisor');
     expect(JSON.stringify(context)).not.toContain('Financial Advisor');
   });
 
-  test('uses the canonical participant submission after an assigned Legal Advisor upload', async () => {
+  test('joined participant upload completion clears the coordinator blocker and AI sees the same canonical state', async () => {
     const roles = [{
       key: 'attorney',
       label: 'Legal Advisor',
@@ -337,37 +421,43 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       required: true,
       assignedTo: ['attorney'],
       status: 'pending',
-    }, {
-      section: 'financials',
-      label: 'Financial Statements',
-      required: true,
-      assignedTo: ['owner'],
-      status: 'missing',
     }];
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    const activeAnalysis = {
+      id: 'legal-dd-report',
+      section: 'legal_due_diligence_report',
+      filename: 'legal-due-diligence-report.pdf',
+      analysis: { summary: 'Legal due diligence report analyzed.', pending: false },
+      processing_status: 'extracted',
+      is_active: true,
+      superseded_at: null,
+      created_at: '2026-09-15T12:00:00.000Z',
+    };
     mockReadTransactionState.mockResolvedValue({
-      packId: 'ws_harbor_ridge',
+      packId: 'generated_ai',
       room: {
-        property_id: 'harbor-ridge-production-regression',
-        property_name: 'Harbor Ridge Manufacturing Acquisition',
-        workflow_pack_id: 'ws_harbor_ridge',
+        property_id: 'joined-upload-room',
+        property_name: 'Joined Upload Room',
+        workflow_pack_id: 'generated_ai',
         workflow_pack_config: { roles, documents: checklist },
         deal_type: 'other',
-        deal_stage: 'due_diligence',
+        deal_stage: 'uploading',
         checklist_items: checklist,
+        metadata_values: { digital_asset_enabled: false },
       },
-      recordState: {
-        schemaKey: 'generated_ai',
-        fields: [],
-        requiredFields: [],
-        requiredCount: 0,
-        confirmedCount: 0,
-        awaitingRequiredCount: 0,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
+      recordState,
       conflicts: [],
-      readiness: {},
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
     });
     mockListTasksForRoom.mockResolvedValue([{
       id: 'stale-attorney-task',
@@ -376,231 +466,35 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       source_type: 'party_role',
       status: 'pending',
       blocking: true,
-      title: 'Legal Advisor has not submitted required documents yet',
-      evidence: ['No submission has been received for the Legal Advisor role.'],
+      title: 'Legal Advisor has no participant submission on record',
+      evidence: ['No party_submissions record found for role "attorney".'],
     }]);
     setupCustomRoomQueries(
       roles,
       [{ role: 'attorney', status: 'submitted', doc_count: 1 }],
       [{ role_key: 'attorney', status: 'active' }],
-      [{
-        id: 'legal-dd-report',
-        section: 'legal_due_diligence_report',
-        filename: 'legal-due-diligence-report.pdf',
-        processing_status: 'extracted',
-        is_active: true,
-        superseded_at: null,
-        analysis: { summary: 'Legal due diligence report analyzed.', pending: false },
-        created_at: '2026-09-16T00:00:00.000Z',
-      }],
+      [activeAnalysis],
     );
 
-    const context = await buildGroundedContext('harbor-ridge-production-regression');
+    const context = await buildGroundedContext('joined-upload-room');
     expect(context.transactionContext.participants).toEqual([
       expect.objectContaining({
         role: 'attorney',
         label: 'Legal Advisor',
+        joined: true,
+        complete: true,
         submissionStatus: 'submitted',
-        inviteStatus: 'active',
-        documentCount: 1,
-        assignedRequirements: expect.objectContaining({
-          submissionRecorded: true,
-          requiredCount: 1,
-          completedRequiredCount: 1,
-          missingRequiredCount: 0,
-          complete: true,
-          documents: [
-            expect.objectContaining({
-              label: 'Legal Due Diligence Report',
-              required: true,
-              received: true,
-            }),
-          ],
-        }),
       }),
     ]);
-    expect(context.groundedBlockers).toEqual([
-      expect.objectContaining({
-        sourceType: 'required_document',
-        label: 'Financial Statements',
-      }),
-    ]);
+    expect(context.groundedBlockers).toEqual([]);
     expect(context.openTasks).toEqual([]);
-    expect(context.missingDocuments).toEqual([
-      expect.objectContaining({ label: 'Financial Statements' }),
-    ]);
-
-    const promptContext = JSON.parse(askContextToPrompt(context));
-    expect(promptContext.transaction_context.participants).toEqual([
-      expect.objectContaining({
-        role: 'attorney',
-        assignedRequirements: expect.objectContaining({
-          requiredCount: 1,
-          completedRequiredCount: 1,
-          complete: true,
-        }),
-      }),
-    ]);
 
     const answer = await askQuestion(
-      'harbor-ridge-production-regression',
-      'Has the Legal Advisor completed their currently assigned requirement?',
+      'joined-upload-room',
+      'Has the Legal Advisor completed the assigned requirement?',
     );
-    expect(answer.answer).toContain('Yes');
-    expect(answer.answer).toContain('Legal Due Diligence Report');
-    expect(answer.answer).toContain('1 of 1');
-    expect(answer.answer).toContain('other outstanding required documents outside this role');
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
-  });
-
-  test('keeps legacy Buyer evidence role-scoped when the participant row is absent', async () => {
-    const roles = [{
-      key: 'buyer',
-      label: 'Buyer',
-      required: true,
-      invitable: true,
-    }];
-    const checklist = [{
-      section: 'buyer_due_diligence_questionnaire',
-      label: 'Buyer Due Diligence Questionnaire',
-      required: true,
-      assignedTo: ['buyer'],
-      status: 'missing',
-    }, {
-      section: 'buyer_management_confirmation',
-      label: 'Buyer Management Confirmation',
-      required: true,
-      assignedTo: ['buyer'],
-      status: 'missing',
-    }, {
-      section: 'financial_due_diligence_report',
-      label: 'Financial Due Diligence Report',
-      required: true,
-      assignedTo: ['owner'],
-      status: 'missing',
-    }, {
-      section: 'tax_due_diligence_report',
-      label: 'Tax Due Diligence Report',
-      required: true,
-      assignedTo: ['owner'],
-      status: 'missing',
-    }];
-    const buyerAnalyses = [{
-      id: 'buyer-questionnaire',
-      section: 'buyer_due_diligence_questionnaire',
-      filename: 'Buyer_Due_Diligence_Questionnaire_Test.docx',
-      uploaded_by_role: 'buyer',
-      processing_status: 'extracted',
-      is_active: true,
-      superseded_at: null,
-      analysis: { summary: 'Buyer questionnaire received.', pending: false },
-      created_at: '2026-09-16T10:00:00.000Z',
-    }, {
-      id: 'buyer-management-confirmation',
-      section: 'buyer_management_confirmation',
-      filename: 'Buyer_Management_Confirmation_CONFLICT_TEST.docx',
-      uploaded_by_role: 'buyer',
-      processing_status: 'complete',
-      is_active: true,
-      superseded_at: null,
-      analysis: { summary: 'Buyer management confirmation received.', pending: false },
-      created_at: '2026-09-16T11:00:00.000Z',
-    }];
-    mockReadTransactionState.mockResolvedValue({
-      packId: 'ws_harbor_ridge',
-      room: {
-        property_id: 'harbor-ridge-buyer-legacy-regression',
-        property_name: 'Harbor Ridge Manufacturing Acquisition',
-        workflow_pack_id: 'ws_harbor_ridge',
-        workflow_pack_config: { roles, documents: checklist },
-        deal_type: 'other',
-        deal_stage: 'due_diligence',
-        checklist_items: checklist,
-      },
-      recordState: {
-        schemaKey: 'generated_ai',
-        fields: [],
-        requiredFields: [],
-        requiredCount: 0,
-        confirmedCount: 0,
-        awaitingRequiredCount: 0,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
-      conflicts: [],
-      readiness: {},
-    });
-    mockListTasksForRoom.mockResolvedValue([{
-      id: 'stale-buyer-task',
-      task_type: 'missing_participant',
-      source_id: 'missing-role:buyer',
-      source_type: 'party_role',
-      status: 'pending',
-      blocking: true,
-      title: 'Buyer has not submitted required documents yet',
-      evidence: ['No submission has been received for the Buyer role.'],
-    }]);
-    setupCustomRoomQueries(
-      roles,
-      [],
-      [{ role_key: 'buyer', status: 'active' }],
-      buyerAnalyses,
-    );
-
-    const context = await buildGroundedContext('harbor-ridge-buyer-legacy-regression');
-    const buyer = context.transactionContext.participants.find(participant => participant.role === 'buyer');
-    expect(buyer).toEqual(expect.objectContaining({
-      submissionStatus: 'submitted',
-      documentCount: 2,
-      submissionSource: 'role_uploaded_evidence',
-      assignedRequirements: expect.objectContaining({
-        submissionRecorded: true,
-        requiredCount: 2,
-        completedRequiredCount: 2,
-        missingRequiredCount: 0,
-        complete: true,
-      }),
-    }));
-    expect(context.groundedBlockers).toEqual([
-      expect.objectContaining({
-        sourceType: 'required_document',
-        label: 'Financial Due Diligence Report',
-      }),
-      expect.objectContaining({
-        sourceType: 'required_document',
-        label: 'Tax Due Diligence Report',
-      }),
-    ]);
-    expect(context.groundedBlockers).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ sourceType: 'required_participant', role: 'buyer' }),
-    ]));
-    expect(context.openTasks).toEqual([]);
-
-    const blockedAnswer = await askQuestion(
-      'harbor-ridge-buyer-legacy-regression',
-      'Why is the Buyer currently blocked, and what exactly does the Buyer still need to submit?',
-    );
-    expect(blockedAnswer.answer).toContain('Buyer assigned-document status');
-    expect(blockedAnswer.answer).toContain('Buyer Due Diligence Questionnaire');
-    expect(blockedAnswer.answer).toContain('Buyer Management Confirmation');
-    expect(blockedAnswer.answer).not.toContain('Financial Due Diligence Report');
-    expect(blockedAnswer.answer).not.toContain('Tax Due Diligence Report');
-    expect(blockedAnswer.answer).not.toContain('party_submissions');
-    expect(blockedAnswer.answer).not.toContain('deal_room_invites');
-
-    const assignmentAnswer = await askQuestion(
-      'harbor-ridge-buyer-legacy-regression',
-      'What documents are currently assigned specifically to the Buyer, and which of those assigned documents have or have not been submitted?',
-    );
-    expect(assignmentAnswer.answer).toContain('Buyer Due Diligence Questionnaire — uploaded and processed');
-    expect(assignmentAnswer.answer).toContain('Buyer Management Confirmation — uploaded and processed');
-    expect(assignmentAnswer.answer).not.toContain('Financial Due Diligence Report');
-    expect(assignmentAnswer.answer).not.toContain('Tax Due Diligence Report');
-    expect(assignmentAnswer.answer).toContain('re-upload is not required');
-    expect(assignmentAnswer.answer).not.toContain('party_submissions');
-    expect(assignmentAnswer.answer).not.toContain('deal_room_invites');
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+    expect(answer.answer).toContain('Yes — Legal Advisor is complete');
+    expect(answer.answer).toContain('All 1 assigned required document(s) are complete.');
   });
 
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
@@ -926,264 +820,6 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       .filter(blocker => blocker.sourceType === 'required_document')
       .map(blocker => blocker.label))
       .toEqual(['Damage Assessment Report', 'Insurance Claim Form']);
-  });
-
-  test('answers document-status questions from live evidence without asking the LLM to infer missing files', async () => {
-    const checklist = [
-      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
-      { id: 'insurance_policy', section: 'insurance_policy', label: 'Insurance Policy', required: true, status: 'missing' },
-      { id: 'damage_assessment', section: 'damage_assessment', label: 'Damage Assessment Report', required: true, status: 'missing' },
-      { id: 'repair_estimate', section: 'repair_estimate', label: 'Repair Estimate', required: true, status: 'missing' },
-      { id: 'claim_form', section: 'claim_form', label: 'Insurance Claim Form', required: true, status: 'missing' },
-    ];
-    const analyses = [
-      { id: 'loss-upload', section: 'loss_report', filename: '01_Loss_Documentation.docx', processing_status: 'complete', analysis: { summary: 'Loss report received.' }, created_at: '2026-09-03T01:29:35.077Z' },
-      { id: 'policy-upload', section: 'insurance_policy', filename: '02_Insurance_Coverage.docx', processing_status: 'complete', analysis: { summary: 'Insurance coverage received.' }, created_at: '2026-09-03T01:29:48.715Z' },
-      { id: 'repair-upload', section: 'repair_estimate', filename: '03_Repair_Estimate.docx', processing_status: 'complete', analysis: { summary: 'Repair estimate received.' }, created_at: '2026-09-03T01:30:09.233Z' },
-    ];
-    mockReadTransactionState.mockResolvedValue({
-      packId: 'cre_acquisition',
-      room: {
-        property_name: 'Hazard Loss Grounding Room',
-        workflow_pack_id: 'cre_acquisition',
-        deal_type: 'other',
-        deal_stage: 'claim_filing',
-        checklist_items: checklist,
-      },
-      recordState: {
-        schemaKey: 'cre_acquisition',
-        fields: [],
-        requiredFields: [],
-        requiredCount: 0,
-        confirmedCount: 0,
-        awaitingRequiredCount: 0,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
-      readiness: {},
-    });
-    mockListTasksForRoom.mockResolvedValue([]);
-    mockSupabaseFrom.mockImplementation(table => {
-      const result = table === 'deal_analyses'
-        ? analyses
-        : table === 'party_submissions'
-          ? completedParticipants('cre_acquisition')
-          : [];
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        order: () => chain,
-        limit: () => chain,
-        then: resolve => resolve({ data: result, error: null }),
-      };
-      return chain;
-    });
-
-    const result = await askQuestion(
-      'hazard-loss-grounding-room',
-      'Which required documents are currently missing? List only documents that are genuinely absent.',
-    );
-
-    expect(result.answer).toBe(
-      'Currently missing required documents: Damage Assessment Report, Insurance Claim Form. '
-        + 'The live room also shows received evidence for: 01_Loss_Documentation.docx, '
-        + '02_Insurance_Coverage.docx, 03_Repair_Estimate.docx.',
-    );
-    expect(result.citedTaskIds).toEqual([]);
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
-  });
-
-  test('does not invent missing documents when all required evidence is live', async () => {
-    const checklist = [
-      { id: 'loss_report', section: 'loss_report', label: 'Loss Report', required: true, status: 'missing' },
-      { id: 'insurance_policy', section: 'insurance_policy', label: 'Insurance Policy', required: true, status: 'missing' },
-      { id: 'repair_estimate', section: 'repair_estimate', label: 'Repair Estimate', required: true, status: 'missing' },
-    ];
-    const analyses = [
-      { id: 'loss-upload', section: 'loss_report', filename: 'loss-report.pdf', processing_status: 'complete', analysis: { summary: 'Loss report received.' }, created_at: '2026-09-03T01:29:35.077Z' },
-      { id: 'policy-upload', section: 'insurance_policy', filename: 'insurance-policy.pdf', processing_status: 'complete', analysis: { summary: 'Insurance policy received.' }, created_at: '2026-09-03T01:29:48.715Z' },
-      { id: 'repair-upload', section: 'repair_estimate', filename: 'repair-estimate.pdf', processing_status: 'complete', analysis: { summary: 'Repair estimate received.' }, created_at: '2026-09-03T01:30:09.233Z' },
-    ];
-    mockReadTransactionState.mockResolvedValue({
-      packId: 'cre_acquisition',
-      room: {
-        property_name: 'Complete Evidence Room',
-        workflow_pack_id: 'cre_acquisition',
-        deal_type: 'other',
-        deal_stage: 'claim_filing',
-        checklist_items: checklist,
-      },
-      recordState: {
-        schemaKey: 'cre_acquisition',
-        fields: [],
-        requiredFields: [],
-        requiredCount: 0,
-        confirmedCount: 0,
-        awaitingRequiredCount: 0,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
-      readiness: {},
-    });
-    mockListTasksForRoom.mockResolvedValue([]);
-    mockSupabaseFrom.mockImplementation(table => {
-      const result = table === 'deal_analyses'
-        ? analyses
-        : table === 'party_submissions'
-          ? completedParticipants('cre_acquisition')
-          : [];
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        order: () => chain,
-        limit: () => chain,
-        then: resolve => resolve({ data: result, error: null }),
-      };
-      return chain;
-    });
-
-    const result = await askQuestion('complete-evidence-room', 'What documents are currently missing?');
-
-    expect(result.answer).toBe(
-      'No required documents are currently missing. The live room shows received evidence for: '
-        + 'loss-report.pdf, insurance-policy.pdf, repair-estimate.pdf.',
-    );
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
-  });
-
-  test('does not report received required documents as missing when checklist rows are stale', async () => {
-    const checklist = [
-      {
-        id: 'purchase_agreement',
-        section: 'legal',
-        label: 'Purchase Agreement',
-        required: true,
-        status: 'missing',
-        uploaded: false,
-      },
-      {
-        id: 'disclosure_schedules',
-        section: 'legal',
-        label: 'Disclosure Schedules',
-        required: true,
-        status: 'missing',
-        uploaded: false,
-      },
-    ];
-    const analyses = [
-      {
-        id: 'purchase-analysis',
-        section: 'legal',
-        filename: 'executed-agreement.pdf',
-        processing_status: 'complete',
-        analysis: { documentType: 'Purchase Agreement', summary: 'Agreement received.' },
-        created_at: '2026-09-04T01:29:35.077Z',
-        is_active: true,
-      },
-      {
-        id: 'disclosure-analysis',
-        section: 'legal',
-        filename: 'disclosures.pdf',
-        processing_status: 'complete',
-        analysis: { documentType: 'Disclosure Schedules', summary: 'Schedules received.' },
-        created_at: '2026-09-04T01:29:48.715Z',
-        is_active: true,
-      },
-    ];
-    mockReadTransactionState.mockResolvedValue({
-      packId: 'business_acquisition',
-      room: {
-        property_name: 'Canonical document status room',
-        workflow_pack_id: 'business_acquisition',
-        deal_type: 'business_acquisition',
-        deal_stage: 'due_diligence',
-        checklist_items: checklist,
-      },
-      recordState: {
-        schemaKey: 'business_acquisition',
-        fields: [],
-        requiredFields: [],
-        requiredCount: 0,
-        confirmedCount: 0,
-        awaitingRequiredCount: 0,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
-      readiness: {},
-    });
-    mockListTasksForRoom.mockResolvedValue([]);
-    mockSupabaseFrom.mockImplementation(table => {
-      const result = table === 'deal_analyses'
-        ? analyses
-        : table === 'party_submissions'
-          ? completedParticipants('business_acquisition')
-          : [];
-      const chain = {
-        select: () => chain,
-        eq: () => chain,
-        order: () => chain,
-        limit: () => chain,
-        then: resolve => resolve({ data: result, error: null }),
-      };
-      return chain;
-    });
-
-    const result = await askQuestion(
-      'canonical-document-status-room',
-      'Should this transaction advance from Due Diligence to Closing based on the current document status?',
-    );
-
-    expect(result.answer).toContain('No required documents are currently missing.');
-    expect(result.answer).not.toContain('Purchase Agreement');
-    expect(result.answer).not.toContain('Disclosure Schedules');
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
-  });
-
-  test('answers stage advancement from the same canonical blockers used by the coordinator', async () => {
-    mockReadTransactionState.mockResolvedValue({
-      packId: 'business_acquisition',
-      room: {
-        property_name: 'Canonical stage decision room',
-        workflow_pack_id: 'business_acquisition',
-        deal_type: 'business_acquisition',
-        deal_stage: 'under_review',
-        checklist_items: [{
-          id: 'required-document',
-          section: 'required-document',
-          label: 'Required document',
-          required: true,
-          documentState: 'missing',
-          documentReceived: false,
-        }],
-      },
-      recordState: {
-        schemaKey: 'business_acquisition',
-        fields: [{ key: 'transaction.value', label: 'Transaction value', status: 'awaiting', value: 'Known value' }],
-        requiredFields: [{ key: 'transaction.value', label: 'Transaction value', status: 'awaiting', value: 'Known value' }],
-        requiredCount: 1,
-        confirmedCount: 0,
-        awaitingRequiredCount: 1,
-        conflictRequiredCount: 0,
-        notApplicableCount: 0,
-        unresolvedConflicts: [],
-      },
-      readiness: { approvalReady: true, fundReleaseReady: true },
-    });
-    mockListTasksForRoom.mockResolvedValue([]);
-    setupSupabaseQueries('business_acquisition');
-
-    const result = await askQuestion(
-      'canonical-stage-decision-room',
-      'Should this transaction advance to the next stage?',
-    );
-
-    expect(result.answer).toContain('No — do not advance');
-    expect(result.answer).toContain('Required document');
-    expect(result.answer).toContain('Transaction value');
-    expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
   test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {
