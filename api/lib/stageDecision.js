@@ -12,6 +12,12 @@ const DIGITAL_ASSET_READINESS_VALUES = new Set([
   'token_preparation',
   'tokenization_readiness',
 ]);
+const PARTICIPANT_SUBMISSION_TASK_TYPES = new Set([
+  'missing_participant',
+  'pending_submission',
+  'party_role',
+  'party_submission',
+]);
 
 function normalizedStatus(value) {
   return String(value || '')
@@ -64,6 +70,22 @@ function isDigitalAssetReadinessBlocker(blocker) {
   ].some(value => DIGITAL_ASSET_READINESS_VALUES.has(normalizedStatus(value)));
 }
 
+function participantSubmissionIdentity(blocker) {
+  if (blocker?.sourceType === 'required_participant' && blocker?.role) {
+    return `participant_submission:${normalizedStatus(blocker.role)}`;
+  }
+  if (blocker?.sourceType !== 'explicit_blocking_task' || !blocker?.participantRole) {
+    return null;
+  }
+  const taskType = normalizedStatus(blocker.taskType);
+  const taskSourceType = normalizedStatus(blocker.taskSourceType);
+  if (!PARTICIPANT_SUBMISSION_TASK_TYPES.has(taskType)
+    && !PARTICIPANT_SUBMISSION_TASK_TYPES.has(taskSourceType)) {
+    return null;
+  }
+  return `participant_submission:${normalizedStatus(blocker.participantRole)}`;
+}
+
 function buildStageDecision({
   lifecycle = {},
   checklist = [],
@@ -77,9 +99,14 @@ function buildStageDecision({
   const currentIndex = stages.findIndex(stage => stage?.key === currentStageKey);
   const nextStage = currentIndex >= 0 ? stages[currentIndex + 1] || null : null;
   const blockers = [];
+  const semanticBlockerIdentities = new Set();
   const addBlocker = (key, label, detail, sourceType, extra = {}) => {
     if (!key || blockers.some(blocker => blocker.key === key)) return;
-    blockers.push({ key, label, detail, sourceType, ...extra });
+    const semanticIdentity = extra.semanticIdentity || null;
+    if (semanticIdentity && semanticBlockerIdentities.has(semanticIdentity)) return;
+    if (semanticIdentity) semanticBlockerIdentities.add(semanticIdentity);
+    const { semanticIdentity: _ignored, ...publicExtra } = extra;
+    blockers.push({ key, label, detail, sourceType, ...publicExtra });
   };
 
   if (!nextStage) {
@@ -163,15 +190,22 @@ function buildStageDecision({
   (Array.isArray(groundedBlockers) ? groundedBlockers : [])
     .filter(blocker => ['required_participant', 'explicit_blocking_task'].includes(blocker?.sourceType))
     .filter(blocker => !isDigitalAssetReadinessBlocker(blocker))
-    .forEach(blocker => addBlocker(
-      `${blocker.sourceType}:${blocker.role || blocker.taskId || blocker.key || blocker.label}`,
-      blocker.label || blocker.key || 'Workflow blocker',
-      Array.isArray(blocker.evidence) && blocker.evidence.length > 0
-        ? blocker.evidence[0]
-        : 'This live workflow blocker must be resolved before advancing.',
-      blocker.sourceType,
-      { role: blocker.role || null, taskId: blocker.taskId || null },
-    ));
+    .forEach(blocker => {
+      const participantIdentity = participantSubmissionIdentity(blocker);
+      addBlocker(
+        `${blocker.sourceType}:${blocker.role || blocker.taskId || blocker.key || blocker.label}`,
+        blocker.label || blocker.key || 'Workflow blocker',
+        Array.isArray(blocker.evidence) && blocker.evidence.length > 0
+          ? blocker.evidence[0]
+          : 'This live workflow blocker must be resolved before advancing.',
+        blocker.sourceType,
+        {
+          role: blocker.role || blocker.participantRole || null,
+          taskId: blocker.taskId || null,
+          semanticIdentity: participantIdentity,
+        },
+      );
+    });
 
   if (readiness?.approvalReady === false && Number(recordState.conflictRequiredCount || 0) === 0) {
     addBlocker(
@@ -231,5 +265,6 @@ module.exports = {
   buildStageDecision,
   isDigitalAssetReadinessBlocker,
   isChecklistItemReceived,
+  participantSubmissionIdentity,
   normalizedStatus,
 };

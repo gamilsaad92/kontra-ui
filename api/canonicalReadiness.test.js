@@ -100,12 +100,18 @@ function buildFifteenBlockerDecision() {
       sourceType: 'explicit_blocking_task',
       taskId: 'lender-task',
       label: 'Lender has not submitted required documents yet',
+      taskType: 'missing_participant',
+      taskSourceType: 'party_submission',
+      participantRole: 'lender',
       evidence: ['The Lender submission remains incomplete.'],
     },
     {
       sourceType: 'explicit_blocking_task',
       taskId: 'financial-advisor-task',
       label: 'Financial Advisor has not submitted required documents yet',
+      taskType: 'missing_participant',
+      taskSourceType: 'party_submission',
+      participantRole: 'financial_advisor',
       evidence: ['The Financial Advisor submission remains incomplete.'],
     },
   ];
@@ -205,7 +211,7 @@ describe('canonical digital-asset readiness applicability', () => {
 
   test('uses one canonical stage decision for eligibility, comprehensive, and actionable lifecycle answers', () => {
     const decision = buildFifteenBlockerDecision();
-    expect(decision.blockers).toHaveLength(15);
+    expect(decision.blockers).toHaveLength(13);
 
     const eligibilityQuestion = 'Is Harbor Ridge ready to advance to Closing?';
     const comprehensiveQuestion = 'What are all the requirements currently blocking Harbor Ridge from advancing to Closing?';
@@ -235,5 +241,70 @@ describe('canonical digital-asset readiness applicability', () => {
     expect(actionableAnswer).toMatch(/^Before advancing from Due Diligence to Closing, complete these requirements:/);
     expect(actionableAnswer).not.toContain('No — do not advance');
     completeLabels.forEach(label => expect(actionableAnswer).toContain(label));
+  });
+
+  test('deduplicates participant state and its matching submission task without merging distinct requirements', () => {
+    const decision = buildStageDecision({
+      lifecycle: closingLifecycle,
+      checklist: [{
+        id: 'financial-advisor-assigned-document',
+        section: 'financial-advisor-assigned-document',
+        label: 'Financial Advisor Assigned Document',
+        required: true,
+        documentState: 'missing',
+        documentReceived: false,
+      }],
+      recordState: { requiredFields: [], conflictRequiredCount: 0 },
+      readiness: { approvalReady: true },
+      groundedBlockers: [
+        {
+          sourceType: 'required_participant',
+          role: 'financial_advisor',
+          label: 'Financial Advisor',
+          evidence: ['No submission has been received for the Financial Advisor role.'],
+        },
+        {
+          sourceType: 'explicit_blocking_task',
+          taskId: 'financial-advisor-submission',
+          taskType: 'missing_participant',
+          taskSourceType: 'party_submission',
+          participantRole: 'financial_advisor',
+          label: 'Financial Advisor has not submitted required documents yet',
+          evidence: ['No submission has been received for the Financial Advisor role.'],
+        },
+        {
+          sourceType: 'explicit_blocking_task',
+          taskId: 'financial-advisor-distinct-review',
+          taskType: 'document_review',
+          taskSourceType: 'transaction_workflow',
+          participantRole: 'financial_advisor',
+          label: 'Review Financial Advisor Assigned Document',
+          evidence: ['The separately assigned document needs review.'],
+        },
+      ],
+    });
+
+    expect(decision.blockers).toEqual([
+      expect.objectContaining({
+        sourceType: 'required_document',
+        label: 'Financial Advisor Assigned Document',
+      }),
+      expect.objectContaining({
+        sourceType: 'required_participant',
+        role: 'financial_advisor',
+        label: 'Financial Advisor',
+      }),
+      expect.objectContaining({
+        sourceType: 'explicit_blocking_task',
+        taskId: 'financial-advisor-distinct-review',
+        label: 'Review Financial Advisor Assigned Document',
+      }),
+    ]);
+    expect(decision.blockers).toHaveLength(3);
+    expect(decision.blockers).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ taskId: 'financial-advisor-submission' }),
+      ]),
+    );
   });
 });

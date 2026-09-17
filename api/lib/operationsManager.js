@@ -427,6 +427,7 @@ function buildGroundedBlockers({
       return liveRequiredParticipantKeys.has(subjectRoleOf(task));
     })
     .forEach(task => {
+      const participantTask = isParticipantTask(task);
       const taskType = task.task_type || task.taskType || null;
       const taskSourceType = task.source_type || task.sourceType || null;
       const taskCategory = task.category || null;
@@ -447,6 +448,9 @@ function buildGroundedBlockers({
         taskSourceType,
         taskCategory,
         taskApplicability,
+        participantRole: participantTask
+          ? (subjectRoleOf(task) || task.role || task.role_key || null)
+          : null,
       });
     });
 
