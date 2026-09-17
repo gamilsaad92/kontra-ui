@@ -1006,8 +1006,30 @@ function isDocumentStatusQuestion(question) {
 
 function isStageDecisionQuestion(question) {
   const text = String(question || '');
-  return /\b(?:advance|proceed|move\s+forward|next\s+stage|progress|ready)\b/i.test(text)
+  return /\b(?:advance|advancing|proceed|proceeding|move\s+forward|next\s+stage|progress|ready)\b/i.test(text)
     && /\b(?:should|can|recommend|decision|transaction|deal|closing|stage)\b/i.test(text);
+}
+
+function classifyStageDecisionQuestion(question) {
+  if (!isStageDecisionQuestion(question)) return null;
+  const text = String(question || '');
+
+  if (/\bwhat\s+(?:would|needs?|must)\s+(?:need\s+to\s+)?happen\b/i.test(text)
+    || /\bwhat\s+(?:do|does)\s+(?:we|the team|the transaction)\s+need\s+to\s+(?:do|complete)\b/i.test(text)
+    || /\bwhat\s+needs\s+to\s+be\s+(?:done|completed|resolved)\b/i.test(text)
+    || /\bwhat\s+must\s+be\s+(?:done|completed|resolved)\b/i.test(text)
+    || /\bwhat\s+is\s+needed\b/i.test(text)) {
+    return 'actionable_requirements';
+  }
+
+  const namesRequirements = /\b(?:requirements?|blockers?|conditions?|items?)\b/i.test(text);
+  const requestsCompleteSet = /\b(?:all|complete|full|every|each|list)\b/i.test(text);
+  const asksWhatBlocks = /\bwhat\s+(?:are|is|would be)\b.*\b(?:blocking|blockers?|requirements?|conditions?)\b/i.test(text);
+  if (namesRequirements && (requestsCompleteSet || asksWhatBlocks)) {
+    return 'comprehensive_blockers';
+  }
+
+  return 'eligibility';
 }
 
 function findParticipantCompletionTarget(ctx, question) {
@@ -1094,7 +1116,29 @@ function buildParticipantDocumentAnswer(ctx, participant) {
   return `${label} assigned-document status: ${assignedSummary}.${blockerNote}${submissionNote}${transactionNote}`;
 }
 
-function buildStageDecisionAnswer(ctx) {
+function stageDecisionBlockerText(blocker, actionable = false) {
+  const label = blocker.label || blocker.key || 'This workflow requirement';
+  const detail = blocker.detail || 'This recorded workflow requirement is not complete.';
+  if (!actionable) return `${label}: ${detail}`;
+
+  switch (blocker.sourceType) {
+    case 'required_document':
+    case 'document_review':
+    case 'stage_condition':
+      return `Complete ${label} — ${detail}`;
+    case 'required_participant':
+      return `Obtain the required ${label} submission — ${detail}`;
+    case 'transaction_record':
+    case 'transaction_record_conflict':
+      return `Complete or resolve ${label} — ${detail}`;
+    case 'explicit_blocking_task':
+      return `Resolve ${label} — ${detail}`;
+    default:
+      return `Complete ${label} — ${detail}`;
+  }
+}
+
+function buildStageDecisionAnswer(ctx, responseForm = 'eligibility') {
   const decision = ctx.stageDecision;
   if (!decision) {
     return 'The live stage decision is unavailable right now; refresh the room and try again.';
@@ -1105,11 +1149,25 @@ function buildStageDecisionAnswer(ctx) {
   if (decision.recommendationAllowed) {
     return `Yes — the transaction can advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key}. ${decision.reason}`;
   }
-  const blockers = (decision.blockers || [])
+  const blockers = Array.isArray(decision.blockers) ? decision.blockers : [];
+  const transition = `from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key}`;
+  if (responseForm === 'actionable_requirements') {
+    const requirements = blockers
+      .map(blocker => stageDecisionBlockerText(blocker, true))
+      .join(' ');
+    return `Before advancing ${transition}, complete these requirements: ${requirements || decision.reason}`;
+  }
+  if (responseForm === 'comprehensive_blockers') {
+    const completeBlockerSet = blockers
+      .map(blocker => stageDecisionBlockerText(blocker))
+      .join(' ');
+    return `Requirements currently blocking advancement ${transition}: ${completeBlockerSet || decision.reason}`;
+  }
+  const blockerSummary = blockers
     .slice(0, 5)
-    .map(blocker => `${blocker.label}: ${blocker.detail}`)
+    .map(blocker => stageDecisionBlockerText(blocker))
     .join(' ');
-  return `No — do not advance from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key} yet. ${blockers || decision.reason}`;
+  return `No — do not advance ${transition} yet. ${blockerSummary || decision.reason}`;
 }
 
 function buildDocumentStatusAnswer(ctx) {
@@ -1381,6 +1439,7 @@ function buildBrainAskTrace(ctx, questionType, traceContext = {}) {
       || process.env.RENDER_GIT_COMMIT_SHA
       || null,
     questionType,
+    stageDecisionResponseForm: traceContext.responseForm || null,
     projection: ctx.projectionDiagnostics || null,
     finalCanonicalLifecycleBlockers: (ctx.stageDecision?.blockers || []).map(blocker => ({
       type: blocker.sourceType || blocker.type || 'blocker',
@@ -1418,17 +1477,19 @@ async function askQuestion(propertyId, question, traceContext = {}) {
       citedTaskIds: [],
     };
   }
-  if (isStageDecisionQuestion(question)) {
+  const stageDecisionResponseForm = classifyStageDecisionQuestion(question);
+  if (stageDecisionResponseForm) {
     if (traceContext.trace === true) {
       console.info('[brain/ask-trace]', JSON.stringify(
         buildBrainAskTrace(ctx, 'stage_decision', {
           ...traceContext,
           propertyId,
+          responseForm: stageDecisionResponseForm,
         }),
       ));
     }
     return {
-      answer: buildStageDecisionAnswer(ctx),
+      answer: buildStageDecisionAnswer(ctx, stageDecisionResponseForm),
       citedTaskIds: (ctx.stageDecision?.blockers || [])
         .map(blocker => blocker.taskId)
         .filter(Boolean),
@@ -1629,6 +1690,7 @@ module.exports = {
   buildPackLifecycle,
   buildGroundedBlockers,
   buildStageDecisionAnswer,
+  classifyStageDecisionQuestion,
   getLiveMissingDocuments,
   isDocumentRequirementReceived,
   askContextToPrompt,
