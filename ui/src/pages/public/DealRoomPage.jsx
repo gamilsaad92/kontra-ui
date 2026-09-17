@@ -8864,6 +8864,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
   const recordProjectionReady = recordHydrationStatus === 'ready' || Boolean(canonicalRecordState);
+  const recordProjectionLoading = !recordProjectionReady;
   const participantStatesForLifecycle = resolveParticipantStates(
     getExternalParticipantRoles(pack, { isCoordinator: true }),
     {
