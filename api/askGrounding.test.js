@@ -308,6 +308,16 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
           blocking: true,
           evidence: ['Required checklist item is incomplete.'],
         },
+        {
+          id: 'digital-asset-preparation',
+          task_type: 'readiness_setup',
+          source_type: 'readiness',
+          category: 'readiness',
+          title: 'Set Token Price in issuance details',
+          status: 'pending',
+          blocking: true,
+          evidence: ['metadata_values.token_price is empty'],
+        },
       ],
     });
 
@@ -471,9 +481,9 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     }]);
     setupCustomRoomQueries(
       roles,
-      [{ role: 'attorney', status: 'submitted', doc_count: 1 }],
+      [],
       [{ role_key: 'attorney', status: 'active' }],
-      [activeAnalysis],
+      [{ ...activeAnalysis, uploaded_by_role: 'attorney' }],
     );
 
     const context = await buildGroundedContext('joined-upload-room');
@@ -483,7 +493,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         label: 'Legal Advisor',
         joined: true,
         complete: true,
-        submissionStatus: 'submitted',
+        submissionStatus: null,
       }),
     ]);
     expect(context.groundedBlockers).toEqual([]);

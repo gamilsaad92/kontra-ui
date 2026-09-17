@@ -300,6 +300,18 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
+function isLifecycleBlockingTask(task) {
+  const sourceType = String(task?.source_type || task?.sourceType || '').trim().toLowerCase();
+  const category = String(task?.category || '').trim().toLowerCase();
+  const taskType = String(task?.task_type || task?.taskType || '').trim().toLowerCase();
+  // Digital Asset Preparation is an optional readiness layer. Its tasks may
+  // remain visible in preparation views, but they cannot gate the ordinary
+  // workflow transition for the room's primary transaction type.
+  return sourceType !== 'readiness'
+    && category !== 'readiness'
+    && !taskType.startsWith('readiness_');
+}
+
 function filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions = []) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
   const completedParticipantKeys = new Set((participantCompletions || [])
@@ -318,7 +330,9 @@ function buildGroundedBlockers({
   const blockers = [];
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
   const participantRows = Array.isArray(participants) ? participants : [];
-  const openTasks = Array.isArray(tasks) ? tasks.filter(hasOpenTaskStatus) : [];
+  const openTasks = Array.isArray(tasks)
+    ? tasks.filter(task => hasOpenTaskStatus(task) && isLifecycleBlockingTask(task))
+    : [];
   const effectiveParticipantDefinitions = participantDefinitions !== undefined
     ? participantDefinitions
     : String(packId || '').startsWith('ws_')
@@ -611,7 +625,7 @@ async function buildGroundedContext(propertyId) {
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
   const lifecycle = buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal);
   const requiredDocuments = checklist.filter(item =>
-    item?.required
+    item?.required === true
       && !['not_applicable', 'na', 'n_a'].includes(
         String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
       )
@@ -885,7 +899,7 @@ function isDocumentRequirementReceived(requirement, activeAnalyses = []) {
 
 function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
   return (Array.isArray(checklist) ? checklist : [])
-    .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
+    .filter(item => item?.required === true && !isDocumentRequirementReceived(item, activeAnalyses))
     .slice(0, 30)
     .map(item => ({
       id: item.id || item.document_id || item.documentId || null,
@@ -1499,10 +1513,12 @@ module.exports = {
   buildPackLifecycle,
   buildCanonicalLifecycleGate,
   buildGroundedBlockers,
+  isLifecycleBlockingTask,
   classifyLifecycleQuestion,
   buildLifecycleQuestionAnswer,
   getLiveMissingDocuments,
   isDocumentRequirementReceived,
+  loadLiveParticipantDefinitions,
   askContextToPrompt,
   getBriefing,
   clearBriefingCache,

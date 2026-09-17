@@ -68,7 +68,12 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
-const { clearBriefingCache, askQuestion } = require('./lib/operationsManager');
+const {
+  clearBriefingCache,
+  askQuestion,
+  isDocumentRequirementReceived,
+  loadLiveParticipantDefinitions,
+} = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification, inferFactDefinition } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
@@ -90,6 +95,10 @@ const { emit: emitInternalEvent } = require('./lib/eventBus');
 const {
   syncParticipantSubmissionFromDocument,
 } = require('./lib/participantSubmissionState');
+const {
+  resolveParticipantCompletions,
+  participantRoleMatches,
+} = require('./lib/participantCompletion');
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
@@ -6368,6 +6377,29 @@ app.post('/api/public/deal-room/:propertyId/invite/verify-link', async (req, res
 // This endpoint hashes the token to look up the invite, verifies the caller
 // owns the deal room, then derives all email content (recipient, role, property)
 // from the database.  The client is never trusted for to/url/labels.
+async function loadLifecycleAnalyses(propertyId) {
+  const selects = [
+    'id, section, filename, uploaded_by_role, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, uploaded_by_role, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
+  ];
+  let lastError = null;
+
+  for (const select of selects) {
+    const result = await supabase
+      .from('deal_analyses')
+      .select(select)
+      .eq('property_id', propertyId);
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+    if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) {
+      break;
+    }
+  }
+
+  throw lastError || new Error('Could not load lifecycle document evidence');
+}
+
 app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
   // 1. Accept either a Supabase Bearer JWT or a room-scoped owner_write_token.
   //    This allows owners who are not signed in to Supabase to still trigger emails.
@@ -6472,13 +6504,12 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
 
 async function getLifecycleAdvanceGate({ propertyId, room, stages = [], nextStage }) {
   const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
-  const [analysisResult, inviteResult, submissionResult, transactionState] = await Promise.all([
-    supabase.from('deal_analyses').select('section, processing_status, analysis').eq('property_id', propertyId),
+  const [analysisRows, inviteResult, submissionResult, transactionState] = await Promise.all([
+    loadLifecycleAnalyses(propertyId),
     supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role').eq('property_id', propertyId),
+    supabase.from('party_submissions').select('role, name, status, doc_count, submitted_at').eq('property_id', propertyId),
     readTransactionState(propertyId),
   ]);
-  if (analysisResult.error) throw analysisResult.error;
   if (inviteResult.error) throw inviteResult.error;
   if (submissionResult.error) throw submissionResult.error;
 
@@ -6486,54 +6517,50 @@ async function getLifecycleAdvanceGate({ propertyId, room, stages = [], nextStag
     ? room.checklist_items
     : (await getCanonicalChecklist(packId, room?.property_type) || []);
   const requiredDocuments = configuredDocuments.filter(item =>
-    item?.required !== false
+    item?.required === true
       && !['not_applicable', 'na', 'n_a'].includes(String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_')),
   );
-  const analyses = (analysisResult.data || []).filter(analysis =>
+  const analyses = selectActiveDocumentVersions((analysisRows || []).filter(analysis =>
     !['failed'].includes(String(analysis.processing_status || '').toLowerCase())
       && analysis.analysis?.pending !== true,
+  ));
+  const receivedDocuments = requiredDocuments.filter(item =>
+    isDocumentRequirementReceived(item, analyses)
   );
-  const receivedDocuments = requiredDocuments.filter(item => {
-    const status = String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-    return item.uploaded === true
-      || ['uploaded', 'approved', 'ai_complete', 'complete', 'completed', 'processing', 'retrying', 'analyzing', 'received'].includes(status)
-      || analyses.some(analysis => String(analysis.section || '').toLowerCase() === String(item.section || '').toLowerCase());
-  });
   const reviewDocuments = requiredDocuments.filter(item =>
     ['review', 'needs_review', 'pending_review', 'needs_attention', 'attention'].includes(
       String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
     ),
   );
 
-  let roleDefinitions = getPackRoleConfig(packId).roles;
-  if (String(packId).startsWith('ws_')) {
-    const { data: customPack } = await supabase
-      .from('custom_workflow_packs')
-      .select('config')
-      .eq('id', packId)
-      .maybeSingle();
-    if (Array.isArray(customPack?.config?.roles)) roleDefinitions = customPack.config.roles;
-  }
+  const roleDefinitions = await loadLiveParticipantDefinitions(room, packId);
   const activeInviteStatuses = new Set(['pending', 'invited', 'sent', 'accepted', 'joined', 'active']);
-  const joinedInviteStatuses = new Set(['accepted', 'joined', 'active']);
+  const liveInvites = (inviteResult.data || []).filter(invite => {
+    const status = String(invite?.status || '').toLowerCase();
+    if (!activeInviteStatuses.has(status)) return false;
+    if (['pending', 'invited', 'sent'].includes(status)
+      && invite?.expires_at
+      && new Date(invite.expires_at).getTime() <= Date.now()) return false;
+    return roleDefinitions.some(role => participantRoleMatches(role, invite.role_key));
+  });
+  const participantCompletions = resolveParticipantCompletions(roleDefinitions, {
+    checklist: configuredDocuments.map(item => ({
+      ...item,
+      status: isDocumentRequirementReceived(item, analyses) ? 'uploaded' : item.status,
+    })),
+    invites: liveInvites,
+    submissions: submissionResult.data || [],
+  });
+  const completionByRole = new Map(
+    participantCompletions.map(state => [String(state.role || '').trim().toLowerCase(), state]),
+  );
   const roles = roleDefinitions
-    .filter(role => role.invitable === true && !role.legacyOnly)
-    .map(role => {
-      const invite = (inviteResult.data || [])
-        .filter(candidate =>
-          candidate.role_key === role.key
-          && activeInviteStatuses.has(String(candidate.status || '').toLowerCase())
-          && !candidate.revoked_at
-          && (!candidate.expires_at || new Date(candidate.expires_at).getTime() > Date.now()),
-        )
-        .sort((a, b) => Number(joinedInviteStatuses.has(String(b.status || '').toLowerCase()))
-          - Number(joinedInviteStatuses.has(String(a.status || '').toLowerCase())))[0];
-      return {
-        ...role,
-        invited: Boolean(invite),
-        complete: Boolean(invite && joinedInviteStatuses.has(String(invite.status || '').toLowerCase())),
-      };
-    });
+    .filter(role => role.invitable !== false && !role.legacyOnly)
+    .map(role => ({
+      ...role,
+      ...(completionByRole.get(String(role.key || '').trim().toLowerCase()) || {}),
+      key: role.key,
+    }));
 
   const recordState = transactionState?.recordState || transactionState?.readiness?.recordState || null;
   return getLifecycleTransitionGate({
