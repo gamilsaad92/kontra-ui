@@ -193,6 +193,93 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     }
   });
 
+  test('keeps eligibility, comprehensive, and actionable lifecycle questions distinct over one canonical mixed state', async () => {
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [
+        { key: 'transaction.purchase_price', label: 'Purchase price', value: '$14,000,000', status: 'confirmed', required: true },
+        { key: 'transaction.closing_date', label: 'Closing date', value: null, status: 'missing', required: true },
+      ],
+      requiredFields: [
+        { key: 'transaction.purchase_price', label: 'Purchase price', value: '$14,000,000', status: 'confirmed', required: true },
+        { key: 'transaction.closing_date', label: 'Closing date', value: null, status: 'missing', required: true },
+      ],
+      requiredCount: 2,
+      confirmedCount: 1,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+    const checklist = [
+      { id: 'purchase-agreement', label: 'Purchase Agreement', section: 'purchase_agreement', required: true, status: 'uploaded', uploaded: true },
+      { id: 'title-commitment', label: 'Title Commitment', section: 'title_commitment', required: true, status: 'missing' },
+      { id: 'survey', label: 'Survey', section: 'survey', required: true, status: 'missing' },
+    ];
+    const generatedProposal = {
+      stages: [
+        { key: 'due_diligence', name: 'Due Diligence' },
+        { key: 'closing', name: 'Closing' },
+      ],
+      participants: [
+        { role: 'financial_advisor', label: 'Financial Advisor', required: true, invitable: true },
+        { role: 'lender', label: 'Lender', required: true, invitable: true },
+      ],
+    };
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'generated_ai',
+      room: {
+        property_id: 'harbor-ridge-mixed-state',
+        property_name: 'Harbor Ridge',
+        workflow_pack_id: 'generated_ai',
+        deal_type: 'cre_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+        generated_proposal: generatedProposal,
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState,
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    mockSupabaseFrom.mockImplementation(table => {
+      const result = table === 'deal_analyses' || table === 'party_submissions' || table === 'deal_room_invites'
+        ? []
+        : [];
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: resolve => resolve({ data: result, error: null }),
+      };
+      return chain;
+    });
+
+    const questions = [
+      'Is Harbor Ridge ready to advance from Due Diligence to Closing?',
+      'What are all the requirements currently blocking Harbor Ridge from advancing to Closing?',
+      'What would need to happen before Harbor Ridge can advance to Closing?',
+    ];
+    const answers = [];
+    for (const question of questions) {
+      answers.push(await askQuestion('harbor-ridge-mixed-state', question));
+    }
+
+    expect(answers[0].answer).toMatch(/^No —/);
+    expect(answers[1].answer).toMatch(/^The requirements currently blocking/);
+    expect(answers[2].answer).toMatch(/^Before advancing/);
+    for (const result of answers) {
+      expect(result.answer).toEqual(expect.stringContaining('Title Commitment'));
+      expect(result.answer).toEqual(expect.stringContaining('Survey'));
+      expect(result.answer).toEqual(expect.stringContaining('Financial Advisor'));
+      expect(result.answer).toEqual(expect.stringContaining('Lender'));
+      expect(result.answer).toEqual(expect.stringContaining('Closing date'));
+    }
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
   test('does not turn generic or unevidenced tasks into Ask Kontra blockers', () => {
     const blockers = require('./lib/operationsManager').buildGroundedBlockers({
       packId: 'cre_acquisition',
@@ -220,6 +307,16 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
           status: 'pending',
           blocking: true,
           evidence: ['Required checklist item is incomplete.'],
+        },
+        {
+          id: 'digital-asset-preparation',
+          task_type: 'readiness_setup',
+          source_type: 'readiness',
+          category: 'readiness',
+          title: 'Set Token Price in issuance details',
+          status: 'pending',
+          blocking: true,
+          evidence: ['metadata_values.token_price is empty'],
         },
       ],
     });
@@ -384,9 +481,9 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     }]);
     setupCustomRoomQueries(
       roles,
-      [{ role: 'attorney', status: 'submitted', doc_count: 1 }],
+      [],
       [{ role_key: 'attorney', status: 'active' }],
-      [activeAnalysis],
+      [{ ...activeAnalysis, uploaded_by_role: 'attorney' }],
     );
 
     const context = await buildGroundedContext('joined-upload-room');
@@ -396,7 +493,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         label: 'Legal Advisor',
         joined: true,
         complete: true,
-        submissionStatus: 'submitted',
+        submissionStatus: null,
       }),
     ]);
     expect(context.groundedBlockers).toEqual([]);
@@ -733,6 +830,200 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       .filter(blocker => blocker.sourceType === 'required_document')
       .map(blocker => blocker.label))
       .toEqual(['Damage Assessment Report', 'Insurance Claim Form']);
+  });
+
+  test('uses older current evidence and joined invite state across all shared projections', async () => {
+    const roles = [
+      { key: 'buyer', label: 'Buyer', required: true, invitable: true },
+      { key: 'attorney', label: 'Legal Advisor', required: true, invitable: true },
+      { key: 'financial_advisor', label: 'Financial Advisor', required: true, invitable: true },
+      { key: 'lender', label: 'Lender', required: true, invitable: true },
+    ];
+    const checklist = [
+      {
+        id: 'purchase_agreement',
+        section: 'purchase_agreement',
+        label: 'Purchase Agreement',
+        required: true,
+        assignedTo: ['buyer'],
+        status: 'missing',
+      },
+      {
+        id: 'disclosure_schedules',
+        section: 'disclosure_schedules',
+        label: 'Disclosure Schedules',
+        required: true,
+        assignedTo: ['buyer'],
+        status: 'missing',
+      },
+      {
+        id: 'legal_due_diligence',
+        section: 'legal_due_diligence',
+        label: 'Legal Due Diligence Report',
+        required: true,
+        assignedTo: ['attorney'],
+        status: 'missing',
+      },
+      {
+        id: 'financial_due_diligence',
+        section: 'financial_due_diligence',
+        label: 'Financial Due Diligence Report',
+        required: true,
+        assignedTo: ['financial_advisor'],
+        status: 'missing',
+      },
+      {
+        id: 'financing_verification',
+        section: 'financing_verification',
+        label: 'Financing Verification Documents',
+        required: true,
+        assignedTo: ['lender'],
+        status: 'missing',
+      },
+    ];
+    const olderRequiredAnalyses = [
+      {
+        id: 'purchase-agreement',
+        section: 'purchase_agreement',
+        filename: '01_Purchase_Agreement.docx',
+        processing_status: 'extracted',
+        analysis: { summary: 'Purchase Agreement received.' },
+        created_at: '2026-09-01T00:00:00.000Z',
+      },
+      {
+        id: 'disclosure-schedules',
+        section: 'disclosure_schedules',
+        filename: '02_Disclosure_Schedules.docx',
+        processing_status: 'extracted',
+        analysis: { summary: 'Disclosure Schedules received.' },
+        created_at: '2026-09-01T00:01:00.000Z',
+      },
+      {
+        id: 'legal-diligence',
+        section: 'legal_due_diligence',
+        filename: 'Legal_Due_Diligence_Report.docx',
+        processing_status: 'extracted',
+        analysis: { summary: 'Legal diligence received.' },
+        created_at: '2026-09-01T00:02:00.000Z',
+      },
+    ];
+    const newerNoise = Array.from({ length: 31 }, (_, index) => ({
+      id: `noise-${index}`,
+      section: `noise_${index}`,
+      filename: `noise-${index}.pdf`,
+      processing_status: 'extracted',
+      analysis: { summary: `Noise ${index}` },
+      created_at: `2026-09-${String(2 + Math.floor(index / 3)).padStart(2, '0')}T${String(index % 24).padStart(2, '0')}:00:00.000Z`,
+    }));
+    const recordState = {
+      schemaKey: 'generated_ai',
+      fields: [],
+      requiredFields: [],
+      requiredCount: 0,
+      confirmedCount: 0,
+      awaitingRequiredCount: 0,
+      conflictRequiredCount: 0,
+      notApplicableCount: 0,
+      unresolvedConflicts: [],
+    };
+
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'generated_ai',
+      room: {
+        property_id: 'shared-projection-regression',
+        property_name: 'Shared Projection Regression',
+        workflow_pack_id: 'generated_ai',
+        deal_type: 'business_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+        workflow_pack_config: { roles },
+        generated_proposal: {
+          stages: [
+            { key: 'due_diligence', name: 'Due Diligence' },
+            { key: 'closing', name: 'Closing' },
+          ],
+        },
+      },
+      recordState,
+      conflicts: [],
+      readiness: {},
+    });
+    mockListTasksForRoom.mockResolvedValue([
+      {
+        id: 'stale-buyer-task',
+        task_type: 'missing_participant',
+        source_id: 'missing-role:buyer',
+        source_type: 'party_role',
+        status: 'pending',
+        blocking: true,
+        title: 'Buyer has no participant submission on record',
+        evidence: ['stale buyer evidence'],
+      },
+      {
+        id: 'stale-attorney-task',
+        task_type: 'missing_participant',
+        source_id: 'missing-role:attorney',
+        source_type: 'party_role',
+        status: 'pending',
+        blocking: true,
+        title: 'Legal Advisor has no participant submission on record',
+        evidence: ['stale attorney evidence'],
+      },
+    ]);
+    setupCustomRoomQueries(
+      roles,
+      [{ role: 'attorney', name: 'Legal Advisor', doc_count: 1, submitted_at: '2026-09-01T00:02:00.000Z' }],
+      [
+        {
+          id: 'old-pending',
+          role_key: 'attorney',
+          status: 'pending',
+          created_at: '2026-09-01T00:00:00.000Z',
+          expires_at: '2026-10-01T00:00:00.000Z',
+        },
+        {
+          id: 'new-accepted',
+          role_key: 'attorney',
+          status: 'accepted',
+          created_at: '2026-09-02T00:00:00.000Z',
+        },
+        { role_key: 'buyer', status: 'accepted', created_at: '2026-09-02T00:01:00.000Z' },
+      ],
+      [...olderRequiredAnalyses, ...newerNoise],
+    );
+
+    const context = await buildGroundedContext('shared-projection-regression');
+    expect(context.missingDocuments.map(item => item.label)).toEqual([
+      'Financial Due Diligence Report',
+      'Financing Verification Documents',
+    ]);
+    expect(context.transactionContext.participants).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'buyer', complete: true }),
+      expect.objectContaining({ role: 'attorney', inviteStatus: 'accepted', complete: true }),
+      expect.objectContaining({ role: 'financial_advisor', complete: false }),
+      expect.objectContaining({ role: 'lender', complete: false }),
+    ]));
+    expect(context.openTasks).toEqual([]);
+    expect(context.groundedBlockers.map(blocker => blocker.label)).toEqual([
+      'Financial Due Diligence Report',
+      'Financing Verification Documents',
+      'Financial Advisor',
+      'Lender',
+    ]);
+
+    const answer = await askQuestion(
+      'shared-projection-regression',
+      'What would need to happen before this workspace can advance to Closing?',
+    );
+    expect(answer.answer).toContain('Financial Due Diligence Report');
+    expect(answer.answer).toContain('Financing Verification Documents');
+    expect(answer.answer).toContain('Financial Advisor');
+    expect(answer.answer).toContain('Lender');
+    expect(answer.answer).not.toContain('Purchase Agreement');
+    expect(answer.answer).not.toContain('Disclosure Schedules');
+    expect(answer.answer).not.toContain('Buyer');
+    expect(answer.answer).not.toContain('Legal Advisor');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
   });
 
   test('clearing the briefing cache makes the next briefing reflect new evidence', async () => {

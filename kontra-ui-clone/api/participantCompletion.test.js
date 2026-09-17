@@ -1,5 +1,6 @@
 const {
   resolveParticipantCompletion,
+  selectParticipantInvite,
 } = require('./lib/participantCompletion');
 const {
   syncParticipantSubmissionFromDocument,
@@ -50,6 +51,79 @@ describe('canonical participant completion', () => {
 
     expect(state.complete).toBe(false);
     expect(state.unresolvedRequiredDocumentCount).toBe(1);
+  });
+
+  test('prefers the latest joined invite over an older pending invite', () => {
+    const invite = selectParticipantInvite(role, [
+      {
+        id: 'pending-invite',
+        role_key: 'attorney',
+        status: 'pending',
+        created_at: '2026-09-12T01:00:00.000Z',
+        expires_at: '2026-10-12T01:00:00.000Z',
+      },
+      {
+        id: 'accepted-invite',
+        role_key: 'attorney',
+        status: 'accepted',
+        created_at: '2026-09-16T01:00:00.000Z',
+      },
+    ], Date.parse('2026-09-16T12:00:00.000Z'));
+
+    expect(invite).toEqual(expect.objectContaining({
+      id: 'accepted-invite',
+      status: 'accepted',
+    }));
+
+    const state = resolveParticipantCompletion(role, {
+      invites: [
+        {
+          id: 'pending-invite',
+          role_key: 'attorney',
+          status: 'pending',
+          created_at: '2026-09-12T01:00:00.000Z',
+          expires_at: '2026-10-12T01:00:00.000Z',
+        },
+        {
+          id: 'accepted-invite',
+          role_key: 'attorney',
+          status: 'accepted',
+          created_at: '2026-09-16T01:00:00.000Z',
+        },
+      ],
+      submissions: [],
+      checklist: [{
+        id: 'assigned-document',
+        required: true,
+        assignedTo: ['attorney'],
+        status: 'uploaded',
+      }],
+    });
+
+    expect(state).toEqual(expect.objectContaining({
+      inviteStatus: 'accepted',
+      joined: true,
+      complete: true,
+    }));
+  });
+
+  test('ignores revoked and expired invitations when resolving the current state', () => {
+    expect(selectParticipantInvite(role, [
+      {
+        id: 'revoked',
+        role_key: 'attorney',
+        status: 'accepted',
+        revoked_at: '2026-09-15T00:00:00.000Z',
+        created_at: '2026-09-16T02:00:00.000Z',
+      },
+      {
+        id: 'expired',
+        role_key: 'attorney',
+        status: 'pending',
+        expires_at: '2026-09-15T00:00:00.000Z',
+        created_at: '2026-09-16T01:00:00.000Z',
+      },
+    ], Date.parse('2026-09-16T12:00:00.000Z'))).toBeNull();
   });
 
   test('participant upload syncs attorney-keyed submission state and clears the canonical blocker sequence', async () => {

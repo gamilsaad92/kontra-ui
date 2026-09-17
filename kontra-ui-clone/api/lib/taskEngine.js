@@ -17,12 +17,14 @@ const {
   sendResendEmail,
   logEvent,
 } = require('./dealRoomHelpers');
+const { TRANSACTION_NOTIFICATION_FROM } = require('./emailConfig');
 const { emit } = require('./eventBus');
 const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
 const { resolveParticipantCompletions } = require('./participantCompletion');
+const { loadParticipantSubmissions } = require('./participantSubmissionHydration');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -353,7 +355,7 @@ async function approveTask(taskId, context = {}, decision = 'approve') {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       if (!RESEND_KEY) throw new Error('Email delivery is not configured');
       await sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <support@kontraplatform.com>',
+        from: TRANSACTION_NOTIFICATION_FROM,
         to: action.to,
         subject: action.subject,
         html: action.html || `<p>${action.body || ''}</p>`,
@@ -436,7 +438,8 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
 
   const [existingRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role, email, name, status, doc_count, submitted_at').eq('property_id', propertyId),
+    loadParticipantSubmissions(supabase, propertyId, { includeEmail: true })
+      .then(data => ({ data, error: null })),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
     supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
   ]);

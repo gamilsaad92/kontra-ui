@@ -26,6 +26,8 @@ const {
   normalizeParticipantRole,
   participantRoleMatches,
 } = require('./participantCompletion');
+const { loadParticipantSubmissions } = require('./participantSubmissionHydration');
+const { getLifecycleTransitionGate } = require('./lifecycleGate');
 
 let _deps = null;
 function getDependencies() {
@@ -191,6 +193,43 @@ function buildPackLifecycle(packId, stageKey, generatedProposal = null) {
   };
 }
 
+function getNextLifecycleStage(lifecycle) {
+  const stages = Array.isArray(lifecycle?.stages) ? lifecycle.stages : [];
+  const currentIndex = stages.findIndex(stage =>
+    stage.key === lifecycle?.currentStageKey
+  );
+  return currentIndex >= 0 ? stages[currentIndex + 1] || null : null;
+}
+
+function buildCanonicalLifecycleGate({
+  lifecycle,
+  recordState,
+  requiredDocuments = [],
+  receivedDocuments = [],
+  reviewDocuments = [],
+  participantStates = [],
+} = {}) {
+  const stages = Array.isArray(lifecycle?.stages) ? lifecycle.stages : [];
+  const currentStage = stages.find(stage => stage.key === lifecycle?.currentStageKey) || null;
+  const nextStage = getNextLifecycleStage(lifecycle);
+  return getLifecycleTransitionGate({
+    stages,
+    currentStage,
+    nextStage,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+    requiredFields: recordState?.requiredFields || [],
+    participantStates: participantStates.map(state => ({
+      ...state,
+      key: state.key || state.role,
+    })),
+    unresolvedConflicts: recordState?.unresolvedConflicts || [],
+    requiredApprovals: nextStage?.requiredApprovals || nextStage?.requiredConditions || [],
+    recordHydrated: Boolean(recordState),
+  });
+}
+
 const ACTIVE_PARTICIPANT_INVITE_STATUSES = new Set([
   'pending', 'invited', 'sent', 'accepted', 'joined', 'active',
 ]);
@@ -262,6 +301,18 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
+function isLifecycleBlockingTask(task) {
+  const sourceType = String(task?.source_type || task?.sourceType || '').trim().toLowerCase();
+  const category = String(task?.category || '').trim().toLowerCase();
+  const taskType = String(task?.task_type || task?.taskType || '').trim().toLowerCase();
+  // Digital Asset Preparation is an optional readiness layer. Its tasks may
+  // remain visible in preparation views, but they cannot gate the ordinary
+  // workflow transition for the room's primary transaction type.
+  return sourceType !== 'readiness'
+    && category !== 'readiness'
+    && !taskType.startsWith('readiness_');
+}
+
 function filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions = []) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
   const completedParticipantKeys = new Set((participantCompletions || [])
@@ -280,7 +331,9 @@ function buildGroundedBlockers({
   const blockers = [];
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
   const participantRows = Array.isArray(participants) ? participants : [];
-  const openTasks = Array.isArray(tasks) ? tasks.filter(hasOpenTaskStatus) : [];
+  const openTasks = Array.isArray(tasks)
+    ? tasks.filter(task => hasOpenTaskStatus(task) && isLifecycleBlockingTask(task))
+    : [];
   const effectiveParticipantDefinitions = participantDefinitions !== undefined
     ? participantDefinitions
     : String(packId || '').startsWith('ws_')
@@ -316,6 +369,7 @@ function buildGroundedBlockers({
   (Array.isArray(missingDocuments) ? missingDocuments : []).forEach(document => {
     blockers.push({
       sourceType: 'required_document',
+      id: document.id || null,
       label: document.label,
       section: document.section || null,
       evidence: [`Required checklist item "${document.label}" is not complete.`],
@@ -429,8 +483,7 @@ async function loadGroundingAnalyses(propertyId) {
       .from('deal_analyses')
       .select(select)
       .eq('property_id', propertyId)
-      .order('created_at', { ascending: false })
-      .limit(30);
+      .order('created_at', { ascending: false });
     if (!result.error) return result.data || [];
     lastError = result.error;
     if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) break;
@@ -444,14 +497,11 @@ async function loadGroundingAnalyses(propertyId) {
 
 // ── Grounding context ─────────────────────────────────────────────────────────
 async function buildGroundedContext(propertyId) {
-  const [transactionState, tasks, analyses, { data: participants }, { data: participantInvites }] = await Promise.all([
+  const [transactionState, tasks, analyses, participants, { data: participantInvites }] = await Promise.all([
     readTransactionState(propertyId),
     listTasksForRoom(propertyId),
     loadGroundingAnalyses(propertyId),
-    supabase
-      .from('party_submissions')
-      .select('role, name, status, doc_count, submitted_at')
-      .eq('property_id', propertyId),
+    loadParticipantSubmissions(supabase, propertyId),
     supabase
       .from('deal_room_invites')
       .select('role_key, status, expires_at, revoked_at')
@@ -537,6 +587,7 @@ async function buildGroundedContext(propertyId) {
   const liveInvites = (participantInvites || []).filter(invite => {
     const status = String(invite?.status || '').toLowerCase();
     if (!ACTIVE_PARTICIPANT_INVITE_STATUSES.has(status)) return false;
+    if (invite?.revoked_at) return false;
     if (['pending', 'invited', 'sent'].includes(status)
       && invite?.expires_at
       && new Date(invite.expires_at).getTime() <= Date.now()) return false;
@@ -548,7 +599,7 @@ async function buildGroundedContext(propertyId) {
       status: isDocumentRequirementReceived(item, activeAnalyses) ? 'uploaded' : item.status,
     })),
     invites: liveInvites,
-    submissions: participants || [],
+    submissions: participants,
   });
   const participantCompletionByRole = new Map(
     participantCompletions.map(state => [normalizeParticipantRole(state.role), state])
@@ -562,12 +613,37 @@ async function buildGroundedContext(propertyId) {
     })
     .map(role => ({
       name: (participants || []).find(item => participantRoleMatches(role, item?.role))?.name || null,
+       required: role.required !== false,
+       invitable: role.invitable !== false,
        ...(participantCompletionByRole.get(normalizeParticipantRole(role.key)) || {}),
      }));
   const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantCompletions);
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
   const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
+  const lifecycle = buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal);
+  const requiredDocuments = checklist.filter(item =>
+    item?.required === true
+      && !['not_applicable', 'na', 'n_a'].includes(
+        String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+      )
+  );
+  const receivedDocuments = requiredDocuments.filter(item =>
+    isDocumentRequirementReceived(item, activeAnalyses)
+  );
+  const reviewDocuments = requiredDocuments.filter(item =>
+    ['review', 'needs_review', 'pending_review', 'needs_attention', 'attention'].includes(
+      String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+    )
+  );
+  const lifecycleGate = buildCanonicalLifecycleGate({
+    lifecycle,
+    recordState,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+    participantStates: participantContext,
+  });
   const recordStateFields = recordState.fields || [];
   const meaningfulRecordField = key => recordStateFields.find(field =>
     field.key === key
@@ -682,7 +758,8 @@ async function buildGroundedContext(propertyId) {
     recordFacts: populatedRecordFields,
     documentFindings,
     chainStatus,
-     lifecycle: buildPackLifecycle(packId, room?.deal_stage || null, generatedProposal),
+    lifecycle,
+    lifecycleGate,
     groundedBlockers: buildGroundedBlockers({
       packId,
       recordState,
@@ -820,7 +897,7 @@ function isDocumentRequirementReceived(requirement, activeAnalyses = []) {
 
 function getLiveMissingDocuments(checklist = [], activeAnalyses = []) {
   return (Array.isArray(checklist) ? checklist : [])
-    .filter(item => item?.required && !isDocumentRequirementReceived(item, activeAnalyses))
+    .filter(item => item?.required === true && !isDocumentRequirementReceived(item, activeAnalyses))
     .slice(0, 30)
     .map(item => ({
       id: item.id || item.document_id || item.documentId || null,
@@ -1132,6 +1209,97 @@ function buildParticipantCompletionAnswer(ctx, question) {
   }`;
 }
 
+function classifyLifecycleQuestion(question) {
+  const text = String(question || '').trim();
+  if (!/\b(?:advance|advancing|proceed|move|progress)\b/i.test(text)) return null;
+
+  if (/\b(?:what\s+(?:would\s+)?need(?:s)?\s+to\s+happen|what\s+remains|what\s+must\s+be\s+completed|what\s+still\s+needs\s+to\s+be\s+done|what\s+do\s+we\s+need)\b/i.test(text)) {
+    return 'actionable';
+  }
+  if (/\b(?:all|complete|every|everything|full)\b[\s\S]*\b(?:requirement|blocker|blocking)\b/i.test(text)
+    || /\b(?:requirement|blocker|blocking)\b[\s\S]*\b(?:all|complete|every|everything|currently)\b/i.test(text)) {
+    return 'comprehensive';
+  }
+  if (/\b(?:is|are|can|could|should)\b[\s\S]*\b(?:ready|eligible|advance|proceed|move)\b/i.test(text)
+    || /\bready\s+to\s+advance\b/i.test(text)) {
+    return 'eligibility';
+  }
+  return null;
+}
+
+function lifecycleAnswerBlockers(ctx) {
+  const gateBlockers = Array.isArray(ctx.lifecycleGate?.blockers)
+    ? ctx.lifecycleGate.blockers
+    : [];
+  const blockers = gateBlockers.map(blocker => ({
+      ...blocker,
+      label: blocker.text || blocker.label || blocker.key,
+      evidence: [blocker.detail].filter(Boolean),
+    }));
+  const seen = new Set(blockers.map(blocker => lifecycleBlockerIdentity(blocker)));
+  (Array.isArray(ctx.groundedBlockers) ? ctx.groundedBlockers : []).forEach(blocker => {
+    const identity = lifecycleBlockerIdentity(blocker);
+    if (!seen.has(identity)) {
+      seen.add(identity);
+      blockers.push(blocker);
+    }
+  });
+  return blockers;
+}
+
+function lifecycleBlockerIdentity(blocker) {
+  const type = blocker?.type || blocker?.sourceType || 'blocker';
+  if (type === 'document' || type === 'document_review' || type === 'required_document') {
+    const requirement = blocker.requirement || {};
+    return `document:${requirement.id || blocker.id || requirement.section || blocker.section || blocker.label}`;
+  }
+  if (type === 'participant' || type === 'required_participant') {
+    const requirement = blocker.requirement || {};
+    return `participant:${requirement.key || requirement.role || blocker.role || blocker.label}`;
+  }
+  if (type === 'record' || type === 'transaction_record' || type === 'transaction_record_conflict') {
+    const requirement = blocker.requirement || {};
+    return `record:${requirement.key || blocker.key || blocker.label}`;
+  }
+  return `${type}:${blocker.taskId || blocker.key || blocker.conflictId || blocker.label}`;
+}
+
+function buildLifecycleQuestionAnswer(ctx, questionType) {
+  const targetLabel = ctx.lifecycleGate?.nextStage?.label || 'the next stage';
+  const blockers = lifecycleAnswerBlockers(ctx);
+  const citedTaskIds = blockers.map(blocker => blocker.taskId).filter(Boolean);
+  if (blockers.length === 0) {
+    if (questionType === 'eligibility') {
+      return {
+        answer: `Yes — the workspace has no recorded blocker to advancing to ${targetLabel}.`,
+        citedTaskIds,
+      };
+    }
+    return {
+      answer: `No recorded requirements are currently blocking advancement to ${targetLabel}.`,
+      citedTaskIds,
+    };
+  }
+
+  const requirements = blockers.map(blocker => blocker.label || blocker.text || blocker.key);
+  if (questionType === 'eligibility') {
+    return {
+      answer: `No — the workspace is not eligible to advance to ${targetLabel} yet. Current blockers: ${requirements.join('; ')}.`,
+      citedTaskIds,
+    };
+  }
+  if (questionType === 'comprehensive') {
+    return {
+      answer: `The requirements currently blocking advancement to ${targetLabel} are: ${requirements.join('; ')}.`,
+      citedTaskIds,
+    };
+  }
+  return {
+    answer: `Before advancing to ${targetLabel}, complete these requirements: ${requirements.join('; ')}.`,
+    citedTaskIds,
+  };
+}
+
 // ── Answer engine ─────────────────────────────────────────────────────────────
 async function askQuestion(propertyId, question) {
   if (!question || !question.trim()) {
@@ -1143,6 +1311,10 @@ async function askQuestion(propertyId, question) {
       answer: buildParticipantCompletionAnswer(ctx, question),
       citedTaskIds: [],
     };
+  }
+  const lifecycleQuestionType = classifyLifecycleQuestion(question);
+  if (lifecycleQuestionType) {
+    return buildLifecycleQuestionAnswer(ctx, lifecycleQuestionType);
   }
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)
@@ -1337,9 +1509,14 @@ function clearCache(propertyId) {
 module.exports = {
   buildGroundedContext,
   buildPackLifecycle,
+  buildCanonicalLifecycleGate,
   buildGroundedBlockers,
+  isLifecycleBlockingTask,
+  classifyLifecycleQuestion,
+  buildLifecycleQuestionAnswer,
   getLiveMissingDocuments,
   isDocumentRequirementReceived,
+  loadLiveParticipantDefinitions,
   askContextToPrompt,
   getBriefing,
   clearBriefingCache,

@@ -68,7 +68,12 @@ const {
 const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
-const { clearBriefingCache, askQuestion } = require('./lib/operationsManager');
+const {
+  clearBriefingCache,
+  askQuestion,
+  isDocumentRequirementReceived,
+  loadLiveParticipantDefinitions,
+} = require('./lib/operationsManager');
 const verificationRouter = require('./routers/verification');
 const { runVerification, inferFactDefinition } = require('./lib/verificationEngine');
 const verifiedAssetPackageRouter = require('./routers/verifiedAssetPackage');
@@ -83,10 +88,18 @@ const {
   reconcileStoredDocumentConflicts,
   resolveSchemaKey: resolveTransactionSchemaKey,
 } = require('./lib/transactionState');
+const {
+  getLifecycleTransitionGate,
+} = require('./lib/lifecycleGate');
 const { emit: emitInternalEvent } = require('./lib/eventBus');
 const {
   syncParticipantSubmissionFromDocument,
 } = require('./lib/participantSubmissionState');
+const {
+  resolveParticipantCompletions,
+  participantRoleMatches,
+} = require('./lib/participantCompletion');
+const { loadParticipantSubmissions } = require('./lib/participantSubmissionHydration');
 const {
   canonicalizeTransactionRecordKey,
   aliasKeysForCanonical,
@@ -148,6 +161,7 @@ const {
   extractTransactionContext,
   inferGeneratedTransactionIdentity,
 } = require('./lib/transactionRoomGenerator');
+const { TRANSACTION_NOTIFICATION_FROM } = require('./lib/emailConfig');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2754,7 +2768,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
         const firstName = pilotName.split(' ')[0] || pilotName;
         const packLabel = PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId;
         await sendResendEmail(RESEND_KEY, {
-          from: 'Kontra <support@kontraplatform.com>',
+          from: TRANSACTION_NOTIFICATION_FROM,
           to: pilotEmail,
           subject: `Your Kontra workspace is ready: ${workspaceName}`,
           html: `
@@ -2818,7 +2832,7 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
   try {
     const firstName = (pilotName || pilotEmail).split(' ')[0];
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: TRANSACTION_NOTIFICATION_FROM,
       to: pilotEmail,
       subject: `Your Kontra workspace is ready: ${workspaceName || 'your workspace'}`,
       html: `
@@ -3490,7 +3504,7 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <support@kontraplatform.com>',
+        from: TRANSACTION_NOTIFICATION_FROM,
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
@@ -4400,10 +4414,10 @@ app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
     return res.status(401).json({ error: 'This preview link is invalid or has expired' });
   }
   try {
-    const [roomRes, analysesRes, partiesRes] = await Promise.all([
+    const [roomRes, analysesRes, parties] = await Promise.all([
       supabase.from('deal_rooms').select('*').eq('property_id', propertyId).eq('status', 'active').maybeSingle(),
       supabase.from('deal_analyses').select('id, section, filename, analysis, uploaded_by_role, created_at').eq('property_id', propertyId).order('created_at', { ascending: true }),
-      supabase.from('party_submissions').select('role, name, status, doc_count, submitted_at, notes').eq('property_id', propertyId),
+      loadParticipantSubmissions(supabase, propertyId),
     ]);
     if (roomRes.error) throw roomRes.error;
     if (!roomRes.data) return res.status(404).json({ error: 'Deal room not found' });
@@ -4426,7 +4440,7 @@ app.get('/api/public/deal-room/:propertyId/preview', async (req, res) => {
     res.json({
       room,
       analyses: analysesRes.data || [],
-      parties: partiesRes.data || [],
+      parties,
       expiresAt: new Date((Math.floor(Date.now() / 1000) + PREVIEW_TOKEN_TTL_SECONDS) * 1000).toISOString(),
     });
   } catch (err) {
@@ -6183,7 +6197,7 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
     const roleAction = roleConfig?.inviteAction || 'access the deal room';
     const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?role=${role}`;
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: TRANSACTION_NOTIFICATION_FROM,
       to: email,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to a deal room — ${propName}`,
@@ -6253,7 +6267,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
         const roleLabel = roleConf?.label || roleKey;
         const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
         await sendResendEmail(process.env.RESEND_API_KEY, {
-          from: 'Kontra <support@kontraplatform.com>',
+          from: TRANSACTION_NOTIFICATION_FROM,
           to: invitedEmail,
           reply_to: 'support@kontraplatform.com',
           subject: `You've been invited to a deal room — ${propName}`,
@@ -6364,6 +6378,29 @@ app.post('/api/public/deal-room/:propertyId/invite/verify-link', async (req, res
 // This endpoint hashes the token to look up the invite, verifies the caller
 // owns the deal room, then derives all email content (recipient, role, property)
 // from the database.  The client is never trusted for to/url/labels.
+async function loadLifecycleAnalyses(propertyId) {
+  const selects = [
+    'id, section, filename, uploaded_by_role, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, uploaded_by_role, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
+  ];
+  let lastError = null;
+
+  for (const select of selects) {
+    const result = await supabase
+      .from('deal_analyses')
+      .select(select)
+      .eq('property_id', propertyId);
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+    if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) {
+      break;
+    }
+  }
+
+  throw lastError || new Error('Could not load lifecycle document evidence');
+}
+
 app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
   // 1. Accept either a Supabase Bearer JWT or a room-scoped owner_write_token.
   //    This allows owners who are not signed in to Supabase to still trigger emails.
@@ -6434,7 +6471,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     const to         = invite.invited_email;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: TRANSACTION_NOTIFICATION_FROM,
       to,
       reply_to: 'support@kontraplatform.com',
       subject: `You've been invited to ${propName} — Kontra Deal Room`,
@@ -6466,6 +6503,108 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
   }
 });
 
+async function getLifecycleAdvanceGate({ propertyId, room, stages = [], nextStage }) {
+  const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
+  const [analysisRows, inviteResult, submissions, transactionState] = await Promise.all([
+    loadLifecycleAnalyses(propertyId),
+    supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
+    loadParticipantSubmissions(supabase, propertyId),
+    readTransactionState(propertyId),
+  ]);
+  if (inviteResult.error) throw inviteResult.error;
+
+  const configuredDocuments = Array.isArray(room?.checklist_items) && room.checklist_items.length > 0
+    ? room.checklist_items
+    : (await getCanonicalChecklist(packId, room?.property_type) || []);
+  const requiredDocuments = configuredDocuments.filter(item =>
+    item?.required === true
+      && !['not_applicable', 'na', 'n_a'].includes(String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_')),
+  );
+  const analyses = selectActiveDocumentVersions((analysisRows || []).filter(analysis =>
+    !['failed'].includes(String(analysis.processing_status || '').toLowerCase())
+      && analysis.analysis?.pending !== true,
+  ));
+  const receivedDocuments = requiredDocuments.filter(item =>
+    isDocumentRequirementReceived(item, analyses)
+  );
+  const reviewDocuments = requiredDocuments.filter(item =>
+    ['review', 'needs_review', 'pending_review', 'needs_attention', 'attention'].includes(
+      String(item?.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_'),
+    ),
+  );
+
+  const roleDefinitions = await loadLiveParticipantDefinitions(room, packId);
+  const activeInviteStatuses = new Set(['pending', 'invited', 'sent', 'accepted', 'joined', 'active']);
+  const liveInvites = (inviteResult.data || []).filter(invite => {
+    const status = String(invite?.status || '').toLowerCase();
+    if (!activeInviteStatuses.has(status)) return false;
+    if (['pending', 'invited', 'sent'].includes(status)
+      && invite?.expires_at
+      && new Date(invite.expires_at).getTime() <= Date.now()) return false;
+    return roleDefinitions.some(role => participantRoleMatches(role, invite.role_key));
+  });
+  const participantCompletions = resolveParticipantCompletions(roleDefinitions, {
+    checklist: configuredDocuments.map(item => ({
+      ...item,
+      status: isDocumentRequirementReceived(item, analyses) ? 'uploaded' : item.status,
+    })),
+    invites: liveInvites,
+    submissions: submissions || [],
+  });
+  const completionByRole = new Map(
+    participantCompletions.map(state => [String(state.role || '').trim().toLowerCase(), state]),
+  );
+  const roles = roleDefinitions
+    .filter(role => role.invitable !== false && !role.legacyOnly)
+    .map(role => ({
+      ...role,
+      ...(completionByRole.get(String(role.key || '').trim().toLowerCase()) || {}),
+      key: role.key,
+    }));
+
+  const recordState = transactionState?.recordState || transactionState?.readiness?.recordState || null;
+  return getLifecycleTransitionGate({
+    stages,
+    currentStage: stages.find(stage => stage.key === room?.deal_stage),
+    nextStage,
+    requiredDocuments,
+    receivedDocuments,
+    reviewDocuments,
+    requiredFields: recordState?.requiredFields || [],
+    participantStates: roles,
+    unresolvedConflicts: recordState?.unresolvedConflicts || transactionState?.conflicts || [],
+    requiredApprovals: nextStage?.requiredApprovals || nextStage?.requiredConditions || [],
+    recordHydrated: Boolean(recordState),
+  });
+}
+
+app.get('/api/public/deal-room/:propertyId/lifecycle-gate', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode === 'anonymous') return accessDenied(res);
+    const { data: room, error } = await supabase
+      .from('deal_rooms')
+      .select('workflow_pack_id, deal_type, property_type, deal_stage, stages_config, checklist_items, settlement_mode')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!room) return res.status(404).json({ error: 'Workspace not found' });
+    const packId = room.workflow_pack_id || DEFAULT_PACK_ID;
+    const stages = Array.isArray(room.stages_config) && room.stages_config.length >= 2
+      ? room.stages_config
+      : getPackStageConfig(packId).stages;
+    const currentIndex = stages.findIndex(stage => stage.key === room.deal_stage);
+    const nextStage = currentIndex >= 0 ? stages[currentIndex + 1] : null;
+    const gate = await getLifecycleAdvanceGate({ propertyId, room, stages, nextStage });
+    res.set('Cache-Control', 'no-store');
+    res.json({ ...gate, currentStage: room.deal_stage, nextStage });
+  } catch (error) {
+    console.error('[lifecycle-gate]', error.message);
+    res.status(500).json({ error: 'Failed to evaluate lifecycle gate' });
+  }
+});
+
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
   const { stage, ownerWriteToken } = req.body || {};
@@ -6474,7 +6613,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can advance stages');
     const { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, deal_stage, stages_config, metadata_values, settlement_mode')
+      .select('workflow_pack_id, deal_type, property_type, deal_stage, stages_config, checklist_items, metadata_values, settlement_mode')
       .eq('property_id', propertyId)
       .single();
     if (fetchError) throw fetchError;
@@ -6538,6 +6677,23 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
     const allKnownStages = [...stagesForValidation, ...(settlementCapableAdv && !alreadyHasSettlement ? [{ key: 'settlement', label: 'Settlement' }, { key: 'complete', label: 'Complete' }] : [])];
     const incomingStageObj = allKnownStages.find(s => s.key === stage);
     const stageLabel = incomingStageObj?.label || stage;
+
+    if (stageChanging) {
+      const transitionGate = await getLifecycleAdvanceGate({
+        propertyId,
+        room,
+        stages: stagesForValidation,
+        nextStage: incomingStageObj,
+      });
+      if (!transitionGate.eligible) {
+        return res.status(409).json({
+          error: 'LIFECYCLE_GATE',
+          message: `Complete the remaining required items before advancing to ${stageLabel}.`,
+          blockers: transitionGate.blockers,
+          next_stage: stage,
+        });
+      }
+    }
 
     // Position-based milestone detection — independent of fixed key names.
     // Uses the full effective sequence (with settlement/complete when capable).
@@ -7703,7 +7859,7 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
     const workspaceUrl = `${req.headers.origin || 'https://kontraplatform.com'}/deal-room/${propertyId}`;
 
     await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <support@kontraplatform.com>',
+      from: TRANSACTION_NOTIFICATION_FROM,
       to: notif.to_email,
       subject: `[Resent] ${notif.subject}`,
       html: `
@@ -7788,7 +7944,7 @@ app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) 
     // Send an email to each found participant
     await Promise.all(recipients.map(({ email, roleKey }) =>
       sendResendEmail(RESEND_KEY, {
-        from: 'Kontra <support@kontraplatform.com>',
+        from: TRANSACTION_NOTIFICATION_FROM,
         to: email,
         subject: `Action needed: please upload "${docLabel}" — ${propName}`,
         text: `${senderName} is requesting that you upload "${docLabel}" to the deal room for ${propName} on Kontra.\n\nOpen your deal room to upload the document:\n${roomUrl}\n\n---\nKontra transaction workspace. If you believe this was sent in error, ignore this message.`,
