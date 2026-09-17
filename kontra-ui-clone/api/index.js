@@ -11835,7 +11835,19 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
   try {
     const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
     if (access.mode === 'anonymous') return accessDenied(res);
-    return res.json(await askQuestion(propertyId, String(question).slice(0, 2000)));
+    return res.json(await askQuestion(propertyId, String(question).slice(0, 2000), {
+      requestId: req.get('x-kontra-request-id') || crypto.randomUUID(),
+      route: req.originalUrl.split('?')[0],
+      host: req.get('host') || null,
+      forwardedHost: req.get('x-forwarded-host') || null,
+      origin: req.get('origin') || null,
+      accessMode: access.mode,
+      roomId: access.roomId || null,
+      authHeaderPresence: {
+        ownerWriteToken: Boolean(req.headers['x-owner-write-token'] || req.body?.ownerWriteToken),
+        session: Boolean(req.headers['x-kontra-session']),
+      },
+    }));
   } catch (err) {
     console.error('[brain/ask]', safeAIErrorMetadata(err));
     return res.status(500).json({ error: 'AI assistant error', answer: 'Kontra could not reach the transaction workspace. Try again in a moment.' });

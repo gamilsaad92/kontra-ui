@@ -743,6 +743,7 @@ async function buildGroundedContext(propertyId) {
     packId,
     room: room
       ? {
+          roomId: room.id || null,
           propertyName: room.property_name,
           stage: stageLabel,
           dealType: room.deal_type,
@@ -772,6 +773,45 @@ async function buildGroundedContext(propertyId) {
     transactionContext,
     recordState,
     readiness: transactionState.readiness,
+    projectionDiagnostics: {
+      totalAnalysesLoaded: analyses.length,
+      activeDocumentSections: activeAnalyses.map(item => item.section || null),
+      documentSatisfaction: ['purchase agreement', 'disclosure schedules'].map(target => {
+        const requirement = checklist.find(item => {
+          const text = [
+            item?.label,
+            item?.name,
+            item?.section,
+            item?.category,
+            item?.document_type,
+            item?.documentType,
+          ].filter(Boolean).join(' ').toLowerCase();
+          return text.includes(target);
+        });
+        return {
+          target,
+          required: requirement?.required === true,
+          section: requirement?.section || null,
+          satisfied: requirement ? isDocumentRequirementReceived(requirement, activeAnalyses) : null,
+        };
+      }),
+      participantStates: ['buyer', 'attorney'].map(roleKey => {
+        const state = participantCompletionByRole.get(normalizeParticipantRole(roleKey));
+        return {
+          role: roleKey,
+          inviteStatus: state?.inviteStatus || null,
+          invited: state?.invited === true,
+          joined: state?.joined === true,
+          assignedRequiredDocumentCount: state?.assignedRequiredDocumentCount || 0,
+          completedRequiredDocumentCount: state?.completedRequiredDocumentCount || 0,
+          unresolvedRequiredDocumentCount: state?.unresolvedRequiredDocumentCount || 0,
+          complete: state?.complete === true,
+        };
+      }),
+      hydratedSubmissionRoles: (participants || [])
+        .map(item => normalizeParticipantRole(item?.role))
+        .filter(Boolean),
+    },
   };
 }
 
@@ -1264,7 +1304,39 @@ function lifecycleBlockerIdentity(blocker) {
   return `${type}:${blocker.taskId || blocker.key || blocker.conflictId || blocker.label}`;
 }
 
-function buildLifecycleQuestionAnswer(ctx, questionType) {
+function buildBrainAskTrace(ctx, questionType, traceContext = {}) {
+  return {
+    requestId: traceContext.requestId || null,
+    route: traceContext.route || null,
+    host: traceContext.host || null,
+    forwardedHost: traceContext.forwardedHost || null,
+    origin: traceContext.origin || null,
+    propertyId: traceContext.propertyId || null,
+    roomId: ctx.room?.roomId || null,
+    accessMode: traceContext.accessMode || null,
+    authHeaderPresence: traceContext.authHeaderPresence || null,
+    deployedCommit: process.env.RENDER_GIT_COMMIT
+      || process.env.RENDER_GIT_COMMIT_SHA
+      || null,
+    questionType,
+    projection: ctx.projectionDiagnostics || null,
+    finalCanonicalLifecycleBlockers: lifecycleAnswerBlockers(ctx).map(blocker => ({
+      type: blocker.type || blocker.sourceType || 'blocker',
+      label: blocker.label || blocker.text || blocker.key || null,
+      role: blocker.role || blocker.requirement?.role || blocker.requirement?.key || null,
+      section: blocker.section || blocker.requirement?.section || null,
+      taskId: blocker.taskId || null,
+      status: blocker.status || null,
+    })),
+  };
+}
+
+function buildLifecycleQuestionAnswer(ctx, questionType, traceContext = {}) {
+  if (traceContext.trace === true) {
+    console.info('[brain/ask-trace]', JSON.stringify(
+      buildBrainAskTrace(ctx, questionType, traceContext),
+    ));
+  }
   const targetLabel = ctx.lifecycleGate?.nextStage?.label || 'the next stage';
   const blockers = lifecycleAnswerBlockers(ctx);
   const citedTaskIds = blockers.map(blocker => blocker.taskId).filter(Boolean);
@@ -1301,7 +1373,7 @@ function buildLifecycleQuestionAnswer(ctx, questionType) {
 }
 
 // ── Answer engine ─────────────────────────────────────────────────────────────
-async function askQuestion(propertyId, question) {
+async function askQuestion(propertyId, question, traceContext = {}) {
   if (!question || !question.trim()) {
     return { answer: 'Ask a question about this workspace — e.g. "What\'s blocking closing?" or "What should happen next?"', citedTaskIds: [] };
   }
@@ -1314,7 +1386,11 @@ async function askQuestion(propertyId, question) {
   }
   const lifecycleQuestionType = classifyLifecycleQuestion(question);
   if (lifecycleQuestionType) {
-    return buildLifecycleQuestionAnswer(ctx, lifecycleQuestionType);
+    return buildLifecycleQuestionAnswer(ctx, lifecycleQuestionType, {
+      ...traceContext,
+      trace: true,
+      propertyId,
+    });
   }
   const openai = getOpenAI();
   const tokenizationGuidance = isTokenizationQuestion(question)

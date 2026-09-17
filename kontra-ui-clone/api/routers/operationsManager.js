@@ -5,6 +5,7 @@
 // mutates deal_room_tasks — it only reasons over what the Task Engine already
 // created. See lib/operationsManager.js and .agents/memory/kontra-task-architecture.md.
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const { getBriefing, askQuestion } = require('../lib/operationsManager');
 
@@ -21,7 +22,18 @@ router.get('/deal-room/:propertyId/brain/briefing', async (req, res) => {
 router.post('/deal-room/:propertyId/brain/ask', async (req, res) => {
   try {
     const { question } = req.body || {};
-    const result = await askQuestion(req.params.propertyId, String(question || '').slice(0, 2000));
+    const result = await askQuestion(req.params.propertyId, String(question || '').slice(0, 2000), {
+      requestId: req.get('x-kontra-request-id') || crypto.randomUUID(),
+      route: req.originalUrl.split('?')[0],
+      host: req.get('host') || null,
+      forwardedHost: req.get('x-forwarded-host') || null,
+      origin: req.get('origin') || null,
+      accessMode: 'operations_manager_router',
+      authHeaderPresence: {
+        ownerWriteToken: Boolean(req.headers['x-owner-write-token'] || req.body?.ownerWriteToken),
+        session: Boolean(req.headers['x-kontra-session']),
+      },
+    });
     res.json(result);
   } catch (err) {
     console.error('[operationsManager] ask failed:', err.message);
