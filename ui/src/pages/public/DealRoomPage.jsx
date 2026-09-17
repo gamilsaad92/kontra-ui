@@ -8863,6 +8863,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const digitalAssetEnabled = isDigitalAssetLayerEnabled(property, pack);
 
   const canonicalRecordState = recordState || readiness?.transaction_record || null;
+  const recordProjectionReady = recordHydrationStatus === 'ready' || Boolean(canonicalRecordState);
   const participantStatesForLifecycle = resolveParticipantStates(
     getExternalParticipantRoles(pack, { isCoordinator: true }),
     {
