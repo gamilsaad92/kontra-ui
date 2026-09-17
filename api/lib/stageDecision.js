@@ -2,6 +2,16 @@
 
 const RESOLVED_RECORD_STATUSES = new Set(['confirmed', 'verified', 'approved']);
 const FINAL_STAGE_PATTERN = /closing|close|funded|fund|settlement|complete|completed/i;
+const DIGITAL_ASSET_READINESS_VALUES = new Set([
+  'readiness',
+  'readiness_setup',
+  'readiness_document',
+  'digital_asset',
+  'digital_asset_preparation',
+  'digital_asset_readiness',
+  'token_preparation',
+  'tokenization_readiness',
+]);
 
 function normalizedStatus(value) {
   return String(value || '')
@@ -43,6 +53,15 @@ function isChecklistItemReceived(item) {
     || item?.uploaded === true
     || ['uploaded', 'processing', 'retrying', 'analyzing', 'analyzed', 'complete', 'completed', 'approved', 'received']
       .includes(normalizedStatus(item?.status));
+}
+
+function isDigitalAssetReadinessBlocker(blocker) {
+  return [
+    blocker?.taskSourceType,
+    blocker?.taskCategory,
+    blocker?.taskType,
+    blocker?.taskApplicability,
+  ].some(value => DIGITAL_ASSET_READINESS_VALUES.has(normalizedStatus(value)));
 }
 
 function buildStageDecision({
@@ -143,6 +162,7 @@ function buildStageDecision({
 
   (Array.isArray(groundedBlockers) ? groundedBlockers : [])
     .filter(blocker => ['required_participant', 'explicit_blocking_task'].includes(blocker?.sourceType))
+    .filter(blocker => !isDigitalAssetReadinessBlocker(blocker))
     .forEach(blocker => addBlocker(
       `${blocker.sourceType}:${blocker.role || blocker.taskId || blocker.key || blocker.label}`,
       blocker.label || blocker.key || 'Workflow blocker',
@@ -209,6 +229,7 @@ function buildStageDecision({
 
 module.exports = {
   buildStageDecision,
+  isDigitalAssetReadinessBlocker,
   isChecklistItemReceived,
   normalizedStatus,
 };

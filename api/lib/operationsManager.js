@@ -427,12 +427,26 @@ function buildGroundedBlockers({
       return liveRequiredParticipantKeys.has(subjectRoleOf(task));
     })
     .forEach(task => {
+      const taskType = task.task_type || task.taskType || null;
+      const taskSourceType = task.source_type || task.sourceType || null;
+      const taskCategory = task.category || null;
+      const taskApplicability = task.applicability
+        || task.applicability_scope
+        || task.workflow_scope
+        || task.workflowScope
+        || task.applies_to
+        || task.appliesTo
+        || null;
       blockers.push({
         sourceType: 'explicit_blocking_task',
         taskId: task.id,
         label: participantTaskTitle(packId, task, effectiveParticipantDefinitions),
         status: task.status,
-         evidence: participantTaskEvidence(packId, task, effectiveParticipantDefinitions),
+        evidence: participantTaskEvidence(packId, task, effectiveParticipantDefinitions),
+        taskType,
+        taskSourceType,
+        taskCategory,
+        taskApplicability,
       });
     });
 
@@ -1614,6 +1628,7 @@ module.exports = {
   buildGroundedContext,
   buildPackLifecycle,
   buildGroundedBlockers,
+  buildStageDecisionAnswer,
   getLiveMissingDocuments,
   isDocumentRequirementReceived,
   askContextToPrompt,
