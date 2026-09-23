@@ -15,11 +15,11 @@ GraphQL `Blob.text` can be truncated for large source files even when the blob's
 
 **How to apply:** Check `isTruncated` and `byteSize`, prefer complete local file contents for additions, and run syntax checks plus remote byte-size verification before considering the publish complete.
 
-When local `main` has diverged from the current GitHub `main`, base the GraphQL `createCommitOnBranch` mutation on the live head and publish only the intended file set; do not force-push the local history. The mutation requires `expectedHeadOid` at the input top level.
+When local `main` has diverged from the current GitHub `main`, fetch the live head, cherry-pick only the intended local commit onto it, and publish the intended file set from that live base through the connector; do not force-push the local history. A connector-created tree/commit can be used when the local commit object is not present remotely.
 
 **Why:** The local Replit checkout can be based on a gitsafe snapshot while the connected GitHub branch has newer unrelated commits. Remote-based file edits preserve those changes and still publish the completed work.
 
-**How to apply:** Resolve the current remote head through the GitHub connection, compare intended files against it, submit only address/content substitutions against that head, and verify the resulting commit and stale-reference scan.
+**How to apply:** Resolve the current remote head through the GitHub connection, keep unrelated remote work as the base tree, submit only complete local contents for intended paths, advance the ref with `force: false`, and verify the resulting commit and local checkout.
 
 The local checkout may have a stale commit hook that points at a missing Kontra sync script. If focused validation has already passed, use a no-verify local commit and publish through the configured GitHub connection instead of the shell remote.
 
