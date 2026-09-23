@@ -9738,10 +9738,12 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       setBriefLoading(false);
       setCoordination(coord);
       // Inject settlement/complete stages when settlement capability is active.
-      const rawStages = Array.isArray(stageData?.stages) && stageData.stages.length >= 2
+      const rawStages = Array.isArray(stageData?.stages) && (stageData?.historical || stageData.stages.length >= 2)
         ? stageData.stages
         : (pack.stages || []);
-      setStages(getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
+      setStages(stageData?.historical
+        ? rawStages
+        : getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
       setEvents(evData?.events || []);
       setChecklistItems(Array.isArray(ckData?.items) ? ckData.items : []);
       setDataLoading(false);
@@ -9979,6 +9981,14 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-100">
             Upload documents and invite participants before Kontra can assess transaction risk.
           </p>
+        )}
+        {coordination?.historical && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-bold text-amber-900">Previously completed · Historical verification</p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+              This workspace is for evidence-backed review of a completed transaction. Uploads, confirmations, conflicts, provenance, and snapshots remain available, but the active lifecycle will not advance and no snapshot or package is created automatically.
+            </p>
+          </div>
         )}
       </div>
 
@@ -10544,7 +10554,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
           </div>
         )}
         {/* Final stage — show completion badge */}
-        {ownerToken && stages.length > 0 && currentStageIdx === stages.length - 1 && (
+        {ownerToken && !coordination?.historical && stages.length > 0 && currentStageIdx === stages.length - 1 && (
           <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2">
             <span className="text-sm">🎉</span>
             <p className="text-xs font-semibold text-green-700">

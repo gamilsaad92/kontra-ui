@@ -98,6 +98,20 @@ function buildStageDecision({
   const currentStageKey = lifecycle.currentStageKey || null;
   const currentIndex = stages.findIndex(stage => stage?.key === currentStageKey);
   const nextStage = currentIndex >= 0 ? stages[currentIndex + 1] || null : null;
+
+  if (lifecycle.entryMode === 'previously_completed' || lifecycle.historical === true) {
+    return {
+      currentStage: stages[currentIndex] || { key: 'historical_verification', label: 'Historical verification' },
+      currentStageKey: currentStageKey || 'historical_verification',
+      nextStage: null,
+      recommendationAllowed: false,
+      status: 'historical_verification',
+      blockers: [],
+      reason: 'This previously completed room is in historical verification. Review and confirm evidence-backed facts; it cannot advance through the active transaction lifecycle.',
+      basis: {},
+    };
+  }
+
   const blockers = [];
   const semanticBlockerIdentities = new Set();
   const addBlocker = (key, label, detail, sourceType, extra = {}) => {

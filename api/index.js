@@ -172,6 +172,12 @@ const {
 const {
   buildDigitalAssetReadinessToggle,
 } = require('./lib/digitalAssetReadinessToggle');
+const {
+  TRANSACTION_ENTRY_MODES,
+  normalizeTransactionEntryMode,
+  isPreviouslyCompletedRoom,
+  historicalLifecycleStage,
+} = require('./lib/transactionEntryMode');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2222,6 +2228,12 @@ app.post('/api/checkout/guest', async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
+    let transactionEntryMode;
+    try {
+      transactionEntryMode = normalizeTransactionEntryMode(meta.transactionEntryMode);
+    } catch (error) {
+      return res.status(400).json({ error: error.code, message: error.message });
+    }
     const generatedProposal = await getApprovedGenerationProposal(meta.generationSessionId);
     if (meta.generationSessionId && !generatedProposal) {
       return res.status(409).json({ error: 'An approved AI room proposal is required before checkout' });
@@ -2320,6 +2332,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         transactionValue: meta.transactionValue || '',
         transactionValueConfidence: meta.transactionValueConfidence || '',
         digitalAssetEnabled: meta.digitalAssetEnabled === true,
+         transactionEntryMode: transactionEntryMode || '',
         generationSessionId: meta.generationSessionId || '',
         customConfigReviewed: workflowApproval.reviewed ? 'true' : 'false',
         customConfigApprovalHash: workflowApproval.approval?.configHash || '',
@@ -2356,6 +2369,7 @@ app.post('/api/checkout/guest', async (req, res) => {
         transaction_value: meta.transactionValue || '',
         transaction_value_confidence: meta.transactionValueConfidence || '',
         digital_asset_enabled: meta.digitalAssetEnabled === true,
+        transaction_entry_mode: transactionEntryMode,
           generation_session_id: meta.generationSessionId || '',
           generated_proposal: generatedProposal || null,
          custom_config_reviewed: workflowApproval.reviewed,
@@ -2364,6 +2378,7 @@ app.post('/api/checkout/guest', async (req, res) => {
           custom_config_approval_source: workflowApproval.approval?.source || '',
           custom_config_approved_at: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
          workflow_pack_id: finalPackId,
+         transaction_entry_mode: transactionEntryMode,
         owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
       });
@@ -2381,6 +2396,12 @@ app.post('/api/checkout/guest', async (req, res) => {
 app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
   try {
     const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    let transactionEntryMode;
+    try {
+      transactionEntryMode = normalizeTransactionEntryMode(meta.transactionEntryMode);
+    } catch (error) {
+      return res.status(400).json({ error: error.code, message: error.message });
+    }
     const generatedProposal = await getApprovedGenerationProposal(meta.generationSessionId);
     if (meta.generationSessionId && !generatedProposal) {
       return res.status(409).json({ error: 'An approved AI room proposal is required before creating a demo room' });
@@ -2450,9 +2471,12 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
        transaction_context: generatedProposal?.transaction?.context_facts || null,
        generated_proposal: generatedProposal || null,
        stages_config: demoInitialStages,
-       deal_stage: generatedProposal
-         ? inferGeneratedCurrentStage(demoInitialStages, generatedProposal)
-         : undefined,
+       deal_stage: transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
+         ? historicalLifecycleStage(transactionEntryMode).key
+         : generatedProposal
+           ? inferGeneratedCurrentStage(demoInitialStages, generatedProposal)
+           : undefined,
+       transaction_entry_mode: transactionEntryMode,
       metadata_values: buildCreationMetadata({
         propertyName,
         workflowPackId: demoPackId,
@@ -2484,7 +2508,10 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         // schema-cache miss for the column (what Supabase actually returns).
         // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
         const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
-          /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(upsertErr.message || '');
+          /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal|transaction_entry_mode).* (does not exist|schema cache)/i.test(upsertErr.message || '');
+        if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED && isMissingColumn) {
+          throw new Error('Previously completed workspaces require migration 029_transaction_entry_mode.sql before creation.');
+        }
         if (isMissingColumn) {
           // Keep workflow_pack_id whenever that column is available. A missing
           // stages_config column must not erase the custom ws_* pack link or
@@ -2493,7 +2520,7 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
           // PostgREST reports only the first missing column. Remove the whole
           // optional generated-room group in one retry so older production
           // schemas can still create the room.
-          for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+          for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal', 'transaction_entry_mode']) {
             delete baseRecord[column];
           }
           if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
@@ -2948,7 +2975,17 @@ app.post('/api/webhook/stripe',
          customConfigApprovalSource: metadataCustomConfigApprovalSource,
          customConfigApprovedAt: metadataCustomConfigApprovedAt,
          generationSessionId: metadataGenerationSessionId,
+         transactionEntryMode: metadataTransactionEntryMode,
       } = session.metadata || {};
+       let transactionEntryMode;
+       try {
+         transactionEntryMode = normalizeTransactionEntryMode(
+           metadataTransactionEntryMode || pending.transaction_entry_mode,
+         );
+       } catch (error) {
+         console.error('[webhook] invalid transaction entry mode:', error.message);
+         return res.status(400).json({ error: error.code, message: error.message });
+       }
       const customerEmail = session.customer_details?.email || session.customer_email || '';
       const amountPaid = (session.amount_total / 100).toFixed(2);
 
@@ -3015,9 +3052,12 @@ app.post('/api/webhook/stripe',
          transaction_context: generatedProposal?.transaction?.context_facts || null,
          generated_proposal: generatedProposal || null,
        stages_config: stripeInitialStages,
-       deal_stage: generatedProposal
-         ? inferGeneratedCurrentStage(stripeInitialStages, generatedProposal)
-         : undefined,
+       deal_stage: transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
+         ? historicalLifecycleStage(transactionEntryMode).key
+         : generatedProposal
+           ? inferGeneratedCurrentStage(stripeInitialStages, generatedProposal)
+           : undefined,
+        transaction_entry_mode: transactionEntryMode,
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,
@@ -3049,10 +3089,13 @@ app.post('/api/webhook/stripe',
           // schema-cache miss for the column (what Supabase actually returns).
           // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
           const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
-            /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal).* (does not exist|schema cache)/i.test(wErr.message || '');
+            /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal|transaction_entry_mode).* (does not exist|schema cache)/i.test(wErr.message || '');
+          if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
+            throw new Error('Previously completed workspaces require migration 029_transaction_entry_mode.sql before creation.');
+          }
           if (isMissingColumn) {
             const baseRecord = { ...dealRoomRecord };
-            for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal']) {
+            for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal', 'transaction_entry_mode']) {
               delete baseRecord[column];
             }
             if (/stages_config/i.test(wErr.message || '')) delete baseRecord.stages_config;
@@ -3078,6 +3121,12 @@ app.post('/api/webhook/stripe',
         }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
+        if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
+          return res.status(503).json({
+            error: 'HISTORICAL_ROOM_CREATION_UNAVAILABLE',
+            message: 'Previously completed workspace creation could not be confirmed because the workspace database is not ready.',
+          });
+        }
       }
 
       try {
@@ -6171,14 +6220,24 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
     const [roomRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
-      supabase.from('deal_rooms').select('deal_stage, property_name').eq('property_id', propertyId).maybeSingle(),
+      supabase.from('deal_rooms').select('deal_stage, transaction_entry_mode, property_name').eq('property_id', propertyId).maybeSingle(),
       supabase.from('party_submissions').select('*').eq('property_id', propertyId),
       supabase.from('deal_analyses').select('id, section, analysis, uploaded_by_role, created_at, processing_status, is_active, superseded_at').eq('property_id', propertyId),
       supabase.from('deal_room_invites')
         .select('role_key, status, last_used_at, expires_at, revoked_at')
         .eq('property_id', propertyId),
     ]);
-    const stage = roomRes.data?.deal_stage || 'uploading';
+    let roomData = roomRes.data;
+    if (roomRes.error && /transaction_entry_mode.*(does not exist|schema cache)|column .*transaction_entry_mode/i.test(roomRes.error.message || '')) {
+      const legacyRoom = await supabase
+        .from('deal_rooms')
+        .select('deal_stage, property_name')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      roomData = legacyRoom.data;
+    }
+    const historicalStage = historicalLifecycleStage(roomData?.transaction_entry_mode);
+    const stage = historicalStage?.key || roomData?.deal_stage || 'uploading';
     const activeAnalyses = selectActiveDocumentVersions(analysesRes.data || []);
     const allSubmissions = deriveParticipantSubmissionRows(
       submissionsRes.data || [],
@@ -6200,6 +6259,8 @@ app.get('/api/public/deal-room/:propertyId/coordination', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
       stage,
+      transactionEntryMode: roomData?.transaction_entry_mode || null,
+      historical: Boolean(historicalStage),
       submissions: safeSubmissions,
       parties: safeSubmissions,
       docsByRole,
@@ -6628,12 +6689,26 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   try {
     const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can advance stages');
-    const { data: room, error: fetchError } = await supabase
+    let { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
-      .select('workflow_pack_id, deal_stage, stages_config, metadata_values, settlement_mode')
+      .select('workflow_pack_id, deal_stage, transaction_entry_mode, stages_config, metadata_values, settlement_mode')
       .eq('property_id', propertyId)
       .single();
+    if (fetchError && /transaction_entry_mode.*(does not exist|schema cache)|column .*transaction_entry_mode/i.test(fetchError.message || '')) {
+      ({ data: room, error: fetchError } = await supabase
+        .from('deal_rooms')
+        .select('workflow_pack_id, deal_stage, stages_config, metadata_values, settlement_mode')
+        .eq('property_id', propertyId)
+        .single());
+    }
     if (fetchError) throw fetchError;
+    if (isPreviouslyCompletedRoom(room)) {
+      return res.status(409).json({
+        error: 'HISTORICAL_ROOM_NON_ADVANCING',
+        message: 'Previously completed rooms remain in historical verification and cannot advance through the active transaction lifecycle.',
+        state: 'historical_verification',
+      });
+    }
     const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
 
     // Derive the effective ordered stage list from custom config or pack defaults.
@@ -6790,26 +6865,29 @@ app.get('/api/public/deal-room/:propertyId/stages', async (req, res) => {
     if (access.mode === 'anonymous') return accessDenied(res);
     let { data, error } = await supabase
       .from('deal_rooms')
-      .select('stages_config, workflow_pack_id, deal_stage')
+      .select('stages_config, workflow_pack_id, deal_stage, transaction_entry_mode')
       .eq('property_id', propertyId)
       .maybeSingle();
     // Older Supabase schemas may not have stages_config yet. The room can
     // still resolve its custom workflow pack, so return null stages and let the
     // client use that pack's stages instead of failing the whole room.
-    if (error && /stages_config.*(does not exist|schema cache)|column .*stages_config/i.test(error.message || '')) {
+    if (error && /stages_config.*(does not exist|schema cache)|transaction_entry_mode.*(does not exist|schema cache)|column .*stages_config/i.test(error.message || '')) {
       ({ data, error } = await supabase
         .from('deal_rooms')
-        .select('workflow_pack_id, deal_stage')
+        .select('workflow_pack_id, deal_stage, transaction_entry_mode')
         .eq('property_id', propertyId)
         .maybeSingle());
       if (!error && data) data.stages_config = null;
     }
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'room not found' });
+    const historicalStage = historicalLifecycleStage(data.transaction_entry_mode);
     res.json({
-      stages: data.stages_config || null,
-      currentStage: data.deal_stage || 'uploading',
+      stages: historicalStage ? [historicalStage] : data.stages_config || null,
+      currentStage: historicalStage?.key || data.deal_stage || 'uploading',
       packId: data.workflow_pack_id || DEFAULT_PACK_ID,
+      transactionEntryMode: data.transaction_entry_mode || null,
+      historical: Boolean(historicalStage),
     });
   } catch (err) {
     console.error('[stages GET]', err.message);
@@ -6823,15 +6901,34 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
 
   // Auth: require owner_write_token
   if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
-  const { data: room, error: authErr } = await supabase
+  let { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, deal_stage')
+    .select('owner_write_token, deal_stage, transaction_entry_mode')
     .eq('property_id', propertyId)
     .maybeSingle();
+  if (authErr && /transaction_entry_mode.*(does not exist|schema cache)|column .*transaction_entry_mode/i.test(authErr.message || '')) {
+    const legacy = await supabase
+      .from('deal_rooms')
+      .select('owner_write_token, deal_stage')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (legacy.error) return res.status(500).json({ error: legacy.error.message });
+    if (!legacy.data) return res.status(404).json({ error: 'room not found' });
+    legacy.data.transaction_entry_mode = null;
+    room = legacy.data;
+    authErr = null;
+  }
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
   if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
     return res.status(403).json({ error: 'invalid owner_write_token' });
+  }
+  if (isPreviouslyCompletedRoom(room)) {
+    return res.status(409).json({
+      error: 'HISTORICAL_ROOM_NON_ADVANCING',
+      message: 'Previously completed rooms remain in historical verification and cannot be reconfigured as an active lifecycle.',
+      state: 'historical_verification',
+    });
   }
 
   // Validate stages array

@@ -406,13 +406,25 @@ router.get('/api/public/deal-room/:propertyId/verified-asset-package', async (re
   const { propertyId } = req.params;
 
   try {
-    const { data: room } = await supabase
+    let { data: room, error: roomError } = await supabase
       .from('deal_rooms')
-      .select('property_name, workflow_pack_id, base_pack, transaction_type, metadata_values, deal_stage, stages_config')
+      .select('property_name, workflow_pack_id, base_pack, transaction_type, transaction_entry_mode, metadata_values, deal_stage, stages_config')
       .eq('property_id', propertyId)
       .maybeSingle();
+    if (roomError && /transaction_entry_mode.*(does not exist|schema cache)|column .*transaction_entry_mode/i.test(roomError.message || '')) {
+      ({ data: room, error: roomError } = await supabase
+        .from('deal_rooms')
+        .select('property_name, workflow_pack_id, base_pack, transaction_type, metadata_values, deal_stage, stages_config')
+        .eq('property_id', propertyId)
+        .maybeSingle());
+    }
+    if (roomError) throw roomError;
     if (!room) return res.status(404).json({ error: 'Deal room not found' });
-    if (isHazardLossRoom(room)) {
+    // Historical entry is a narrow compatibility exception for this legacy
+    // read surface only. It may serve an already persisted package; it never
+    // creates one and the snapshot-bound package routes retain their eligibility
+    // and immutable-snapshot requirements.
+    if (isHazardLossRoom(room) && room.transaction_entry_mode !== 'previously_completed') {
       const packId = await getRoomPackId(propertyId);
       const { lastKey, secondToLastKey } = getTerminalStageKeys(room, packId);
       if (![lastKey, secondToLastKey].includes(room.deal_stage)) {

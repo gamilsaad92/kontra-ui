@@ -24,6 +24,7 @@ const {
   deriveParticipantSubmissionRows,
 } = require('./participantSubmissionState');
 const { buildStageDecision } = require('./stageDecision');
+const { historicalLifecycleStage } = require('./transactionEntryMode');
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
@@ -185,7 +186,19 @@ function taskEvidence(task) {
   return [];
 }
 
-function buildPackLifecycle(packId, stageKey, generatedProposal = null, customStages = null) {
+function buildPackLifecycle(packId, stageKey, generatedProposal = null, customStages = null, entryMode = null) {
+  const historicalStage = historicalLifecycleStage(entryMode);
+  if (historicalStage) {
+    return {
+      source: 'historical_transaction_entry',
+      packId,
+      entryMode: 'previously_completed',
+      historical: true,
+      currentStageKey: historicalStage.key,
+      currentStageLabel: historicalStage.label,
+      stages: [historicalStage],
+    };
+  }
   if (Array.isArray(customStages) && customStages.length >= 2) {
     const stages = customStages
       .filter(stage => stage?.key)
@@ -673,6 +686,7 @@ async function buildGroundedContext(propertyId) {
     room?.deal_stage || null,
     generatedProposal,
     room?.stages_config,
+    room?.transaction_entry_mode || null,
   );
   const groundedBlockers = buildGroundedBlockers({
     packId,
@@ -724,6 +738,8 @@ async function buildGroundedContext(propertyId) {
       workflowPack: packId,
       stage: room?.deal_stage || null,
       stageLabel,
+       entryMode: room?.transaction_entry_mode || null,
+       historicalVerification: room?.transaction_entry_mode === 'previously_completed',
       closingDate: room?.closing_date || closingDateField?.value || null,
       jurisdiction: room?.jurisdiction || null,
       digitalAssetEnabled,

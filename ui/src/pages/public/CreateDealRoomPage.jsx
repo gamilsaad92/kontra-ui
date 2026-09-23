@@ -339,6 +339,7 @@ export default function CreateDealRoomPage() {
     dealAmount: "",
     closingDate: "",
     jurisdiction: "",
+    transactionEntryMode: "active",
     digitalAssetReadiness: false,
     firstName: "",
     lastName: "",
@@ -723,7 +724,8 @@ export default function CreateDealRoomPage() {
         transactionStructure: aiTransactionStructure,
         transactionValue: aiTransactionValue,
         transactionValueConfidence: aiTransactionValueConfidence,
-      digitalAssetEnabled: isDigitalAssetReadinessOptedIn(form),
+         transactionEntryMode: form.transactionEntryMode,
+         digitalAssetEnabled: isDigitalAssetReadinessOptedIn(form),
          generationSessionId: isAiGenerated ? generationSessionId : "",
          customConfigReviewed: !!approvalToken,
          customConfigApprovalToken: approvalToken,
@@ -813,6 +815,31 @@ export default function CreateDealRoomPage() {
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-4">
 
             {/* ── Phase 0: Describe ─────────────────────────────────────── */}
+            {phase === 0 && (
+              <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-3.5">
+                <p className={labelCls}>Transaction entry</p>
+                <p className="mb-2 text-xs text-gray-500">Choose how this workspace should behave after it is created.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    { value: "active", label: "Active transaction", detail: "Use the normal advancing lifecycle." },
+                    { value: "previously_completed", label: "Previously completed", detail: "Review evidence without advancing the lifecycle." },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => set("transactionEntryMode", option.value)}
+                      className={`rounded-lg border px-3 py-2 text-left transition ${form.transactionEntryMode === option.value ? "border-red-800 bg-white ring-1 ring-red-800/20" : "border-gray-200 bg-white hover:border-gray-300"}`}
+                    >
+                      <span className={`block text-xs font-semibold ${form.transactionEntryMode === option.value ? "text-red-800" : "text-gray-800"}`}>{option.label}</span>
+                      <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-500">{option.detail}</span>
+                    </button>
+                  ))}
+                </div>
+                {form.transactionEntryMode === "previously_completed" && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-amber-700">This mode does not confirm facts or create a snapshot automatically. Documents and Transaction Record facts still require normal evidence review.</p>
+                )}
+              </div>
+            )}
             {phase === 0 && !showTemplatePicker && creationMode !== "blank" && (
               <div className="space-y-5">
                 <div>
@@ -859,7 +886,7 @@ export default function CreateDealRoomPage() {
                   <label className={labelCls}>Target closing date <span className="font-normal text-gray-400">(optional)</span></label>
                   <input type="date" className={inputCls}
                     value={form.closingDate}
-                    min={new Date().toISOString().split("T")[0]}
+                    {...(form.transactionEntryMode === "active" ? { min: new Date().toISOString().split("T")[0] } : {})}
                     onChange={e => set("closingDate", e.target.value)} />
                 </div>
 
