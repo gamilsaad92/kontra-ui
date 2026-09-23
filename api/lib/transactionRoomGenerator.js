@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { semanticRecordKey } = require('./semanticFieldTaxonomy');
+const { TRANSACTION_ENTRY_MODES } = require('./transactionEntryMode');
 
 const SOURCE_TYPES = new Set([
   'authoritative',
@@ -228,6 +229,9 @@ function normalizeProposal(raw = {}, context = {}) {
         : [],
       financing_type: raw.transaction?.financing_type || raw.financing_type || null,
       investor_or_agency: raw.transaction?.investor_or_agency || raw.investor_or_agency || null,
+      entry_mode: raw.transaction?.entry_mode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
+        ? TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
+        : null,
       confidence: confidence(raw.transaction?.confidence ?? raw.confidence),
       context_facts: Array.isArray(raw.transaction?.context_facts)
         ? raw.transaction.context_facts.slice(0, 50)
@@ -267,7 +271,13 @@ function validateProposal(proposal) {
   if (!proposal || typeof proposal !== 'object') errors.push('Proposal must be an object');
   if (!proposal?.transaction?.title) errors.push('Transaction title is required');
   if (!proposal?.transaction?.category) errors.push('Transaction category is required');
-  if (!Array.isArray(proposal?.stages) || proposal.stages.length < 2) errors.push('At least two stages are required');
+  const isPreviouslyCompleted = proposal?.transaction?.entry_mode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED;
+  if (!Array.isArray(proposal?.stages)
+    || (isPreviouslyCompleted ? proposal.stages.length !== 1 : proposal.stages.length < 2)) {
+    errors.push(isPreviouslyCompleted
+      ? 'Previously completed proposals require exactly one stage'
+      : 'At least two stages are required');
+  }
   if (!Array.isArray(proposal?.participants) || proposal.participants.length < 1) errors.push('At least one participant is required');
   const stageKeys = new Set();
   for (const stage of proposal?.stages || []) {

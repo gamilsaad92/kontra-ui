@@ -51,6 +51,42 @@ const TRANSACTION_TYPE_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const TRANSACTION_ENTRY_MODES = {
+  ACTIVE: "active",
+  PREVIOUSLY_COMPLETED: "previously_completed",
+};
+
+const HISTORICAL_PREVIEW_STAGE = Object.freeze({
+  key: "historical_verification",
+  label: "Historical Verification",
+});
+
+function isPreviouslyCompletedEntryMode(mode) {
+  return mode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED;
+}
+
+function previewConfigForEntryMode(config, entryMode) {
+  if (!isPreviouslyCompletedEntryMode(entryMode)) return config;
+  return {
+    ...config,
+    stages: [{ ...HISTORICAL_PREVIEW_STAGE }],
+  };
+}
+
+function canContinueFromPreview({
+  roles = [],
+  stages = [],
+  entryMode,
+  creationMode,
+  reviewConfirmed,
+}) {
+  return roles.length > 0 &&
+    (isPreviouslyCompletedEntryMode(entryMode) || stages.length >= 2) &&
+    roles.every(role => role.label.trim()) &&
+    stages.every(stage => stage.label.trim()) &&
+    (creationMode === "blank" || reviewConfirmed);
+}
+
 function slugKey(s) {
   return String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
@@ -461,7 +497,7 @@ export default function CreateDealRoomPage() {
         // Load template config and advance to preview
         const pack = getWorkflowPack(form.packId);
         const config = configFromPack(pack);
-        setCustomConfig(config);
+        setCustomConfig(previewConfigForEntryMode(config, form.transactionEntryMode));
         setIsAiGenerated(false);
         const coord = config.roles.find(r => r.canManage) || config.roles[0];
         if (coord) set("role", coord.key);
@@ -520,7 +556,7 @@ export default function CreateDealRoomPage() {
             label: s.label || "",
           })),
         };
-        setCustomConfig(generatedConfig);
+        setCustomConfig(previewConfigForEntryMode(generatedConfig, form.transactionEntryMode));
         setGeneratedBaselineConfig(generatedConfig);
         setReviewConfirmed(false);
         setApprovalToken("");
@@ -550,12 +586,14 @@ export default function CreateDealRoomPage() {
       if (creationMode !== "blank") {
         if (!reviewConfirmed) return;
         try {
+          const historicalEntry = isPreviouslyCompletedEntryMode(form.transactionEntryMode);
           const proposalForApproval = generationProposal ? {
             ...generationProposal,
             transaction: {
               ...generationProposal.transaction,
               title: form.workspaceName || generationProposal.transaction?.title,
               description: aiDescription.trim(),
+              ...(historicalEntry ? { entry_mode: TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED } : {}),
             },
             participants: customConfig.roles.map(role => ({
               ...(generationProposal.participants || []).find(item => item.role === role.key || item.key === role.key),
@@ -572,7 +610,9 @@ export default function CreateDealRoomPage() {
               required: document.required,
               responsible_role: document.assignedRole || "coordinator",
               source_type: (generationProposal.requirements || []).find(item => item.key === document.id)?.source_type || "ai_recommendation",
-              stage_key: (generationProposal.requirements || []).find(item => item.key === document.id)?.stage_key || customConfig.stages[0]?.key,
+              stage_key: historicalEntry
+                ? HISTORICAL_PREVIEW_STAGE.key
+                : (generationProposal.requirements || []).find(item => item.key === document.id)?.stage_key || customConfig.stages[0]?.key,
             })),
             stages: customConfig.stages.map((stage, index) => ({
               ...(generationProposal.stages || []).find(item => item.key === stage.key),
@@ -592,6 +632,7 @@ export default function CreateDealRoomPage() {
             if (!sessionApproval.ok) throw new Error(sessionApprovalData.error || "The generated proposal needs more review.");
             setGenerationProposal(sessionApprovalData.proposal || proposalForApproval);
           }
+          const configForApproval = activationConfig();
           const approvalRes = await fetch(`${API_BASE}/api/workspace/approve`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -599,7 +640,7 @@ export default function CreateDealRoomPage() {
               source: isAiGenerated ? "ai" : "template",
               generationProof: isAiGenerated ? generationProof : undefined,
               baselineConfig: isAiGenerated ? generatedBaselineConfig : undefined,
-              customConfig,
+              customConfig: configForApproval,
             }),
           });
           const approvalData = await approvalRes.json().catch(() => ({}));
@@ -663,14 +704,27 @@ export default function CreateDealRoomPage() {
       return aiDescription.trim().length > 10;
     }
     if (phase === 1) {
-      return customConfig.roles.length > 0 &&
-        customConfig.stages.length >= 2 &&
-        customConfig.roles.every(r => r.label.trim()) &&
-        customConfig.stages.every(s => s.label.trim()) &&
-        (creationMode === "blank" || reviewConfirmed);
+      return canContinueFromPreview({
+        roles: customConfig.roles,
+        stages: customConfig.stages,
+        entryMode: form.transactionEntryMode,
+        creationMode,
+        reviewConfirmed,
+      });
     }
     if (phase === 2) return !!(form.workspaceName && form.firstName && form.lastName && form.email && form.agree);
     return true;
+  }
+
+  function activationConfig() {
+    if (!isPreviouslyCompletedEntryMode(form.transactionEntryMode)) return customConfig;
+    const underlyingConfig = generatedBaselineConfig?.stages?.length >= 2
+      ? generatedBaselineConfig
+      : configFromPack(getWorkflowPack(form.packId) || activePack);
+    return {
+      ...customConfig,
+      stages: underlyingConfig.stages?.length >= 2 ? underlyingConfig.stages : customConfig.stages,
+    };
   }
 
   // ── Payload ───────────────────────────────────────────────────────────────
@@ -692,10 +746,11 @@ export default function CreateDealRoomPage() {
       : (creationMode === "ai" && AI_TYPE_TO_PACK[aiTransactionType])
         ? AI_TYPE_TO_PACK[aiTransactionType]
         : form.packId;
+    const configForActivation = activationConfig();
     const configToSend = isBlank
       ? { roles: [], documents: [], stages: [] }
-      : (customConfig.roles.length > 0 || customConfig.stages.length >= 2
-        ? { ...customConfig, transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : "") }
+      : (configForActivation.roles.length > 0 || configForActivation.stages.length >= 2
+        ? { ...configForActivation, transactionType: aiTransactionType || (form.packId === "tokenization" ? "tokenization" : "") }
         : null);
 
     const resolvedRole = (() => {
@@ -1120,13 +1175,32 @@ export default function CreateDealRoomPage() {
                     />
                   </CollapsedSection>
 
-                  <CollapsedSection
-                    title="Stages"
-                    count={customConfig.stages.length}
-                    icon="🗂️"
-                  >
-                    <StagesEditor stages={customConfig.stages} onChange={setStages} />
-                  </CollapsedSection>
+                  {isPreviouslyCompletedEntryMode(form.transactionEntryMode) ? (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3.5 bg-white">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base">🗂️</span>
+                          <div>
+                            <span className="text-sm font-semibold text-gray-900">Lifecycle state</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">Historical workspaces do not advance through an active lifecycle.</p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">1</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 px-4 pb-4 pt-3 border-t border-gray-100">
+                        <span className="text-xs text-gray-400 w-4 shrink-0 font-mono text-center">1</span>
+                        <span className="text-sm font-medium text-gray-800">{HISTORICAL_PREVIEW_STAGE.label}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <CollapsedSection
+                      title="Stages"
+                      count={customConfig.stages.length}
+                      icon="🗂️"
+                    >
+                      <StagesEditor stages={customConfig.stages} onChange={setStages} />
+                    </CollapsedSection>
+                  )}
                 </div>
               </div>
             )}
@@ -1329,4 +1403,11 @@ export default function CreateDealRoomPage() {
   );
 }
 
-export { AI_TYPE_LABELS, TRANSACTION_TYPE_OPTIONS };
+export {
+  AI_TYPE_LABELS,
+  TRANSACTION_TYPE_OPTIONS,
+  TRANSACTION_ENTRY_MODES,
+  HISTORICAL_PREVIEW_STAGE,
+  previewConfigForEntryMode,
+  canContinueFromPreview,
+};

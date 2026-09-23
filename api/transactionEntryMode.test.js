@@ -35,6 +35,7 @@ jest.mock('./lib/tokenizationGuidance', () => ({
 
 const { buildPackLifecycle } = require('./lib/operationsManager');
 const { buildStageDecision } = require('./lib/stageDecision');
+const { validateProposal } = require('./lib/transactionRoomGenerator');
 
 describe('previously completed transaction entry mode', () => {
   test('accepts explicit modes and treats an omitted value as legacy active behavior', () => {
@@ -77,5 +78,38 @@ describe('previously completed transaction entry mode', () => {
   test('only the authoritative mode marks a room historical', () => {
     expect(isPreviouslyCompletedRoom({ transaction_entry_mode: 'previously_completed' })).toBe(true);
     expect(isPreviouslyCompletedRoom({ transaction_entry_mode: null, deal_stage: 'complete' })).toBe(false);
+  });
+
+  test('allows exactly one historical proposal stage without weakening active validation', () => {
+    const base = {
+      transaction: { title: 'Completed transaction', category: 'business_acquisition' },
+      participants: [{ role: 'owner', label: 'Owner' }],
+      requirements: [],
+      transaction_record_fields: [],
+    };
+    const historical = validateProposal({
+      ...base,
+      transaction: { ...base.transaction, entry_mode: 'previously_completed' },
+      stages: [{ key: 'historical_verification', name: 'Historical Verification' }],
+    });
+    expect(historical).toEqual({ ok: true, errors: [] });
+
+    const active = validateProposal({
+      ...base,
+      stages: [{ key: 'closing', name: 'Closing' }],
+    });
+    expect(active.ok).toBe(false);
+    expect(active.errors).toContain('At least two stages are required');
+
+    const historicalWithSecondStage = validateProposal({
+      ...base,
+      transaction: { ...base.transaction, entry_mode: 'previously_completed' },
+      stages: [
+        { key: 'historical_verification', name: 'Historical Verification' },
+        { key: 'verified_asset', name: 'Verified Asset' },
+      ],
+    });
+    expect(historicalWithSecondStage.ok).toBe(false);
+    expect(historicalWithSecondStage.errors).toContain('Previously completed proposals require exactly one stage');
   });
 });
