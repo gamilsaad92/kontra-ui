@@ -178,6 +178,10 @@ const {
   isPreviouslyCompletedRoom,
   historicalLifecycleStage,
 } = require('./lib/transactionEntryMode');
+const {
+  buildDealRoomLifecycleFields,
+  inferGeneratedCurrentStage,
+} = require('./lib/historicalActivation');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2128,34 +2132,6 @@ async function saveCustomPackForWorkspace(propertyId, propertyName, customConfig
 // Built-in stage definitions live in the API registry, but AI-generated
 // workspace packs are stored as JSON in custom_workflow_packs. Never ask the
 // built-in registry for a ws_* ID — that silently returns the CRE stages.
-function inferGeneratedCurrentStage(stages = [], proposal = null) {
-  const safeStages = Array.isArray(stages) ? stages : [];
-  if (safeStages.length === 0) return null;
-  const transaction = proposal?.transaction || {};
-  const facts = Array.isArray(proposal?.transaction_record_fields)
-    ? proposal.transaction_record_fields
-    : [];
-  const contextFacts = Array.isArray(transaction.context_facts) ? transaction.context_facts : [];
-  const text = [
-    transaction.description,
-    ...contextFacts.flatMap(fact => [fact?.label, fact?.value]),
-    ...facts.flatMap(field => [field?.label, field?.value]),
-  ].filter(Boolean).join(' ').toLowerCase();
-  const loiExecuted = /\b(?:loi|letter of intent)\b[\s\S]{0,80}\b(?:signed|executed|fully executed)\b|\b(?:signed|executed|fully executed)\b[\s\S]{0,80}\b(?:loi|letter of intent)\b/.test(text);
-  const diligenceStarted = /\b(?:due diligence|diligence)\b[\s\S]{0,60}\b(?:beginning|begun|starting|started|underway|in progress)\b|\b(?:beginning|begun|starting|started|underway|in progress)\b[\s\S]{0,60}\b(?:due diligence|diligence)\b/.test(text);
-  const findStage = pattern => safeStages.find(stage => pattern.test(`${stage.key || ''} ${stage.label || ''}`.toLowerCase()));
-  if (loiExecuted && diligenceStarted) {
-    return findStage(/\b(due diligence|diligence|underwriting|review|verification)\b/)?.key
-      || safeStages[Math.min(2, safeStages.length - 1)].key;
-  }
-  if (loiExecuted) {
-    return findStage(/\b(due diligence|diligence|underwriting|review)\b/)?.key
-      || findStage(/\bloi|letter of intent\b/)?.key
-      || safeStages[0].key;
-  }
-  return safeStages[0].key;
-}
-
 async function getInitialStagesForPack(packId, explicitStages = null) {
   const sourceStages = Array.isArray(explicitStages) && explicitStages.length >= 2
     ? explicitStages
@@ -2471,12 +2447,11 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
        transaction_context: generatedProposal?.transaction?.context_facts || null,
        generated_proposal: generatedProposal || null,
        stages_config: demoInitialStages,
-       deal_stage: transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
-         ? historicalLifecycleStage(transactionEntryMode).key
-         : generatedProposal
-           ? inferGeneratedCurrentStage(demoInitialStages, generatedProposal)
-           : undefined,
-       transaction_entry_mode: transactionEntryMode,
+       ...buildDealRoomLifecycleFields({
+         transactionEntryMode,
+         stages: demoInitialStages,
+         generatedProposal,
+       }),
       metadata_values: buildCreationMetadata({
         propertyName,
         workflowPackId: demoPackId,
@@ -3052,12 +3027,11 @@ app.post('/api/webhook/stripe',
          transaction_context: generatedProposal?.transaction?.context_facts || null,
          generated_proposal: generatedProposal || null,
        stages_config: stripeInitialStages,
-       deal_stage: transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED
-         ? historicalLifecycleStage(transactionEntryMode).key
-         : generatedProposal
-           ? inferGeneratedCurrentStage(stripeInitialStages, generatedProposal)
-           : undefined,
-        transaction_entry_mode: transactionEntryMode,
+         ...buildDealRoomLifecycleFields({
+           transactionEntryMode,
+           stages: stripeInitialStages,
+           generatedProposal,
+         }),
         metadata_values: buildCreationMetadata({
           propertyName: propertyName || pending.property_name || '',
           transactionDescription: metadataTransactionDescription || pending.transaction_description,

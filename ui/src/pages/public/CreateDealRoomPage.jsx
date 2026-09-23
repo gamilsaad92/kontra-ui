@@ -1313,10 +1313,19 @@ export default function CreateDealRoomPage() {
                     },
                     creationMode !== "blank" && customConfig.roles.length > 0 && { label: "Participants", value: `${customConfig.roles.length} role${customConfig.roles.length !== 1 ? "s" : ""}` },
                     creationMode !== "blank" && customConfig.documents.length > 0 && { label: "Documents", value: `${customConfig.documents.length} item${customConfig.documents.length !== 1 ? "s" : ""}` },
-                    creationMode !== "blank" && customConfig.stages.length > 0 && { label: "Stages", value: `${customConfig.stages.length} stage${customConfig.stages.length !== 1 ? "s" : ""}` },
+                    creationMode !== "blank" && customConfig.stages.length > 0 && (
+                      isPreviouslyCompletedEntryMode(form.transactionEntryMode)
+                        ? { label: "Lifecycle state", value: "Historical Verification" }
+                        : { label: "Stages", value: `${customConfig.stages.length} stage${customConfig.stages.length !== 1 ? "s" : ""}` }
+                    ),
                     { label: "Contact", value: `${form.firstName} ${form.lastName} · ${form.email}` },
                     { label: "Price", value: "$499 one-time" },
-                    { label: "Access", value: "During the applicable active deal-room period" },
+                    {
+                      label: "Access",
+                      value: isPreviouslyCompletedEntryMode(form.transactionEntryMode)
+                        ? "Historical verification and record preparation"
+                        : "During the applicable active deal-room period",
+                    },
                   ].filter(Boolean).map(r => (
                     <div key={r.label} className="flex justify-between items-start gap-4 px-4 py-3">
                       <span className="text-xs font-semibold text-gray-400 shrink-0 w-24">{r.label}</span>
