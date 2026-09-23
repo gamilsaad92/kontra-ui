@@ -182,6 +182,10 @@ const {
   buildDealRoomLifecycleFields,
   inferGeneratedCurrentStage,
 } = require('./lib/historicalActivation');
+const {
+  classifyDealRoomSchemaError,
+  createHistoricalRoomMigrationError,
+} = require('./lib/dealRoomSchemaErrors');
 
 // Pack inference map — mirrors DEAL_TYPE_TO_PACK in dealRoomHelpers.js so that
 // room creation writes the correct workflow_pack_id from day one.
@@ -2479,15 +2483,16 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
     try {
       const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
       if (upsertErr) {
-        // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
-        // schema-cache miss for the column (what Supabase actually returns).
-        // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
-        const isMissingColumn = upsertErr.code === '42703' || upsertErr.code === 'PGRST204' ||
-          /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal|transaction_entry_mode).* (does not exist|schema cache)/i.test(upsertErr.message || '');
-        if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED && isMissingColumn) {
-          throw new Error('Previously completed workspaces require migration 029_transaction_entry_mode.sql before creation.');
+        const schemaError = classifyDealRoomSchemaError(upsertErr);
+        if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
+          const migrationError = createHistoricalRoomMigrationError(upsertErr);
+          if (migrationError) throw migrationError;
+          // Historical rooms retain their fail-closed behavior. Do not drop
+          // migration-021 fields and create a partial historical room when a
+          // different required room column is missing.
+          if (schemaError.isSchemaIncompatibility) throw upsertErr;
         }
-        if (isMissingColumn) {
+        if (schemaError.isSchemaIncompatibility) {
           // Keep workflow_pack_id whenever that column is available. A missing
           // stages_config column must not erase the custom ws_* pack link or
           // the room will render as CRE on the next page load.
@@ -2516,6 +2521,12 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
     } catch (dbErr) {
       console.error('[demo] deal_rooms upsert failed:', dbErr.message);
+      if (dbErr.code === 'HISTORICAL_ROOM_MIGRATION_REQUIRED') {
+        return res.status(503).json({
+          error: dbErr.code,
+          message: 'Previously completed workspace creation requires migration 029_transaction_entry_mode.sql before it can continue.',
+        });
+      }
       return res.status(503).json({
         error: 'Workspace could not be created',
         message: 'The workspace database is not ready. No room was created; please try again after the database is updated.',
@@ -2921,6 +2932,10 @@ app.post('/api/webhook/stripe',
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
+      // Pull pending deal room data stored at checkout time before resolving
+      // fields that may only exist in the in-memory pending record.
+      const pending = pendingDealRooms.get(session.id) || {};
+      pendingDealRooms.delete(session.id);
       const {
         plan,
         propertyId,
@@ -2952,10 +2967,10 @@ app.post('/api/webhook/stripe',
          generationSessionId: metadataGenerationSessionId,
          transactionEntryMode: metadataTransactionEntryMode,
       } = session.metadata || {};
-       let transactionEntryMode;
+      let transactionEntryMode;
        try {
          transactionEntryMode = normalizeTransactionEntryMode(
-           metadataTransactionEntryMode || pending.transaction_entry_mode,
+          metadataTransactionEntryMode || pending.transaction_entry_mode,
          );
        } catch (error) {
          console.error('[webhook] invalid transaction entry mode:', error.message);
@@ -2966,9 +2981,6 @@ app.post('/api/webhook/stripe',
 
       console.log(`[webhook] ✅ Payment confirmed — $${amountPaid} | ${plan} | ${propertyId} | ${customerEmail}`);
 
-      // Pull pending deal room data stored at checkout time
-      const pending = pendingDealRooms.get(session.id) || {};
-      pendingDealRooms.delete(session.id);
       const generationSessionId = metadataGenerationSessionId || pending.generation_session_id || '';
       const generatedProposal = await getApprovedGenerationProposal(generationSessionId);
       if (generationSessionId && !generatedProposal) {
@@ -3059,15 +3071,15 @@ app.post('/api/webhook/stripe',
       try {
         const { error: wErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
         if (wErr) {
-          // 42703 = raw Postgres "column does not exist"; PGRST204 = PostgREST
-          // schema-cache miss for the column (what Supabase actually returns).
-          // Either way workflow_pack_id/stages_config isn't migrated yet — retry without those columns.
-          const isMissingColumn = wErr.code === '42703' || wErr.code === 'PGRST204' ||
-            /column .*(workflow_pack_id|stages_config|base_pack|transaction_type|transaction_subtype|transaction_context|generated_proposal|transaction_entry_mode).* (does not exist|schema cache)/i.test(wErr.message || '');
+          const schemaError = classifyDealRoomSchemaError(wErr);
           if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
-            throw new Error('Previously completed workspaces require migration 029_transaction_entry_mode.sql before creation.');
+            const migrationError = createHistoricalRoomMigrationError(wErr);
+            if (migrationError) throw migrationError;
+            // Do not acknowledge a historical room after dropping unrelated
+            // generated-room columns. It must remain fully fail-closed.
+            if (schemaError.isSchemaIncompatibility) throw wErr;
           }
-          if (isMissingColumn) {
+          if (schemaError.isSchemaIncompatibility) {
             const baseRecord = { ...dealRoomRecord };
             for (const column of ['base_pack', 'transaction_type', 'transaction_subtype', 'transaction_context', 'generated_proposal', 'transaction_entry_mode']) {
               delete baseRecord[column];
@@ -3095,10 +3107,16 @@ app.post('/api/webhook/stripe',
         }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
+        if (dbErr.code === 'HISTORICAL_ROOM_MIGRATION_REQUIRED') {
+          return res.status(503).json({
+            error: dbErr.code,
+            message: 'Previously completed workspace creation requires migration 029_transaction_entry_mode.sql before it can continue.',
+          });
+        }
         if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
           return res.status(503).json({
-            error: 'HISTORICAL_ROOM_CREATION_UNAVAILABLE',
-            message: 'Previously completed workspace creation could not be confirmed because the workspace database is not ready.',
+            error: 'WORKSPACE_DATABASE_UNAVAILABLE',
+            message: 'Workspace creation is temporarily unavailable while the workspace database is updated. No room was created.',
           });
         }
       }
