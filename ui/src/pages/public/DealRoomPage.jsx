@@ -11360,6 +11360,7 @@ export default function DealRoomPage() {
                     propertyId={pid}
                     propertyType={property.property_type || property.type}
                     role={role}
+                    access={property.access}
                     isDemo={isDemo}
                     packId={packId}
                     packReady={packReady}
@@ -11562,6 +11563,7 @@ export default function DealRoomPage() {
                   propertyId={pid}
                   propertyType={property.property_type || property.type}
                   role={role}
+                  access={property.access}
                   isDemo={isDemo}
                   packId={packId}
                   packReady={packReady}

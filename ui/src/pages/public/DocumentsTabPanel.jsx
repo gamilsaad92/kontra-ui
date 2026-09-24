@@ -16,6 +16,7 @@ export default function DocumentsTabPanel({
   propertyId,
   propertyType,
   role,
+  access,
   isDemo,
   packId = DEFAULT_PACK_ID,
   packReady = true,
@@ -33,6 +34,7 @@ export default function DocumentsTabPanel({
         propertyId={propertyId}
         propertyType={propertyType}
         role={role}
+        access={access}
         isDemo={isDemo}
         packId={packId}
         packReady={packReady}

@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 import { API_BASE } from "../../lib/apiBase";
-
-const normalizeRoleKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+import {
+  normalizeChecklistRoleKey as normalizeRoleKey,
+  resolveDocumentChecklistView,
+} from "../../lib/documentChecklistAccess";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function slugify(s) {
@@ -531,7 +533,7 @@ function CoordinatorDocumentGroups({ template, allItems, uploadedSections, build
 export default function DocumentChecklistPanel({
   propertyId, propertyType, role, isDemo = false,
   packId = DEFAULT_PACK_ID, packReady = true, onAnalysisSaved,
-  jurisdiction, onPeople,
+  jurisdiction, onPeople, access,
   requestTarget, onRequestTargetHandled,
 }) {
   const workflowPack = getWorkflowPack(packId);
@@ -575,7 +577,6 @@ export default function DocumentChecklistPanel({
 
   // ── Role + coordinator check ─────────────────────────────────────────────
   const roleConfig = workflowPack.getRole?.(role);
-  const isCoordinator = !!roleConfig?.canManage;
   const packRoles = workflowPack.roles || [];
 
   // ── Load analyses ─────────────────────────────────────────────────────────
@@ -943,13 +944,13 @@ export default function DocumentChecklistPanel({
       ? item.assignedTo : (configured?.assignedTo || []);
     return configured ? { ...configured, ...item, assignedTo } : { ...item, assignedTo };
   });
-  const normalizedRole = normalizeRoleKey(role);
-  const myItems = allItems.filter(i =>
-    (i.assignedTo || []).some(assignedRole => normalizeRoleKey(assignedRole) === normalizedRole)
-  );
-  const template = isCoordinator
-    ? allItems
-    : myItems;
+  const { isCoordinator, myItems, template } = resolveDocumentChecklistView({
+    items: allItems,
+    role,
+    access,
+    isDemo,
+    demoRoleCanManage: roleConfig?.canManage === true,
+  });
 
   const requiredItems = template.filter(i => i.required);
   const doneCount = template.filter(isDocumentReceived).length;
