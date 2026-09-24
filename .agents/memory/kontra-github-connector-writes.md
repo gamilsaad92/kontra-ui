@@ -15,6 +15,12 @@ GraphQL `Blob.text` can be truncated for large source files even when the blob's
 
 **How to apply:** Check `isTruncated` and `byteSize`, prefer complete local file contents for additions, and run syntax checks plus remote byte-size verification before considering the publish complete.
 
+For GraphQL `createCommitOnBranch`, `FileAddition.contents` must be base64-encoded UTF-8 text. Detailed validation errors can echo raw source text.
+
+**Why:** The connector's GraphQL input validates `contents` as Base64, unlike the REST Contents API's `content` field.
+
+**How to apply:** Encode with `Buffer.from(content, 'utf8').toString('base64')` inside the connector call, and sanitize failed-write responses instead of logging full `extensions.problems`.
+
 When local `main` has diverged from the current GitHub `main`, fetch the live head, cherry-pick only the intended local commit onto it, and publish the intended file set from that live base through the connector; do not force-push the local history. A connector-created tree/commit can be used when the local commit object is not present remotely.
 
 **Why:** The local Replit checkout can be based on a gitsafe snapshot while the connected GitHub branch has newer unrelated commits. Remote-based file edits preserve those changes and still publish the completed work.
