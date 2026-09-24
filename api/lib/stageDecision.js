@@ -101,7 +101,7 @@ function buildStageDecision({
 
   if (lifecycle.entryMode === 'previously_completed' || lifecycle.historical === true) {
     return {
-      currentStage: stages[currentIndex] || { key: 'historical_verification', label: 'Historical verification' },
+      currentStage: stages[currentIndex] || { key: 'historical_verification', label: 'Historical Verification' },
       currentStageKey: currentStageKey || 'historical_verification',
       nextStage: null,
       recommendationAllowed: false,

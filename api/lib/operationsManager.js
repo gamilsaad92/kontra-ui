@@ -307,22 +307,39 @@ function isParticipantTask(task) {
     || task?.source_type === 'party_submission';
 }
 
-function filterTasksToLiveParticipants(tasks, participantDefinitions, participants = []) {
+function filterTasksToLiveParticipants(
+  tasks,
+  participantDefinitions,
+  participants = [],
+  { historical = false } = {},
+) {
   const liveParticipantKeys = new Set((participantDefinitions || []).map(role => role.key));
   const completedParticipantKeys = new Set((participants || [])
     .filter(participant => ['submitted', 'complete', 'completed'].includes(
       String(participant?.submissionStatus || participant?.status || '').toLowerCase(),
     ) || Number(participant?.documentCount || participant?.doc_count || 0) > 0)
     .map(participant => participant.role));
-  return (Array.isArray(tasks) ? tasks : []).filter(task =>
-    !isParticipantTask(task)
+  return (Array.isArray(tasks) ? tasks : []).filter(task => {
+    const participantActivationTask = task?.task_type === 'missing_participant'
+      || task?.taskType === 'missing_participant'
+      || task?.source_type === 'party_role'
+      || task?.sourceType === 'party_role';
+    if (historical && participantActivationTask) return false;
+    return !isParticipantTask(task)
       || (liveParticipantKeys.has(subjectRoleOf(task))
-        && !completedParticipantKeys.has(subjectRoleOf(task)))
-  );
+        && !completedParticipantKeys.has(subjectRoleOf(task)));
+  });
 }
 
 function buildGroundedBlockers({
-  packId, recordState, missingDocuments, participants, tasks, participantDefinitions, conflicts = [],
+  packId,
+  recordState,
+  missingDocuments,
+  participants,
+  tasks,
+  participantDefinitions,
+  conflicts = [],
+  historical = false,
 }) {
   const blockers = [];
   const requiredFields = Array.isArray(recordState?.requiredFields) ? recordState.requiredFields : [];
@@ -369,7 +386,7 @@ function buildGroundedBlockers({
     });
   });
 
-  effectiveParticipantDefinitions
+  (historical ? [] : effectiveParticipantDefinitions)
     .filter(role => role.required && role.invitable !== false
       && !role.legacyOnly && !isCoordinatorRoleDefinition(role))
     .forEach(role => {
@@ -436,6 +453,11 @@ function buildGroundedBlockers({
         || task.task_type === 'pending_submission'
         || task.source_type === 'party_role'
         || task.source_type === 'party_submission';
+      const participantActivationTask = task.task_type === 'missing_participant'
+        || task.taskType === 'missing_participant'
+        || task.source_type === 'party_role'
+        || task.sourceType === 'party_role';
+      if (historical && participantActivationTask) return false;
       if (!participantTask) return true;
       return liveRequiredParticipantKeys.has(subjectRoleOf(task));
     })
@@ -575,6 +597,13 @@ async function buildGroundedContext(propertyId) {
   const generatedStage = generatedProposal?.stages?.find(stage => stage.key === room?.deal_stage);
   const stageLabel = generatedStage?.name
     || (room?.deal_stage ? getPackStageLabel(packId, room.deal_stage) : null);
+  const lifecycle = buildPackLifecycle(
+    packId,
+    room?.deal_stage || null,
+    generatedProposal,
+    room?.stages_config,
+    room?.transaction_entry_mode || null,
+  );
 
   const allOpenTasks = tasks.filter(t => ['pending', 'in_progress', 'escalated'].includes(t.status));
   const allRecentlyResolved = tasks
@@ -677,17 +706,19 @@ async function buildGroundedContext(propertyId) {
         ),
       };
     });
-  const groundedTasks = filterTasksToLiveParticipants(tasks, participantDefinitions, participantContext);
+  // A previously completed room retains its role schema for evidence review,
+  // but missing-role activation tasks are not active-lifecycle blockers.
+  const groundedTasks = filterTasksToLiveParticipants(
+    tasks,
+    participantDefinitions,
+    participantContext,
+    { historical: lifecycle.historical === true },
+  );
   const openTasks = allOpenTasks.filter(task => groundedTasks.includes(task));
   const recentlyResolved = allRecentlyResolved.filter(task => groundedTasks.includes(task));
-  const chainStatus = computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
-  const lifecycle = buildPackLifecycle(
-    packId,
-    room?.deal_stage || null,
-    generatedProposal,
-    room?.stages_config,
-    room?.transaction_entry_mode || null,
-  );
+  const chainStatus = lifecycle.historical
+    ? null
+    : computeChainStatus(packId, groundedTasks.map(t => ({ ...t, ownerRole: t.owner_role })));
   const groundedBlockers = buildGroundedBlockers({
     packId,
     recordState,
@@ -696,6 +727,7 @@ async function buildGroundedContext(propertyId) {
     tasks: groundedTasks,
     participantDefinitions,
     conflicts,
+    historical: lifecycle.historical === true,
   });
   const stageDecision = buildStageDecision({
     lifecycle,
@@ -1221,11 +1253,40 @@ function buildDocumentStatusAnswer(ctx) {
 }
 
 // ── Morning briefing ──────────────────────────────────────────────────────────
+function buildHistoricalVerificationBriefing(ctx) {
+  const openTasks = Array.isArray(ctx.openTasks) ? ctx.openTasks : [];
+  const recentlyResolved = Array.isArray(ctx.recentlyResolved) ? ctx.recentlyResolved : [];
+  return {
+    status: 'on_track',
+    statusLabel: 'Historical Verification',
+    expectedClosing: ctx.room?.closingDate || null,
+    narrative: 'This workspace is for evidence review of a completed transaction. Active lifecycle stages and participant activation are disabled. Review missing evidence, extracted Transaction Record facts, and any optional Digital Asset readiness work.',
+    parallelNote: null,
+    prepared: [],
+    criticalPath: [],
+    blocking: [],
+    nonBlockingTaskIds: openTasks.map(task => task.id).filter(Boolean),
+    taskRisks: {},
+    chain: null,
+    openTaskCount: openTasks.length,
+    reviewedCount: openTasks.length + recentlyResolved.length,
+    missingDocuments: Array.isArray(ctx.missingDocuments) ? ctx.missingDocuments : [],
+    recordFactCount: Array.isArray(ctx.recordFacts) ? ctx.recordFacts.length : 0,
+    documentFindingCount: Array.isArray(ctx.documentFindings) ? ctx.documentFindings.length : 0,
+    historical: true,
+  };
+}
+
 async function getBriefing(propertyId) {
   const cached = getCached(propertyId);
   if (cached) return cached;
 
   const ctx = await buildGroundedContext(propertyId);
+  if (ctx.lifecycle?.historical === true) {
+    const result = buildHistoricalVerificationBriefing(ctx);
+    setCache(propertyId, result);
+    return result;
+  }
   const openai = getOpenAI();
 
   const fallback = () => {
@@ -1522,6 +1583,9 @@ async function askQuestion(propertyId, question, traceContext = {}) {
       recordState: ctx.recordState,
     })
     : null;
+  const lifecycleAnswerGuidance = ctx.lifecycle?.historical === true
+    ? 'This room is in Historical Verification. Do not recommend active transaction stages, advancing stages, or inviting/onboarding participants. Participant roles remain context for interpreting historical evidence and assigned documents; document review, Transaction Record confirmation, conflicts, and optional Digital Asset readiness remain relevant.'
+    : '';
 
   if (!openai) {
     if (tokenizationGuidance) {
@@ -1554,6 +1618,7 @@ Answer the user's operational question. Respond as JSON:
   say they are follow-up work rather than blockers.),
   "citedTaskIds": [ string ] }
 If the question cannot be answered from context, say so directly.
+${lifecycleAnswerGuidance ? `\n${lifecycleAnswerGuidance}` : ''}
 ${tokenizationGuidance ? `\n${buildTokenizationPrompt(tokenizationGuidance)}` : ''}`,
         },
         { role: 'user', content: `Workspace context:\n${askContextToPrompt(ctx)}\n\nQuestion: ${question}` },
@@ -1709,6 +1774,8 @@ module.exports = {
   buildGroundedContext,
   buildPackLifecycle,
   buildGroundedBlockers,
+  buildHistoricalVerificationBriefing,
+  filterTasksToLiveParticipants,
   buildStageDecisionAnswer,
   classifyStageDecisionQuestion,
   getLiveMissingDocuments,

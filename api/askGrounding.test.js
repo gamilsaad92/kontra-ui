@@ -36,6 +36,9 @@ const {
   getLiveMissingDocuments,
   getBriefing,
   clearBriefingCache,
+  filterTasksToLiveParticipants,
+  buildGroundedBlockers,
+  buildHistoricalVerificationBriefing,
 } = require('./lib/operationsManager');
 
 const PACKS = Object.keys(workflowStages).filter(key => !key.startsWith('_'));
@@ -45,6 +48,82 @@ const QUESTIONS = [
   'What still needs verification?',
   'Could this transaction be prepared for tokenization?',
 ];
+
+describe('historical task projection', () => {
+  test('suppresses participant activation tasks but retains evidence submissions and other work', () => {
+    const tasks = [
+      {
+        id: 'missing-buyer',
+        task_type: 'missing_participant',
+        source_type: 'party_role',
+        source_id: 'missing-role:buyer',
+      },
+      {
+        id: 'pending-seller-evidence',
+        task_type: 'pending_submission',
+        source_type: 'party_submission',
+        source_id: 'pending-submission:seller',
+      },
+      {
+        id: 'digital-asset-readiness',
+        task_type: 'readiness_setup',
+        source_type: 'readiness',
+      },
+    ];
+    const roles = [{ key: 'buyer' }, { key: 'seller' }];
+
+    expect(filterTasksToLiveParticipants(tasks, roles, [], { historical: true }))
+      .toEqual([tasks[1], tasks[2]]);
+    expect(filterTasksToLiveParticipants(tasks, roles, [], { historical: false }))
+      .toEqual(tasks);
+  });
+
+  test('suppresses participant activation blockers but keeps document evidence blockers', () => {
+    const input = {
+      packId: 'cre_acquisition',
+      recordState: { requiredFields: [] },
+      missingDocuments: [{ label: 'Purchase agreement', section: 'legal' }],
+      participants: [],
+      tasks: [],
+      participantDefinitions: [{
+        key: 'buyer',
+        label: 'Buyer',
+        required: true,
+        invitable: true,
+      }],
+      historical: true,
+    };
+
+    const blockers = buildGroundedBlockers(input);
+    expect(blockers.map(blocker => blocker.sourceType)).toEqual(['required_document']);
+    expect(buildGroundedBlockers({ ...input, historical: false })
+      .map(blocker => blocker.sourceType)).toEqual(['required_document', 'required_participant']);
+  });
+
+  test('briefing keeps historical state and evidence work without an active task chain', () => {
+    const briefing = buildHistoricalVerificationBriefing({
+      room: { closingDate: '2024-05-01' },
+      openTasks: [{ id: 'digital-asset-readiness' }],
+      recentlyResolved: [],
+      missingDocuments: [{ label: 'Purchase agreement' }],
+      recordFacts: [{ key: 'transaction.value' }],
+      documentFindings: [{ id: 'analysis-1' }],
+    });
+
+    expect(briefing).toMatchObject({
+      statusLabel: 'Historical Verification',
+      expectedClosing: '2024-05-01',
+      criticalPath: [],
+      blocking: [],
+      chain: null,
+      nonBlockingTaskIds: ['digital-asset-readiness'],
+      missingDocuments: [{ label: 'Purchase agreement' }],
+      recordFactCount: 1,
+      documentFindingCount: 1,
+      historical: true,
+    });
+  });
+});
 
 function completedParticipants(packId) {
   return getPackRoleConfig(packId).roles

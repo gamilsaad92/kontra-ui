@@ -7,7 +7,7 @@ const TRANSACTION_ENTRY_MODES = Object.freeze({
 
 const HISTORICAL_STAGE = Object.freeze({
   key: 'historical_verification',
-  label: 'Historical verification',
+  label: 'Historical Verification',
 });
 
 function normalizeTransactionEntryMode(value) {

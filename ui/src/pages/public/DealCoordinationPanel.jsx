@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
 import { getRoomAuthHeaders } from '../../lib/inviteUtils';
+import {
+  isHistoricalLifecycle,
+  resolveLifecycleStages,
+} from '../../lib/roomLifecycleProjection';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -31,6 +35,7 @@ const STAGE_META_DEFAULTS = {
   approved:     { icon: '✅', desc: 'Deal approved' },
   closing:      { icon: '✍️', desc: 'Signing & funding in process' },
   funded:       { icon: '🏦', desc: 'Deal closed' },
+  historical_verification: { icon: '📚', desc: 'Review evidence from the completed transaction' },
 };
 const DEFAULT_STAGE_ICON = '📌';
 
@@ -260,7 +265,14 @@ function ManageStagesPanel({ stages, currentStageKey, propertyId, onSave, onCanc
 }
 
 // ── Main DealCoordinationPanel ────────────────────────────────────────────────
-export default function DealCoordinationPanel({ propertyId, role, packId = DEFAULT_PACK_ID, propertyType, isDemo = false }) {
+export default function DealCoordinationPanel({
+  propertyId,
+  role,
+  packId = DEFAULT_PACK_ID,
+  propertyType,
+  transactionEntryMode = null,
+  isDemo = false,
+}) {
   const workflowPack = getWorkflowPack(packId);
   const PACK_STAGES = workflowPack.stages;
   const ROLE_META = Object.fromEntries(workflowPack.roles.map(r => [r.key, r]));
@@ -278,6 +290,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   const [showStatusFor, setShowStatusFor] = useState(null);
   // Custom stages state
   const [customStages, setCustomStages] = useState(null); // null = use pack default
+  const [stageProjection, setStageProjection] = useState(null);
   const [showManage, setShowManage] = useState(false);
   const [lifecycleGate, setLifecycleGate] = useState(isDemo ? { eligible: true } : null);
 
@@ -305,13 +318,16 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
       });
       if (!res.ok) return;
       const json = await res.json();
-      if (Array.isArray(json.stages) && json.stages.length >= 2) {
-        setCustomStages(json.stages.map(enrichStage));
-      }
+      setStageProjection(json);
+      setCustomStages(resolveLifecycleStages({
+        stageProjection: json,
+        packStages: PACK_STAGES,
+        transactionEntryMode,
+      }).map(enrichStage));
     } catch {
-      // silent — fall back to pack stages
+      // A historical room stays stage-less until its canonical projection loads.
     }
-  }, [propertyId]);
+  }, [propertyId, PACK_STAGES, transactionEntryMode]);
 
   const fetchLifecycleGate = useCallback(async () => {
     if (isDemo) return;
@@ -339,7 +355,14 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   }, [fetchCoordination, fetchStages, fetchLifecycleGate]);
 
   // Effective stages: custom (if saved) or pack default
-  const effectiveStages = customStages || PACK_STAGES;
+  const historicalRoom = isHistoricalLifecycle({
+    transactionEntryMode,
+    stageProjection,
+    coordination: data,
+  });
+  const effectiveStages = historicalRoom
+    ? (Array.isArray(customStages) ? customStages : [])
+    : (customStages || PACK_STAGES);
 
   // Build nextStage and advanceLabel dynamically from the ordered stage list
   const effectiveNextStage = Object.fromEntries(
@@ -404,14 +427,16 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
   if (loading) return null;
   if (!data) return null;
 
-  const stage = data.stage || 'uploading';
+  const stage = historicalRoom
+    ? (effectiveStages[0]?.key || data.stage)
+    : (data.stage || 'uploading');
   const stageIdx = effectiveStages.findIndex(s => s.key === stage);
   const submissions = data.submissions || [];
   const docsByRole = data.docsByRole || {};
   // The last stage in the effective list acts as "funded" (deal complete)
-  const isLastStage = stageIdx === effectiveStages.length - 1 && stageIdx >= 0;
+  const isLastStage = !historicalRoom && stageIdx === effectiveStages.length - 1 && stageIdx >= 0;
   const canManage = !!ROLE_META[role]?.canManage;
-  const canAdvance = canManage && !isLastStage && lifecycleGate?.eligible === true;
+  const canAdvance = canManage && !historicalRoom && !isLastStage && lifecycleGate?.eligible === true;
   const canSetStatus = canManage;
   const submittedRoles = new Set(submissions.map(s => s.role));
   const requiredRoles = Object.entries(ROLE_META).filter(([, m]) => m.required).map(([k]) => k);
@@ -450,7 +475,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
           </div>
           <div className="flex items-center gap-2">
             {/* Manage stages gear — visible to coordinators only */}
-            {canManage && (
+            {canManage && !historicalRoom && (
               <button
                 onClick={() => setShowManage(prev => !prev)}
                 title="Manage stages"
@@ -469,7 +494,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                 >
                   {advancing ? 'Updating…' : (effectiveAdvanceLabel[stage] || 'Advance') + ' →'}
                 </button>
-                {stage === effectiveStages[0]?.key && !allRequiredIn && (
+                {!historicalRoom && stage === effectiveStages[0]?.key && !allRequiredIn && (
                   <p className="text-[9px] text-amber-500 font-medium text-right">
                     ⚠ {requiredRoles.filter(r => !submittedRoles.has(r)).length} required{' '}
                     {requiredRoles.filter(r => !submittedRoles.has(r)).length === 1 ? 'party' : 'parties'} pending
@@ -477,7 +502,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                 )}
               </div>
             )}
-            {canManage && !isLastStage && lifecycleGate && !lifecycleGate.eligible && (
+            {canManage && !historicalRoom && !isLastStage && lifecycleGate && !lifecycleGate.eligible && (
               <div className="max-w-[220px] text-right">
                 <p className="text-xs font-bold text-red-700">
                   {effectiveStages[stageIdx + 1]?.label || 'Next stage'} not ready
@@ -497,7 +522,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
                 )}
               </div>
             )}
-            {isLastStage && (
+            {isLastStage && !historicalRoom && (
               <span className="px-3 py-1.5 rounded-xl text-xs font-bold text-green-700 bg-green-100">
                 🏦 {currentStageData?.label}
               </span>
@@ -533,7 +558,7 @@ export default function DealCoordinationPanel({ propertyId, role, packId = DEFAU
       </div>
 
       {/* Manage Stages panel (inline, coordinator only) */}
-      {showManage && canManage && (
+      {showManage && canManage && !historicalRoom && (
         <ManageStagesPanel
           stages={effectiveStages}
           currentStageKey={stage}

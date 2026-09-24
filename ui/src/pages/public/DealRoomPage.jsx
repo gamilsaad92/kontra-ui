@@ -29,6 +29,10 @@ import {
 } from "../../lib/workflowRoles";
 import { resolveParticipantStates } from "../../lib/participantState";
 import { isDigitalAssetLayerEnabled } from "../../lib/digitalAssetReadiness";
+import {
+  isHistoricalLifecycle,
+  resolveLifecycleStages,
+} from "../../lib/roomLifecycleProjection";
 
 // ── Jurisdiction compliance data ─────────────────────────────────────────────
 const JURISDICTION_INFO = {
@@ -3070,6 +3074,10 @@ function WhatNeedsAttention({
   const [confirming, setConfirming] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const historicalRoom = isHistoricalLifecycle({
+    transactionEntryMode: property?.transaction_entry_mode,
+    coordination,
+  });
 
   async function confirmField(field) {
     let ownerWriteToken = '';
@@ -3247,7 +3255,8 @@ function WhatNeedsAttention({
     return !state.invited;
   });
 
-  const hasMeaningfulActivity = recordFields.some(isRecordValue)
+  const hasMeaningfulActivity = historicalRoom
+    || recordFields.some(isRecordValue)
     || missingDocuments.length < schemaDocuments.filter(item => item.required).length
     || partyRows.length > 0
      || (coordination?.participantInvites || []).length > 0;
@@ -3317,7 +3326,7 @@ function WhatNeedsAttention({
   const stageKey = String(coordination?.stage || '').toLowerCase();
   const isCurrentStageDocument = item => {
     const section = String(item.section || item.category || '').toLowerCase();
-    if (!stageKey) return false;
+    if (historicalRoom || !stageKey) return false;
     if (stageKey.includes('clos')) return /(legal|closing|title|purchase|agreement)/.test(section);
     if (stageKey.includes('due') || stageKey.includes('diligence')) return /(financial|inspection|property|operational|legal)/.test(section);
     return /(loi|term|purchase|agreement)/.test(section);
@@ -3340,7 +3349,7 @@ function WhatNeedsAttention({
     actions: [],
     sourcePriority: isCurrentStageDocument(document) ? 1 : 4,
   }));
-  const participantActions = missingParticipants.map(role => ({
+  const participantActions = (historicalRoom ? [] : missingParticipants).map(role => ({
     id: `missing-participant-${role.key}`,
     urgency: 'high',
     title: `Invite ${role.label}`,
@@ -3705,9 +3714,11 @@ function WhatNeedsAttention({
             : hasMeaningfulActivity ? 'Nothing urgent right now' : 'Start this transaction'}
         </p>
         <p className="mt-0.5 text-xs text-gray-400">
-          {hasMeaningfulActivity
-            ? 'Kontra prioritizes the items currently moving or blocking this transaction.'
-            : 'Add the first transaction documents and participants so Kontra can begin organizing the deal.'}
+          {historicalRoom
+            ? 'Kontra surfaces evidence to review and extracted Transaction Record facts to confirm.'
+            : hasMeaningfulActivity
+              ? 'Kontra prioritizes the items currently moving or blocking this transaction.'
+              : 'Add the first transaction documents and participants so Kontra can begin organizing the deal.'}
         </p>
       </div>
 
@@ -3750,7 +3761,9 @@ function WhatNeedsAttention({
         <div className="px-5 py-5">
           <p className="text-sm font-semibold text-gray-800">Nothing requires your attention right now.</p>
           <p className="mt-1 text-xs text-gray-400 leading-relaxed">
-            Kontra is monitoring the transaction for missing information, inconsistencies, participant requests, and upcoming actions.
+            {historicalRoom
+              ? 'No evidence-backed issues need attention right now.'
+              : 'Kontra is monitoring the transaction for missing information, inconsistencies, participant requests, and upcoming actions.'}
           </p>
         </div>
       ) : (
@@ -6321,6 +6334,10 @@ function TransactionBrief({
   const [advancing, setAdvancing] = useState(false);
   const [showAllParticipants, setShowAllParticipants] = useState(false);
   const [showAllBlockers, setShowAllBlockers] = useState(false);
+  const historicalRoom = isHistoricalLifecycle({
+    transactionEntryMode: property?.transaction_entry_mode,
+    coordination,
+  });
 
   const participantRows = Array.isArray(coordination?.submissions)
     ? coordination.submissions
@@ -6577,12 +6594,18 @@ function TransactionBrief({
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Participants</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            {historicalRoom ? 'Evidence roles' : 'Participants'}
+          </p>
           <p className="mt-1 text-lg font-bold text-gray-900">
-            {participantProgressRoles.length > 0 ? `${participantComplete} of ${participantProgressRoles.length} active` : '—'}
+            {historicalRoom
+              ? (participantProgressRoles.length > 0 ? `${participantProgressRoles.length} configured` : '—')
+              : (participantProgressRoles.length > 0 ? `${participantComplete} of ${participantProgressRoles.length} active` : '—')}
           </p>
           <p className="text-[11px] text-gray-500">
-            {participantProgressRoles.length > 0 ? 'required participants active' : 'No external roles configured'}
+            {historicalRoom
+              ? (participantProgressRoles.length > 0 ? 'roles retained for evidence review' : 'No external roles configured')
+              : (participantProgressRoles.length > 0 ? 'required participants active' : 'No external roles configured')}
           </p>
         </div>
       </div>
@@ -8726,14 +8749,18 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       .then(apply(setBriefing));
     get(`/api/public/deal-room/${propertyId}/coordination`, null)
       .then(apply(setCoordination));
-    get(`/api/public/deal-room/${propertyId}/stages`, { stages: [] })
+    get(`/api/public/deal-room/${propertyId}/stages`, {
+      stages: [],
+      historical: property?.transaction_entry_mode === 'previously_completed',
+      transactionEntryMode: property?.transaction_entry_mode || null,
+    })
       .then(apply(
         setStages,
-        stageData => normalizeLifecycleStages(
-          Array.isArray(stageData?.stages) && stageData.stages.length >= 2
-            ? stageData.stages
-            : (pack.stages || []),
-        ),
+        stageData => normalizeLifecycleStages(resolveLifecycleStages({
+          stageProjection: stageData,
+          packStages: pack.stages || [],
+          transactionEntryMode: property?.transaction_entry_mode,
+        })),
       ));
     get(`/api/public/deal-room/${propertyId}/transaction-record`, null)
       .then(record => {
@@ -8778,7 +8805,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   // analysesRefreshKey in DealRoomPage) immediately triggers a re-fetch here,
   // making the Snapshot and WhatNeedsAttention update without waiting 30s.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId, pack, refreshKey, ownerToken]);
+  }, [propertyId, pack, refreshKey, ownerToken, property?.transaction_entry_mode]);
 
   useEffect(() => {
     load();
@@ -8891,7 +8918,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     return () => clearInterval(interval);
   }, [load, processingDocuments.length]);
 
-  const currentStageKey   = coordination?.stage || stages[0]?.key;
+  const historicalRoom = isHistoricalLifecycle({
+    transactionEntryMode: property?.transaction_entry_mode,
+    coordination,
+  });
+  const currentStageKey   = historicalRoom
+    ? stages[0]?.key || coordination?.stage
+    : coordination?.stage || stages[0]?.key;
   const currentStageIndex = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStage      = stages[currentStageIndex];
   const generatedRoom     = isGeneratedAiRoom(property);
@@ -8909,11 +8942,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   // Effective stages include settlement/complete when the room has settlement
   // capability enabled — uses the same getEffectiveStages() as OperationsManagerView.
-  const effectiveStages = getEffectiveStages(
-    packId || pack.packId || pack.id || DEFAULT_PACK_ID,
-    property,
-    stages,
-  );
+  const effectiveStages = historicalRoom
+    ? stages
+    : getEffectiveStages(
+      packId || pack.packId || pack.id || DEFAULT_PACK_ID,
+      property,
+      stages,
+    );
   const effectiveStageIndex = Math.max(0, effectiveStages.findIndex(stage => stage.key === currentStageKey));
   const nextLifecycleStage = effectiveStages[effectiveStageIndex + 1] || null;
   const milestoneEvidenceSections = getLifecycleEvidenceSections(currentStage);
@@ -9321,7 +9356,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           supportingDocumentPresent={supportingDocumentPresent}
         />
         <div className="mt-4 border-t border-gray-100 pt-4">
-          {nextLifecycleStage ? (
+          {historicalRoom ? (
+            <p className="text-xs font-semibold text-violet-700">
+              Historical Verification is the room’s only lifecycle state. Review evidence and confirm extracted facts; active-stage advancement is disabled.
+            </p>
+          ) : nextLifecycleStage ? (
             <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -9737,11 +9776,19 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
       setBriefing(b);
       setBriefLoading(false);
       setCoordination(coord);
-      // Inject settlement/complete stages when settlement capability is active.
-      const rawStages = Array.isArray(stageData?.stages) && (stageData?.historical || stageData.stages.length >= 2)
-        ? stageData.stages
-        : (pack.stages || []);
-      setStages(stageData?.historical
+      const historicalRoom = isHistoricalLifecycle({
+        transactionEntryMode: property?.transaction_entry_mode,
+        stageProjection: stageData,
+        coordination: coord,
+      });
+      const rawStages = resolveLifecycleStages({
+        stageProjection: stageData,
+        packStages: pack.stages || [],
+        transactionEntryMode: property?.transaction_entry_mode,
+        coordination: coord,
+      });
+      // Inject settlement/complete stages only for active lifecycle projections.
+      setStages(historicalRoom
         ? rawStages
         : getEffectiveStages(stageData?.packId || DEFAULT_PACK_ID, property, rawStages));
       setEvents(evData?.events || []);
@@ -9771,7 +9818,13 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
     .map(roleMeta => roleMeta.key);
   const inviteSentCount = events.filter(e => e.event_type === 'invite_sent').length;
 
-  const currentStageKey = coordination?.stage || stages[0]?.key;
+  const historicalRoom = isHistoricalLifecycle({
+    transactionEntryMode: property?.transaction_entry_mode,
+    coordination,
+  });
+  const currentStageKey = historicalRoom
+    ? stages[0]?.key || coordination?.stage
+    : coordination?.stage || stages[0]?.key;
   const currentStageIdx = Math.max(0, stages.findIndex(s => s.key === currentStageKey));
   const currentStageData = stages[currentStageIdx];
 
@@ -9795,6 +9848,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
 
   // ── Overall status ─────────────────────────────────────────────────────────
   const STATUS_CFG = {
+    historical_verification: { label: 'Historical Verification', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
     not_enough_info: { label: 'Not Enough Information', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
     on_track:        { label: 'On Track',               color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
     needs_attention: { label: 'Needs Attention',        color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
@@ -9815,7 +9869,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
     if (risks.length > 0 || pendingRequired > 0) return 'needs_attention';
     return 'on_track';
   }
-  const statusKey = computeStatus();
+  const statusKey = historicalRoom ? 'historical_verification' : computeStatus();
   const statusCfg = STATUS_CFG[statusKey];
 
   // ── Tokenization-specific derived state ────────────────────────────────────
@@ -9984,7 +10038,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         )}
         {coordination?.historical && (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-bold text-amber-900">Previously completed · Historical verification</p>
+            <p className="text-xs font-bold text-amber-900">Previously completed · Historical Verification</p>
             <p className="mt-1 text-xs leading-relaxed text-amber-800">
               This workspace is for evidence-backed review of a completed transaction. Uploads, confirmations, conflicts, provenance, and snapshots remain available, but the active lifecycle will not advance and no snapshot or package is created automatically.
             </p>
@@ -10622,7 +10676,7 @@ function OperationsManagerView({ propertyId, property, pack, role, onTabChange }
         <SettlementPanel
           propertyId={propertyId}
           property={property}
-          isAtFinalStage={stages.length > 0 && currentStageIdx >= stages.length - 1}
+          isAtFinalStage={!historicalRoom && stages.length > 0 && currentStageIdx >= stages.length - 1}
         />
       )}
 
@@ -11535,6 +11589,7 @@ export default function DealRoomPage() {
                 role={role}
                 packId={packId}
                 propertyType={property.property_type || property.type}
+                transactionEntryMode={property.transaction_entry_mode}
                 isDemo={isDemo}
               />
             )}
