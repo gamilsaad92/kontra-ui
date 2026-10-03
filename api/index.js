@@ -8343,13 +8343,13 @@ app.use('/api/public', verificationRouter);
 // AI Operations Manager — PUBLIC, must stay BEFORE requireOrgContext. Answer
 // engine grounded in the Task Engine above; read-only, no task mutation.
 // See lib/operationsManager.js and .agents/memory/kontra-task-architecture.md.
-// Live-room Copilot requests must use the same verified owner/participant
-// boundary as the rest of the deal-room APIs. Demo brain routes are registered
-// above this middleware and keep their existing demo behavior.
+// Dynamic live-room AI routes are coordinator-only because they can read
+// room-wide transaction facts and construct room-wide AI context. Demo brain
+// routes are registered above this middleware and keep their public behavior.
 app.use('/api/public/deal-room/:propertyId/brain', async (req, res, next) => {
   try {
     const access = await getRoomAccessContext(req, req.params.propertyId);
-    if (access.mode === 'anonymous') return accessDenied(res);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
     req.roomAccess = access;
     return next();
   } catch (err) {

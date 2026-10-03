@@ -3,6 +3,11 @@ const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
+let mockBrainAuthorizationTestsEnabled = false;
+const mockBrainReadTransactionState = jest.fn();
+const mockBrainGetBriefing = jest.fn();
+const mockBrainAskQuestion = jest.fn();
+const mockBrainBuildGroundedContext = jest.fn();
 
 jest.mock('./db', () => {
   const owner = {
@@ -97,12 +102,34 @@ jest.mock('./db', () => {
   return { supabase: { from: builder } };
 });
 
-jest.mock('./lib/transactionState', () => ({
-  ...jest.requireActual('./lib/transactionState'),
-  recalculateTransactionState: jest.fn().mockResolvedValue({
-    state: { recordState: { fields: [] } },
-  }),
-}));
+jest.mock('./lib/transactionState', () => {
+  const actual = jest.requireActual('./lib/transactionState');
+  return {
+    ...actual,
+    readTransactionState: (...args) => mockBrainAuthorizationTestsEnabled
+      ? mockBrainReadTransactionState(...args)
+      : actual.readTransactionState(...args),
+    recalculateTransactionState: jest.fn().mockResolvedValue({
+      state: { recordState: { fields: [] } },
+    }),
+  };
+});
+
+jest.mock('./lib/operationsManager', () => {
+  const actual = jest.requireActual('./lib/operationsManager');
+  return {
+    ...actual,
+    getBriefing: (...args) => mockBrainAuthorizationTestsEnabled
+      ? mockBrainGetBriefing(...args)
+      : actual.getBriefing(...args),
+    askQuestion: (...args) => mockBrainAuthorizationTestsEnabled
+      ? mockBrainAskQuestion(...args)
+      : actual.askQuestion(...args),
+    buildGroundedContext: (...args) => mockBrainAuthorizationTestsEnabled
+      ? mockBrainBuildGroundedContext(...args)
+      : actual.buildGroundedContext(...args),
+  };
+});
 
 process.env.SESSION_SECRET = 'test-session-secret';
 const { createParticipantAccessToken } = require('./lib/participantAccessTokens');
@@ -114,6 +141,11 @@ describe('room access and checklist scoping', () => {
     mockInsertedRows.length = 0;
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
+    mockBrainAuthorizationTestsEnabled = false;
+    mockBrainReadTransactionState.mockReset();
+    mockBrainGetBriefing.mockReset();
+    mockBrainAskQuestion.mockReset();
+    mockBrainBuildGroundedContext.mockReset();
   });
 
   it('gives a valid participant session precedence over a valid same-room owner token', async () => {
@@ -427,5 +459,124 @@ describe('room access and checklist scoping', () => {
     expect(response.status).toBe(200);
     expect(response.body.owner_tokens).toEqual({ 'room-1': mockOwnerToken });
     expect(response.body.rooms[0]).not.toHaveProperty('owner_write_token');
+  });
+
+  describe('dynamic brain route authorization', () => {
+    const routes = [
+      {
+        name: '/brain/facts',
+        method: 'get',
+        path: '/api/public/deal-room/room-1/brain/facts',
+        downstream: mockBrainReadTransactionState,
+      },
+      {
+        name: '/brain/ask',
+        method: 'post',
+        path: '/api/public/deal-room/room-1/brain/ask',
+        body: { question: 'What is the current status?' },
+        downstream: mockBrainAskQuestion,
+      },
+      {
+        name: '/brain/briefing',
+        method: 'get',
+        path: '/api/public/deal-room/room-1/brain/briefing',
+        downstream: mockBrainGetBriefing,
+      },
+    ];
+
+    const sendRouteRequest = route => {
+      const pending = request(app)[route.method](route.path);
+      return route.body ? pending.send(route.body) : pending;
+    };
+
+    const expectNoBrainWork = () => {
+      expect(mockBrainReadTransactionState).not.toHaveBeenCalled();
+      expect(mockBrainGetBriefing).not.toHaveBeenCalled();
+      expect(mockBrainAskQuestion).not.toHaveBeenCalled();
+      expect(mockBrainBuildGroundedContext).not.toHaveBeenCalled();
+      expect(mockInsertedRows).toHaveLength(0);
+    };
+
+    beforeEach(() => {
+      mockBrainAuthorizationTestsEnabled = true;
+      mockBrainReadTransactionState.mockResolvedValue({
+        room: { property_name: 'Test room' },
+        recordState: { fields: [] },
+        packId: 'business_acquisition',
+      });
+      mockBrainGetBriefing.mockResolvedValue({ status: 'ready' });
+      mockBrainAskQuestion.mockResolvedValue({ answer: 'Owner-only answer' });
+      mockBrainBuildGroundedContext.mockResolvedValue({});
+    });
+
+    afterEach(() => {
+      mockBrainAuthorizationTestsEnabled = false;
+    });
+
+    it.each(routes)('allows the owner to use $name', async route => {
+      const response = await sendRouteRequest(route)
+        .set('x-owner-write-token', mockOwnerToken);
+
+      expect(response.status).toBe(200);
+      expect(route.downstream).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(routes)('denies a verified participant before downstream work on $name', async route => {
+      const response = await sendRouteRequest(route)
+        .set('x-kontra-session', mockParticipantToken)
+        .set('x-owner-write-token', mockOwnerToken);
+
+      expect(response.status).toBe(403);
+      expectNoBrainWork();
+    });
+
+    it.each(routes)('continues to deny anonymous access to $name', async route => {
+      const response = await sendRouteRequest(route);
+
+      expect(response.status).toBe(403);
+      expectNoBrainWork();
+    });
+
+    it.each([
+      'kontra-demo',
+      'kontra-demo-biz',
+      'kontra-demo-fundraising',
+    ])('leaves public demo AI routes unaffected for %s', async propertyId => {
+      const briefing = await request(app)
+        .get(`/api/public/deal-room/${propertyId}/brain/briefing`);
+      const askWithoutQuestion = await request(app)
+        .post(`/api/public/deal-room/${propertyId}/brain/ask`)
+        .send({});
+
+      expect(briefing.status).toBe(200);
+      expect(askWithoutQuestion.status).toBe(400);
+      expect(askWithoutQuestion.body.error).toBe('question required');
+      expectNoBrainWork();
+    });
+
+    it('keeps participant document checklist and assigned-section comments available', async () => {
+      const checklist = await request(app)
+        .get('/api/public/deal-room/room-1/checklist')
+        .set('x-kontra-session', mockParticipantToken);
+      const comments = await request(app)
+        .get('/api/public/deal-room/room-1/comments')
+        .set('x-kontra-session', mockParticipantToken);
+      const addedComment = await request(app)
+        .post('/api/public/deal-room/room-1/comments')
+        .set('x-kontra-session', mockParticipantToken)
+        .send({
+          section: 'seller_financials',
+          role: 'owner',
+          content: 'Participant comment',
+        });
+
+      expect(checklist.status).toBe(200);
+      expect(checklist.body.items.map(item => item.section)).toEqual(['seller_financials']);
+      expect(comments.status).toBe(200);
+      expect(comments.body.role).toBe('seller');
+      expect(addedComment.status).toBe(200);
+      expect(mockInsertedRows.find(row => row.table === 'deal_comments').values.role)
+        .toBe('seller');
+    });
   });
 });
