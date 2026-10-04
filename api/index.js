@@ -132,6 +132,17 @@ const {
   selectActiveDocumentVersions,
   isActiveDocumentVersion,
 } = require('./lib/documentVersions');
+const {
+  currentSourceDocuments,
+  conflictValueMatches,
+  hasDocumentProvenance,
+  isFieldSourceCurrent,
+  invalidateSupersededFields,
+  loadSourceDocuments,
+  projectCurrentSourceField,
+  resolveCurrentSourceDocument,
+  sourceDocumentId,
+} = require('./lib/currentSourceIntegrity');
 const { projectDocumentChecklist } = require('./lib/documentStatus');
 
 // Every verification write must reconcile the shared coordinator projections.
@@ -4153,7 +4164,7 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
     const now = new Date().toISOString();
     const { data: existing, error: findError } = await supabase
       .from('transaction_record_fields')
-      .select('id, value_text, status')
+      .select('id, value_text, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
       .eq('property_id', propertyId)
       .eq('field_key', mapping.fieldKey)
       .maybeSingle();
@@ -4168,11 +4179,15 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
       value_text: nextValue,
       status: nextStatus,
       confidence: null,
+      source_type: inferred ? 'ai' : 'manual',
       source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
       source_page: null,
       source_excerpt: null,
       extracted_by: hasValue ? (inferred ? 'ai' : 'deal_owner') : null,
       verified_by: hasValue && !inferred ? (actorEmail || 'Deal Owner') : null,
+      verified_role: hasValue && !inferred ? 'Deal Owner' : null,
       verified_at: hasValue && !inferred ? now : null,
       updated_at: now,
     };
@@ -4200,7 +4215,18 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
       fieldIdValue = inserted?.id;
     }
 
-    if (!options.skipHistory && fieldIdValue && (existing?.value_text !== nextValue || existing?.status !== nextStatus)) {
+    const documentProvenanceCleared = Boolean(
+      existing?.source_doc_id
+        || existing?.source_doc_version
+        || existing?.source_file_hash
+        || existing?.source_page
+        || existing?.source_excerpt,
+    );
+    if (!options.skipHistory && fieldIdValue && (
+      existing?.value_text !== nextValue
+        || existing?.status !== nextStatus
+        || documentProvenanceCleared
+    )) {
       await recordTransactionFieldHistory({
         fieldId: fieldIdValue,
         propertyId,
@@ -4211,7 +4237,18 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
         newValue: nextValue,
         priorStatus: existing?.status || null,
         newStatus: nextStatus,
-        metadata: { source: inferred ? 'ai_creation_inference' : 'deal_owner_input', metadataField: fieldId },
+        metadata: {
+          source: inferred ? 'ai_creation_inference' : 'deal_owner_input',
+          metadataField: fieldId,
+          prior_source_doc_id: existing?.source_doc_id || null,
+          prior_source_doc_version: existing?.source_doc_version || null,
+          prior_source_file_hash: existing?.source_file_hash || null,
+          prior_source_page: existing?.source_page ?? null,
+          prior_source_excerpt: existing?.source_excerpt || null,
+          prior_verified_by: existing?.verified_by || null,
+          prior_verified_role: existing?.verified_role || null,
+          prior_verified_at: existing?.verified_at || null,
+        },
       });
     }
   }
@@ -4690,6 +4727,14 @@ async function recordTransactionFieldHistory({
   return true;
 }
 
+function hasMeaningfulTransactionFieldValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return Boolean(value.trim());
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return true;
+}
+
 async function upsertTransactionRecordConflict({
   propertyId, fieldId, fieldKey, displayLabel, canonicalValue, conflictingValue,
   canonicalSourceDocId, conflictingSourceDocId, canonicalSourcePage,
@@ -4887,6 +4932,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     if (docId && !(await isCurrentSource())) {
       return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [], skipped: 'superseded' };
     }
+    const activeSourceDocuments = currentSourceDocuments(
+      await loadSourceDocuments(supabase, propertyId),
+    );
     const schemaKey = await getTransactionRecordSchemaKey(room);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -4992,8 +5040,13 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         if (aliasMoveError) throw aliasMoveError;
         existing = { ...existing, field_key: canonicalKey };
       }
+      if (existing && !isFieldSourceCurrent(existing, activeSourceDocuments)) {
+        existing = projectCurrentSourceField(existing, activeSourceDocuments);
+      }
       const priorValue = existing?.value_text || null;
       const priorStatus = existing?.status || null;
+      const existingWasVerified = ['verified', 'confirmed'].includes(String(priorStatus || '').toLowerCase())
+        && isFieldSourceCurrent(existing || {}, activeSourceDocuments);
       const priorComparable = existing?.value_text
         ? normalizeComparableValue(existing.value_text, canonicalKey, existing.display_label || f.display_label)
         : null;
@@ -5012,10 +5065,10 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       const differs = Boolean(existing?.value_text)
         && valueComparison.comparable
         && !valueComparison.equivalent;
-      const eventType = existing?.status === 'verified' && differs
+      const eventType = existingWasVerified && differs
         ? 'source_changed'
         : differs ? 'conflict' : 'extracted';
-      const nextStatus = existing?.status === 'verified'
+      const nextStatus = existingWasVerified
         ? (eventType === 'source_changed' ? 'source_changed' : 'verified')
         : eventType === 'source_changed'
           ? 'source_changed'
@@ -5049,6 +5102,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
           ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
           : (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null),
         extracted_by:   'ai',
+        verified_by:    nextStatus === 'verified' ? (existing?.verified_by || null) : null,
+        verified_role:  nextStatus === 'verified' ? (existing?.verified_role || null) : null,
+        verified_at:    nextStatus === 'verified' ? (existing?.verified_at || null) : null,
         // Newly discovered fields from an uploaded document are optional
         // evidence unless they already belong to an approved required
         // definition. This prevents an optional document from expanding the
@@ -5551,7 +5607,7 @@ async function supersedePriorDocumentVersions(propertyId, section, recordId, cor
 
   const { data: priorRows, error: priorError } = await supabase
     .from('deal_analyses')
-    .select('id')
+    .select('id, source_hash, created_at')
     .eq('property_id', propertyId)
     .eq('section', section)
     .neq('id', recordId);
@@ -5577,49 +5633,14 @@ async function supersedePriorDocumentVersions(propertyId, section, recordId, cor
     throw versionError;
   }
 
-  const { data: staleFields, error: staleFieldsError } = await supabase
-    .from('transaction_record_fields')
-    .select('id, value_text, status, source_doc_id')
-    .eq('property_id', propertyId)
-    .in('source_doc_id', priorIds)
-    .in('status', ['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation', 'conflicting']);
-  if (staleFieldsError && !/relation|schema cache|column/i.test(staleFieldsError.message || '')) {
-    throw staleFieldsError;
-  }
-  const fieldsToClear = staleFields || [];
-  if (fieldsToClear.length) {
-    const { error: clearError } = await supabase
-      .from('transaction_record_fields')
-      .update({
-        value_text: null,
-        value_json: null,
-        status: 'missing',
-        source_doc_id: null,
-        source_doc_version: null,
-        source_file_hash: null,
-        source_page: null,
-        source_excerpt: null,
-        updated_at: supersededAt,
-      })
-      .eq('property_id', propertyId)
-      .in('id', fieldsToClear.map(field => field.id));
-    if (clearError) throw clearError;
-    await Promise.all(fieldsToClear.map(field => recordTransactionFieldHistory({
-      fieldId: field.id,
-      propertyId,
-      eventType: 'source_changed',
-      priorValue: field.value_text,
-      newValue: null,
-      priorStatus: field.status,
-      newStatus: 'missing',
-      sourceDocId: field.source_doc_id,
-      metadata: {
-        reason: 'document_replaced',
-        replacement_document_id: recordId,
-        correlationId,
-      },
-    })));
-  }
+  await invalidateSupersededFields({
+    supabase,
+    propertyId,
+    priorDocuments: priorRows || [],
+    replacementDocument: { id: recordId },
+    correlationId,
+    now: supersededAt,
+  });
 
   const conflictPatch = {
     status: 'resolved',
@@ -10185,19 +10206,86 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
   }
 
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','conflicting','not_applicable'];
-  const update = { updated_at: new Date().toISOString() };
-  if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
-  if (value_json !== undefined) update.value_json = value_json;
-  if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
-  if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
+  const update = {};
   try {
     const { data: existing } = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, value_text, value_json, status')
+      .select('id, field_key, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
       .eq('id', fieldId)
       .eq('property_id', propertyId)
       .maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
+    const now = new Date().toISOString();
+    const nextText = value_text === undefined ? existing.value_text : String(value_text).slice(0, 2000);
+    const textChanged = value_text !== undefined && nextText !== existing.value_text;
+    const jsonChanged = value_json !== undefined
+      && JSON.stringify(value_json) !== JSON.stringify(existing.value_json);
+    const valueChanged = textChanged || jsonChanged;
+    const manualInputProvided = value_text !== undefined || value_json !== undefined;
+    const hadDocumentProvenance = Boolean(
+      existing.source_doc_id
+        || existing.source_doc_version
+        || existing.source_file_hash
+        || existing.source_page
+        || existing.source_excerpt,
+    );
+    const acceptedStatus = status && ALLOWED_STATUSES.includes(status) ? status : null;
+    if (acceptedStatus === 'verified') {
+      const confirmationValue = manualInputProvided
+        ? (value_text !== undefined ? value_text : value_json)
+        : (existing.value_text && String(existing.value_text).trim()
+          ? existing.value_text
+          : existing.value_json);
+      if (!hasMeaningfulTransactionFieldValue(confirmationValue)) {
+        return res.status(409).json({
+          error: 'FIELD_VALUE_REQUIRED',
+          message: 'A populated field is required before it can be confirmed.',
+        });
+      }
+    }
+    const manualSourcePatch = {
+      source_type: 'manual',
+      source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+    };
+
+    update.updated_at = now;
+    if (value_text !== undefined) {
+      update.value_text = nextText;
+      update.extracted_by = 'coordinator';
+    }
+    if (value_json !== undefined) update.value_json = value_json;
+    if (notes !== undefined) update.notes = String(notes).slice(0, 500);
+    if (manualInputProvided) {
+      Object.assign(update, manualSourcePatch, {
+        status: acceptedStatus || 'needs_review',
+        verified_by: acceptedStatus === 'verified' ? (access.email || 'coordinator') : null,
+        verified_role: acceptedStatus === 'verified' ? 'Deal Coordinator' : null,
+        verified_at: acceptedStatus === 'verified' ? now : null,
+      });
+    } else if (acceptedStatus) {
+      update.status = acceptedStatus;
+      if (acceptedStatus === 'verified') {
+        const sourceState = await resolveCurrentSourceDocument(supabase, propertyId, existing);
+        if (!sourceState.current) {
+          return res.status(409).json({
+            error: 'STALE_DOCUMENT_SOURCE',
+            message: 'This field is based on an inactive or superseded document. Review the current evidence before confirming it.',
+          });
+        }
+        update.verified_by = access.email || 'coordinator';
+        update.verified_role = 'Deal Coordinator';
+        update.verified_at = now;
+      } else {
+        update.verified_by = null;
+        update.verified_role = null;
+        update.verified_at = null;
+        if (acceptedStatus === 'not_applicable') Object.assign(update, manualSourcePatch);
+      }
+    }
     const { error } = await supabase
       .from('transaction_record_fields')
       .update(update)
@@ -10211,13 +10299,21 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
       : value_json !== undefined
         ? valueForHistory(value_json)
         : existing.value_text || valueForHistory(existing.value_json);
-    const jsonChanged = value_json !== undefined
-      && JSON.stringify(value_json) !== JSON.stringify(existing.value_json);
     const eventType = nextStatus === 'not_applicable'
       ? 'marked_not_applicable'
       : nextStatus === 'conflicting'
         ? 'conflict'
-        : nextValue !== existing.value_text || jsonChanged ? 'manual_edit' : null;
+        : nextStatus === 'verified' && (
+          manualInputProvided
+            || existing.status !== 'verified'
+            || valueChanged
+        )
+          ? 'confirmed'
+          : valueChanged
+            || manualInputProvided && hadDocumentProvenance
+            || (acceptedStatus && acceptedStatus !== existing.status)
+            ? 'manual_edit'
+            : null;
     if (eventType) {
       await recordTransactionFieldHistory({
         fieldId,
@@ -10225,19 +10321,33 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
         eventType,
         actorEmail: access.email || 'coordinator',
         actorRole: 'Deal Coordinator',
-        priorValue: existing.value_text,
+        priorValue: existing.value_text || valueForHistory(existing.value_json),
         newValue: nextValue,
         priorStatus: existing.status,
         newStatus: nextStatus,
+        sourceDocId: update.source_doc_id !== undefined
+          ? update.source_doc_id
+          : existing.source_doc_id || null,
+        metadata: {
+          source_file_hash: update.source_file_hash !== undefined
+            ? update.source_file_hash
+            : existing.source_file_hash || null,
+          source_doc_version: update.source_doc_version !== undefined
+            ? update.source_doc_version
+            : existing.source_doc_version || null,
+          prior_source_doc_id: existing.source_doc_id || null,
+          prior_source_doc_version: existing.source_doc_version || null,
+          prior_source_file_hash: existing.source_file_hash || null,
+          prior_source_page: existing.source_page ?? null,
+          prior_source_excerpt: existing.source_excerpt || null,
+          manual_value_edit: valueChanged,
+        },
       });
     }
     if (nextStatus === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, existing.field_key, access.email || 'coordinator');
     }
-    if (
-      nextStatus === 'verified'
-      || (update.value_text !== undefined && !['conflicting', 'missing', 'not_applicable'].includes(nextStatus))
-    ) {
+    if (nextStatus === 'verified') {
       await resolveTransactionRecordConflicts(propertyId, existing.field_key, {
         resolutionValue: nextValue,
         resolutionNote: notes || 'Coordinator confirmed the canonical Transaction Record value.',
@@ -10281,7 +10391,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (fErr) throw fErr;
     const { data: existing } = await supabase.from('transaction_record_fields')
-      .select('id, field_key, value_text, value_json, status, updated_at, source_doc_id, source_file_hash')
+      .select('id, field_key, value_text, value_json, status, updated_at, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt')
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
     const valueForVerification = value => {
@@ -10301,11 +10411,10 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
     const verificationValue = valueForVerification(verificationRawValue);
     if (provenanceApprovalRequested) {
       const confirmedStatus = new Set(['verified', 'confirmed']);
-      const hasDocumentProvenance = Boolean(existing.source_doc_id || existing.source_file_hash);
       if (
         !confirmedStatus.has(existing.status)
         || !hasMeaningfulVerificationValue(verificationRawValue)
-        || hasDocumentProvenance
+        || hasDocumentProvenance(existing)
       ) {
         return res.status(409).json({
           error: 'FIELD_NOT_MISSING_PROVENANCE',
@@ -10377,14 +10486,34 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
         message: 'Only a populated Awaiting Confirmation field can be confirmed.',
       });
     }
+    const sourceState = await resolveCurrentSourceDocument(supabase, propertyId, existing);
+    if (!sourceState.current) {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'This field is based on an inactive or superseded document. Review the current evidence before confirming it.',
+      });
+    }
     // The GET endpoint returns reconciled canonical rows. Older clients can
     // still post an alias-row id during the reconciliation window, so resolve
     // the field key before writing history/conflict state.
     const canonicalFieldKey = canonicalizeTransactionRecordKey(existing.field_key, 'generic');
     const nextValue = verificationValue;
+    const confirmationTime = new Date().toISOString();
+    const manualField = !hasDocumentProvenance(existing);
     const { data: verifiedRows, error: updateError } = await supabase.from('transaction_record_fields').update({
-      status: 'verified', verified_by: email,
-      verified_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      status: 'verified',
+      source_type: manualField ? 'manual' : 'document',
+      ...(manualField ? {
+        source_doc_id: null,
+        source_doc_version: null,
+        source_file_hash: null,
+        source_page: null,
+        source_excerpt: null,
+      } : {}),
+      verified_by: email,
+      verified_role: actorRole || 'coordinator',
+      verified_at: confirmationTime,
+      updated_at: confirmationTime,
     }).eq('id', fieldId).eq('property_id', propertyId).eq('status', existing.status)
       .eq('updated_at', existing.updated_at).select('id');
     if (updateError) throw updateError;
@@ -10400,6 +10529,15 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       priorValue: existing.value_text || valueForVerification(existing.value_json),
       newValue: nextValue,
       priorStatus: existing.status, newStatus: 'verified',
+      sourceDocId: manualField ? null : sourceDocumentId(existing),
+      sourcePage: manualField ? null : existing.source_page,
+      sourceExcerpt: manualField ? null : existing.source_excerpt,
+      metadata: {
+        verification_kind: manualField ? 'manual_confirmation' : 'document_confirmation',
+        source_doc_id: manualField ? null : sourceDocumentId(existing),
+        source_doc_version: manualField ? null : existing.source_doc_version || sourceDocumentId(existing),
+        source_file_hash: manualField ? null : sourceState.document?.source_hash || existing.source_file_hash || null,
+      },
     });
     const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
       field_id: fieldId, property_id: propertyId,
@@ -10445,9 +10583,15 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
     const selectedValue = value_text === undefined || value_text === null || String(value_text).trim() === ''
       ? conflict.canonical_value
       : String(value_text).slice(0, 2000);
+    if (selectedValue === null || selectedValue === undefined || String(selectedValue).trim() === '') {
+      return res.status(400).json({
+        error: 'RESOLUTION_VALUE_REQUIRED',
+        message: 'Choose a conflict value or enter a document-independent value before resolving this conflict.',
+      });
+    }
     let { data: field, error: fieldError } = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
+      .select('id, field_key, field_category, display_label, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
       .eq('id', conflict.field_id)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -10458,34 +10602,124 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
     if (!field && conflict.field_key) {
       const fallback = await supabase
         .from('transaction_record_fields')
-        .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt')
+        .select('id, field_key, field_category, display_label, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
         .eq('property_id', propertyId)
         .eq('field_key', conflict.field_key)
         .maybeSingle();
       if (fallback.error) throw fallback.error;
       field = fallback.data;
     }
+    const matchesCanonical = conflictValueMatches(
+      selectedValue,
+      conflict.canonical_value,
+      conflict.field_key,
+      conflict.display_label || '',
+    );
+    const matchesConflict = conflictValueMatches(
+      selectedValue,
+      conflict.conflicting_value,
+      conflict.field_key,
+      conflict.display_label || '',
+    );
+    const canonicalSourceReference = {
+      source_doc_id: conflict.canonical_source_doc_id || field?.source_doc_id || null,
+      source_doc_version: field?.source_doc_version || null,
+      source_file_hash: field?.source_file_hash || null,
+    };
+    const conflictingSourceReference = {
+      source_doc_id: conflict.conflicting_source_doc_id || null,
+    };
+    const [canonicalSourceState, conflictingSourceState] = await Promise.all([
+      matchesCanonical
+        ? resolveCurrentSourceDocument(supabase, propertyId, canonicalSourceReference)
+        : Promise.resolve({ current: false, document: null }),
+      matchesConflict
+        ? resolveCurrentSourceDocument(supabase, propertyId, conflictingSourceReference)
+        : Promise.resolve({ current: false, document: null }),
+    ]);
+    let selectedIsConflict = false;
+    let selectedIsCanonical = false;
+    let selectedSourceReference = {};
+    let selectedSourceState = { current: true, document: null };
+    if (matchesConflict && matchesCanonical) {
+      if (conflictingSourceState.current) {
+        selectedIsConflict = true;
+        selectedSourceReference = conflictingSourceReference;
+        selectedSourceState = conflictingSourceState;
+      } else if (canonicalSourceState.current) {
+        selectedIsCanonical = true;
+        selectedSourceReference = canonicalSourceReference;
+        selectedSourceState = canonicalSourceState;
+      } else if (
+        hasDocumentProvenance(canonicalSourceReference)
+        || hasDocumentProvenance(conflictingSourceReference)
+      ) {
+        return res.status(409).json({
+          error: 'STALE_DOCUMENT_SOURCE',
+          message: 'The selected conflict value comes from an inactive or superseded document. Choose current evidence or enter a document-independent value.',
+        });
+      }
+    } else if (matchesConflict) {
+      selectedIsConflict = true;
+      selectedSourceReference = conflictingSourceReference;
+      selectedSourceState = conflictingSourceState;
+    } else if (matchesCanonical) {
+      selectedIsCanonical = true;
+      selectedSourceReference = canonicalSourceReference;
+      selectedSourceState = canonicalSourceState;
+    }
+    if (!selectedSourceState.current) {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'The selected conflict value comes from an inactive or superseded document. Choose current evidence or enter a document-independent value.',
+      });
+    }
+    const selectedSourceDocId = selectedSourceState.document?.id
+      || sourceDocumentId(selectedSourceReference)
+      || null;
+    const selectedSourceMetadata = selectedSourceDocId
+      ? {
+        source_type: 'document',
+        source_doc_id: selectedSourceDocId,
+        source_doc_version: selectedSourceDocId,
+        source_file_hash: selectedSourceState.document?.source_hash || null,
+        source_page: selectedIsConflict
+          ? conflict.conflicting_source_page || null
+          : conflict.canonical_source_page || field?.source_page || null,
+        source_excerpt: selectedIsConflict
+          ? conflict.conflicting_source_excerpt || null
+          : conflict.canonical_source_excerpt || field?.source_excerpt || null,
+      }
+      : {
+        source_type: 'manual',
+        source_doc_id: null,
+        source_doc_version: null,
+        source_file_hash: null,
+        source_page: null,
+        source_excerpt: null,
+      };
     const priorField = field ? {
       value_text: field.value_text,
+      value_json: field.value_json,
       status: field.status,
+      source_type: field.source_type,
+      source_doc_id: field.source_doc_id,
+      source_doc_version: field.source_doc_version,
+      source_file_hash: field.source_file_hash,
+      source_page: field.source_page,
+      source_excerpt: field.source_excerpt,
+      verified_by: field.verified_by,
+      verified_role: field.verified_role,
+      verified_at: field.verified_at,
     } : null;
     if (field) {
-      const selectedIsConflict = selectedValue === conflict.conflicting_value;
       const { error } = await supabase.from('transaction_record_fields').update({
         value_text: selectedValue,
         status: 'verified',
         verified_by: access.email || 'coordinator',
         verified_role: 'Deal Coordinator',
         verified_at: new Date().toISOString(),
-        source_doc_id: selectedIsConflict
-          ? (conflict.conflicting_source_doc_id || field.source_doc_id || null)
-          : (conflict.canonical_source_doc_id || field.source_doc_id || null),
-        source_page: selectedIsConflict
-          ? (conflict.conflicting_source_page || field.source_page || null)
-          : (conflict.canonical_source_page || field.source_page || null),
-        source_excerpt: selectedIsConflict
-          ? (conflict.conflicting_source_excerpt || field.source_excerpt || null)
-          : (conflict.canonical_source_excerpt || field.source_excerpt || null),
+        ...selectedSourceMetadata,
         updated_at: new Date().toISOString(),
       }).eq('id', field.id).eq('property_id', propertyId);
       if (error) throw error;
@@ -10499,15 +10733,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
           display_label: conflict.display_label || conflict.field_key,
           value_text: selectedValue,
           status: 'verified',
-          source_doc_id: selectedValue === conflict.conflicting_value
-            ? (conflict.conflicting_source_doc_id || null)
-            : (conflict.canonical_source_doc_id || null),
-          source_page: selectedValue === conflict.conflicting_value
-            ? (conflict.conflicting_source_page || null)
-            : (conflict.canonical_source_page || null),
-          source_excerpt: selectedValue === conflict.conflicting_value
-            ? (conflict.conflicting_source_excerpt || null)
-            : (conflict.canonical_source_excerpt || null),
+          ...selectedSourceMetadata,
           extracted_by: 'conflict_resolution',
           verified_by: access.email || 'coordinator',
           verified_role: 'Deal Coordinator',
@@ -10533,8 +10759,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       // the conflict remains blocking (or vice versa).
       if (field && priorField) {
         await supabase.from('transaction_record_fields').update({
-          value_text: priorField.value_text,
-          status: priorField.status,
+          ...priorField,
           updated_at: new Date().toISOString(),
         }).eq('id', field.id).eq('property_id', propertyId);
       }
@@ -10551,7 +10776,16 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
         newValue: selectedValue,
         priorStatus: priorField?.status,
         newStatus: 'verified',
-        metadata: { conflictId, resolution: true },
+        sourceDocId: selectedSourceDocId,
+        sourcePage: selectedSourceMetadata.source_page,
+        sourceExcerpt: selectedSourceMetadata.source_excerpt,
+        metadata: {
+          conflictId,
+          resolution: true,
+          source_doc_id: selectedSourceDocId,
+          source_doc_version: selectedSourceMetadata.source_doc_version,
+          source_file_hash: selectedSourceMetadata.source_file_hash,
+        },
       });
     }
     const recalculated = await recalculateTransactionState(propertyId, {
@@ -10596,7 +10830,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     // Try update first (in case a record already exists for this key)
       const { data: existingRowsData, error: existingLookupError } = await supabase
       .from('transaction_record_fields')
-        .select('id, field_key, value_text, status')
+        .select('id, field_key, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
       .eq('property_id', propertyId)
       .in('field_key', canonicalAliases);
     if (existingLookupError) throw existingLookupError;
@@ -10606,17 +10840,89 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       .sort((a, b) => (a.field_key === canonicalFieldKey ? -1 : 0) - (b.field_key === canonicalFieldKey ? -1 : 0))[0] || null;
     if (existing?.id) {
       const update = { updated_at: now };
-      if (value_text !== undefined) { update.value_text = String(value_text).slice(0, 2000); update.extracted_by = 'coordinator'; }
-      if (notes !== undefined)      update.notes = String(notes).slice(0, 500);
-      if (status && ALLOWED_STATUSES.includes(status)) update.status = status;
-      else if (value_text) update.status = 'needs_review';
-      const { error } = await supabase.from('transaction_record_fields').update(update).eq('id', existing.id);
+      const manualInputProvided = value_text !== undefined;
+      const acceptedStatus = status && ALLOWED_STATUSES.includes(status) ? status : null;
+      const nextValue = manualInputProvided
+        ? String(value_text ?? '').slice(0, 2000)
+        : existing.value_text;
+      if (acceptedStatus === 'verified') {
+        const confirmationValue = manualInputProvided
+          ? value_text
+          : (existing.value_text && String(existing.value_text).trim()
+            ? existing.value_text
+            : existing.value_json);
+        if (!hasMeaningfulTransactionFieldValue(confirmationValue)) {
+          return res.status(409).json({
+            error: 'FIELD_VALUE_REQUIRED',
+            message: 'A populated field is required before it can be confirmed.',
+          });
+        }
+      }
+      if (manualInputProvided) {
+        Object.assign(update, {
+          value_text: nextValue,
+          extracted_by: 'coordinator',
+          status: acceptedStatus || 'needs_review',
+          source_type: 'manual',
+          source_doc_id: null,
+          source_doc_version: null,
+          source_file_hash: null,
+          source_page: null,
+          source_excerpt: null,
+          verified_by: acceptedStatus === 'verified' ? (access.email || 'coordinator') : null,
+          verified_role: acceptedStatus === 'verified' ? 'Deal Coordinator' : null,
+          verified_at: acceptedStatus === 'verified' ? now : null,
+        });
+      } else if (acceptedStatus) {
+        update.status = acceptedStatus;
+        if (acceptedStatus === 'verified') {
+          const sourceState = await resolveCurrentSourceDocument(supabase, propertyId, existing);
+          if (!sourceState.current) {
+            return res.status(409).json({
+              error: 'STALE_DOCUMENT_SOURCE',
+              message: 'This field is based on an inactive or superseded document. Review the current evidence before confirming it.',
+            });
+          }
+          update.verified_by = access.email || 'coordinator';
+          update.verified_role = 'Deal Coordinator';
+          update.verified_at = now;
+        } else {
+          update.verified_by = null;
+          update.verified_role = null;
+          update.verified_at = null;
+          if (acceptedStatus === 'not_applicable') {
+            Object.assign(update, {
+              source_type: 'manual',
+              source_doc_id: null,
+              source_doc_version: null,
+              source_file_hash: null,
+              source_page: null,
+              source_excerpt: null,
+            });
+          }
+        }
+      }
+      if (notes !== undefined) update.notes = String(notes).slice(0, 500);
+      const { error } = await supabase.from('transaction_record_fields').update(update)
+        .eq('id', existing.id).eq('property_id', propertyId);
       if (error) throw error;
-        const nextStatus = update.status || (value_text ? 'needs_review' : existing.status);
-        const nextValue = value_text !== undefined ? String(value_text).slice(0, 2000) : existing.value_text;
+        const nextStatus = update.status || existing.status;
+        const valueChanged = nextValue !== existing.value_text;
         const eventType = nextStatus === 'not_applicable'
           ? 'marked_not_applicable'
-          : nextValue !== existing.value_text ? 'manual_edit' : null;
+          : nextStatus === 'verified' && (manualInputProvided || existing.status !== 'verified')
+            ? 'confirmed'
+            : valueChanged
+              || (manualInputProvided && (
+                existing.source_doc_id
+                  || existing.source_doc_version
+                  || existing.source_file_hash
+                  || existing.source_page
+                  || existing.source_excerpt
+              ))
+              || (acceptedStatus && acceptedStatus !== existing.status)
+                ? 'manual_edit'
+                : null;
         if (eventType) {
           await recordTransactionFieldHistory({
             fieldId: existing.id,
@@ -10628,6 +10934,32 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
             newValue: nextValue,
             priorStatus: existing.status,
             newStatus: nextStatus,
+            sourceDocId: update.source_doc_id !== undefined
+              ? update.source_doc_id
+              : existing.source_doc_id || null,
+            metadata: {
+              source_doc_id: update.source_doc_id !== undefined
+                ? update.source_doc_id
+                : existing.source_doc_id || null,
+              source_doc_version: update.source_doc_version !== undefined
+                ? update.source_doc_version
+                : existing.source_doc_version || null,
+              source_file_hash: update.source_file_hash !== undefined
+                ? update.source_file_hash
+                : existing.source_file_hash || null,
+              prior_source_doc_id: existing.source_doc_id || null,
+              prior_source_doc_version: existing.source_doc_version || null,
+              prior_source_file_hash: existing.source_file_hash || null,
+              prior_source_page: existing.source_page ?? null,
+              prior_source_excerpt: existing.source_excerpt || null,
+            },
+          });
+        }
+        if (nextStatus === 'verified') {
+          await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
+            resolutionValue: nextValue,
+            resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
+            resolvedBy: access.email || 'coordinator',
           });
         }
         if (nextStatus === 'not_applicable') {
@@ -10657,13 +10989,30 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       value_text:     value_text ? String(value_text).slice(0, 2000) : null,
       notes:          notes ? String(notes).slice(0, 500) : null,
       status:         (status && ALLOWED_STATUSES.includes(status)) ? status : (value_text ? 'needs_review' : 'missing'),
+      source_type:    'manual',
+      source_doc_id:  null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
       extracted_by:   'coordinator',
+      verified_by:   status === 'verified' ? (access.email || 'coordinator') : null,
+      verified_role: status === 'verified' ? 'Deal Coordinator' : null,
+      verified_at:   status === 'verified' ? now : null,
       created_at:     now,
       updated_at:     now,
     };
+    if (insert.status === 'verified' && !hasMeaningfulTransactionFieldValue(insert.value_text)) {
+      return res.status(409).json({
+        error: 'FIELD_VALUE_REQUIRED',
+        message: 'A populated field is required before it can be confirmed.',
+      });
+    }
     const { data, error } = await supabase.from('transaction_record_fields').insert(insert).select('id').single();
     if (error) throw error;
-    const eventType = insert.status === 'not_applicable' ? 'marked_not_applicable' : 'manual_edit';
+    const eventType = insert.status === 'not_applicable'
+      ? 'marked_not_applicable'
+      : insert.status === 'verified' ? 'confirmed' : 'manual_edit';
     await recordTransactionFieldHistory({
       fieldId: data.id,
       propertyId,
@@ -10672,7 +11021,18 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       actorRole: 'Deal Coordinator',
       newValue: insert.value_text,
       newStatus: insert.status,
+      metadata: {
+        verification_kind: insert.status === 'verified' ? 'manual_confirmation' : undefined,
+        source: 'manual_owner_input',
+      },
     });
+    if (insert.status === 'verified') {
+      await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
+        resolutionValue: insert.value_text,
+        resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
+        resolvedBy: access.email || 'coordinator',
+      });
+    }
     if (insert.status === 'not_applicable') {
       await markDependentTransactionFieldsNotApplicable(propertyId, canonicalFieldKey, access.email || 'coordinator');
     }

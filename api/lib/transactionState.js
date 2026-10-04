@@ -25,6 +25,15 @@ const {
   buildTokenizationGuidance,
 } = require('./tokenizationGuidance');
 const { selectActiveDocumentVersions } = require('./documentVersions');
+const {
+  currentSourceDocuments,
+  hasDocumentProvenance,
+  isConfirmationFromCurrentSource,
+  isFieldSourceCurrent,
+  loadSourceDocuments,
+  projectCurrentSourceField,
+  sourceDocumentId,
+} = require('./currentSourceIntegrity');
 
 // Existing rooms may have document-level discrepancy metadata but no
 // transaction_record_conflicts row because they predate the durable conflict
@@ -159,11 +168,11 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       { data: openConflicts, error: openConflictsError },
     ] = await Promise.all([
       supabase.from('deal_analyses')
-        .select('id, section, filename, analysis, created_at, is_active, superseded_at')
+        .select('id, section, filename, analysis, created_at, source_hash, is_active, superseded_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
-        .select('id, field_key, display_label, value_text, status, source_doc_id, source_page, source_excerpt, conflict_candidates, verified_by, updated_at')
+        .select('id, field_key, display_label, value_text, status, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, conflict_candidates, verified_by, verified_role, verified_at, updated_at')
         .eq('property_id', propertyId),
       supabase.from('transaction_record_conflicts')
         .select('id, field_id, field_key, display_label, canonical_value, conflicting_value, canonical_source_doc_id, conflicting_source_doc_id, status')
@@ -231,9 +240,17 @@ async function reconcileStoredDocumentConflicts(propertyId) {
           || (candidate.field_key && candidate.field_key === conflict.field_key)
       );
       if (field && ['conflict', 'conflicting', 'source_changed'].includes(String(field.status || '').toLowerCase())) {
+        const fieldSourceCurrent = isFieldSourceCurrent(field, documents || []);
         const { error: fieldError } = await supabase.from('transaction_record_fields')
           .update({
-            status: field.verified_by ? 'verified' : 'extracted',
+            ...(fieldSourceCurrent
+              ? { status: field.verified_by ? 'verified' : 'extracted' }
+              : {
+                status: 'needs_review',
+                verified_by: null,
+                verified_role: null,
+                verified_at: null,
+              }),
             conflict_candidates: [],
             updated_at: resolvedAt,
           })
@@ -249,25 +266,10 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     // durable row so every live blocker has the same provenance and Review
     // Discrepancy destination as newer rooms.
     const openFieldKeys = new Set((openConflicts || []).map(conflict => conflict.field_key).filter(Boolean));
-    const activeDocumentIds = new Set(sourceDocuments.map(document => document.id).filter(Boolean));
     for (const field of fields || []) {
       const rawStatus = String(field.status || '').toLowerCase();
       if (!['conflict', 'conflicting', 'source_changed'].includes(rawStatus)) continue;
-      if (field.source_doc_id && !activeDocumentIds.has(field.source_doc_id)) {
-        const { error: staleFieldError } = await supabase.from('transaction_record_fields')
-          .update({
-            value_text: null,
-            status: 'missing',
-            source_doc_id: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', field.id)
-          .eq('property_id', propertyId);
-        if (staleFieldError && !/relation|schema cache|column/i.test(staleFieldError.message || '')) {
-          throw staleFieldError;
-        }
-        continue;
-      }
+      if (!isFieldSourceCurrent(field, documents || [])) continue;
       if (openFieldKeys.has(field.field_key)) continue;
       const candidate = Array.isArray(field.conflict_candidates) ? field.conflict_candidates[0] : null;
       const semantic = inferFactDefinition(field.field_key, null, field.display_label || '');
@@ -276,7 +278,7 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         normalizeComparableValue(candidate?.value ?? candidate?.value_text, semantic),
         semantic,
       );
-      if (candidate && (candidateComparison.equivalent || !candidateComparison.comparable)) {
+      if (candidate && candidateComparison.equivalent) {
         const { error: compatibleFieldError } = await supabase.from('transaction_record_fields')
           .update({
             status: field.verified_by ? 'verified' : 'extracted',
@@ -491,8 +493,8 @@ async function resolveSchemaKey(room, resolvedPackId = null) {
   return allRequirements[schemaKey] ? schemaKey : 'generic';
 }
 
-const CONFIRMED_RECORD_STATUSES = new Set(['verified', 'confirmed', 'source_changed']);
-const AWAITING_RECORD_STATUSES = new Set(['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation']);
+const CONFIRMED_RECORD_STATUSES = new Set(['verified', 'confirmed']);
+const AWAITING_RECORD_STATUSES = new Set(['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation', 'source_changed']);
 const CONFLICT_RECORD_STATUSES = new Set(['conflicting', 'conflict']);
 const EMPTY_RECORD_VALUES = new Set(['', 'n/a', 'na', 'not applicable', 'not_applicable', 'unknown']);
 
@@ -843,11 +845,11 @@ async function reconcileConfirmedFieldHistory(propertyId) {
       { data: activity, error: activityError },
     ] = await Promise.all([
       supabase.from('transaction_record_history')
-        .select('field_id, event_type, new_value, new_status, metadata, created_at')
+        .select('field_id, event_type, new_value, new_status, metadata, source_doc_id, actor_email, actor_role, created_at')
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
-        .select('id, value_text, status, updated_at')
+        .select('id, value_text, value_json, status, source_doc_id, source_doc_version, source_file_hash, verified_by, verified_role, updated_at')
         .eq('property_id', propertyId),
       supabase.from('deal_events')
         .select('event_type, description, metadata, created_at')
@@ -860,6 +862,13 @@ async function reconcileConfirmedFieldHistory(propertyId) {
       if (!/relation|schema cache|column/i.test(message)) console.warn('[transaction-state] confirmation history lookup failed:', message);
       return;
     }
+    let documents = [];
+    try {
+      documents = await loadSourceDocuments(supabase, propertyId);
+    } catch (documentError) {
+      console.warn('[transaction-state] source evidence lookup failed during history reconciliation:', documentError.message);
+    }
+    const activeDocuments = currentSourceDocuments(documents);
     const fieldsById = new Map((fields || []).map(field => [field.id, field]));
     const latestByField = new Map();
     for (const event of history || []) {
@@ -903,6 +912,9 @@ async function reconcileConfirmedFieldHistory(propertyId) {
       // A newer source conflict is intentionally not repaired from old
       // history; it needs the coordinator's current decision.
       if (['conflicting', 'conflict', 'source_changed'].includes(status)) continue;
+      if (hasDocumentProvenance(field)) {
+        if (!isConfirmationFromCurrentSource(field, event, activeDocuments)) continue;
+      }
       const value = event.new_value == null ? field.value_text : String(event.new_value).slice(0, 2000);
       const fieldUpdatedAt = new Date(field.updated_at || 0).getTime();
       const eventCreatedAt = new Date(event.created_at || 0).getTime();
@@ -915,6 +927,8 @@ async function reconcileConfirmedFieldHistory(propertyId) {
         .update({
           value_text: value,
           status: 'verified',
+          verified_by: event.actor_email || field.verified_by || null,
+          verified_role: event.actor_role || field.verified_role || null,
           verified_at: event.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -988,7 +1002,8 @@ function isConflictSupportedByActiveEvidence(conflict, documents = []) {
   // A generic document reference, or two compatible values from different
   // metadata dimensions (for example monthly versus July 2026), is not a
   // live Transaction Record discrepancy.
-  if (conflictComparison.equivalent || !conflictComparison.comparable) return false;
+  if (conflictComparison.equivalent) return false;
+  if (!conflictComparison.comparable) return true;
   if (!sourceIds.length) return true;
   if (!semantic || String(semantic.semanticKey || '').startsWith('metric:')) return true;
   const referencedDocuments = activeDocuments.filter(document => sourceIds.includes(document.id));
@@ -1084,9 +1099,18 @@ function clearRetiredTransactionConflictFields(fields, reconciliation) {
     // was the retired equivalent value, clear the legacy field-level blocker
     // in memory even when the field update cannot be persisted during rollout.
     if (!candidates.length || removedCandidate && !remainingCandidates.length) {
+      const sourceCurrent = isFieldSourceCurrent(
+        field,
+        reconciliation?.activeDocuments || [],
+      );
       return {
         ...field,
-        status: field.verified_by ? 'verified' : 'extracted',
+        status: sourceCurrent ? (field.verified_by ? 'verified' : 'extracted') : 'needs_review',
+        ...(sourceCurrent ? {} : {
+          verified_by: null,
+          verified_role: null,
+          verified_at: null,
+        }),
         conflict_candidates: [],
       };
     }
@@ -1121,7 +1145,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
   ).filter(Boolean))];
   const byKey = new Map();
 
-  for (const field of recordFields || []) {
+  for (const sourceField of recordFields || []) {
+    const field = projectCurrentSourceField(sourceField);
     const key = canonicalKey(field?.field_key);
     if (!key) continue;
     const current = byKey.get(key);
@@ -1167,6 +1192,7 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       required: requiredKeys.includes(key),
       isRequired: field.is_required !== false,
       sourceType: field.source_type || null,
+      currentSourceIsActive: field.current_source_is_active,
       sourceDocId: field.source_doc_id || null,
       sourceDocVersion: field.source_doc_version || null,
       sourceFileHash: field.source_file_hash || null,
@@ -1481,6 +1507,12 @@ async function readTransactionState(propertyId) {
     recordFields || [],
     conflictReconciliation,
   );
+  const activeSourceDocuments = currentSourceDocuments(
+    conflictReconciliation.activeDocuments || [],
+  );
+  recordFields = (recordFields || []).map(field =>
+    projectCurrentSourceField(field, activeSourceDocuments)
+  );
   // Migration 023 is additive. Keep older template rooms readable while the
   // conflict table is being rolled out to an environment.
   const storedConflicts = conflictsResult?.error
@@ -1512,7 +1544,9 @@ async function readTransactionState(propertyId) {
   const normalizedRecord = await normalizeStoredTransactionRecord(
     propertyId, room, recordFields || [], schemaKey, generatedProposal,
   );
-  recordFields = normalizedRecord.fields;
+  recordFields = (normalizedRecord.fields || []).map(field =>
+    projectCurrentSourceField(field, activeSourceDocuments)
+  );
   if (normalizedRecord.conflicts?.length) {
     const byConflictId = new Map((conflicts || []).map(conflict => [conflict.id, conflict]));
     for (const conflict of normalizedRecord.conflicts) {

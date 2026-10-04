@@ -13,6 +13,10 @@ const {
   compareComparableValues,
   isSemanticallyValidValue,
 } = require('./semanticFieldTaxonomy');
+const {
+  currentSourceDocuments,
+  isFieldSourceCurrent,
+} = require('./currentSourceIntegrity');
 
 const VERIFICATION_SECTION = 'cross_document_verification';
 const NUMBER_PATTERN = /[$€£]?\s*([\d,]+(?:\.\d+)?)\s*(million|mm|billion|bn|thousand|k)?/gi;
@@ -280,28 +284,7 @@ function extractFacts(document) {
 }
 
 function latestDocuments(rows) {
-  const hasExplicitVersionState = (rows || []).some(row =>
-    row && Object.prototype.hasOwnProperty.call(row, 'is_active')
-  );
-  const bySection = new Map();
-  const activeDocuments = [];
-  for (const row of rows || []) {
-    if (!row?.section || row.section === VERIFICATION_SECTION) continue;
-    if (row.is_active === false || row.superseded_at) continue;
-    if (hasExplicitVersionState) {
-      activeDocuments.push(row);
-      continue;
-    }
-    const existing = bySection.get(row.section);
-    if (!existing || new Date(row.created_at || 0) > new Date(existing.created_at || 0)) {
-      bySection.set(row.section, row);
-    }
-  }
-  // Versioned installations explicitly mark replacements as inactive. Keep
-  // every remaining active row: custom checklists can legitimately contain
-  // multiple independent documents under one section. Legacy installations
-  // still use the historical one-row-per-section projection.
-  return hasExplicitVersionState ? activeDocuments : [...bySection.values()];
+  return currentSourceDocuments((rows || []).filter(row => row.section !== VERIFICATION_SECTION));
 }
 
 function unwrapTransactionRecordValue(value) {
@@ -320,8 +303,9 @@ function unwrapTransactionRecordValue(value) {
   return current;
 }
 
-function transactionRecordFieldDocuments(fields = []) {
+function transactionRecordFieldDocuments(fields = [], activeDocuments = []) {
   return (fields || []).flatMap((field, index) => {
+    if (!isFieldSourceCurrent(field, activeDocuments)) return [];
     const key = field?.field_key || field?.definition_key || field?.key;
     const value = [field?.value_text, field?.value_json, field?.value]
       .find(candidate => candidate != null && (
@@ -392,7 +376,7 @@ function withTransactionRecordEvidence(documents = [], fields = [], history = []
   const existingFacts = (documents || []).flatMap(extractFacts);
   const historyDocuments = transactionRecordHistoryDocuments(fields, history, documents);
   const historySourceIds = new Set(historyDocuments.map(document => document.id));
-  const recordDocuments = transactionRecordFieldDocuments(fields).filter(document => {
+  const recordDocuments = transactionRecordFieldDocuments(fields, documents).filter(document => {
     if (document.id && historySourceIds.has(document.id)) return false;
     const recordFact = extractFacts(document)[0];
     if (!recordFact) return false;
@@ -719,7 +703,7 @@ async function loadComparableDocuments(propertyId) {
 async function loadTransactionRecordFields(propertyId) {
   let { data: fields, error } = await supabase
     .from('transaction_record_fields')
-    .select('id, field_key, definition_key, display_label, value_text, value_json, status, source_doc_id, source_page, source_excerpt, updated_at, created_at')
+    .select('id, field_key, definition_key, display_label, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, updated_at, created_at')
     .eq('property_id', propertyId);
   if (error && /column|schema cache/i.test(error.message || '')) {
     ({ data: fields, error } = await supabase

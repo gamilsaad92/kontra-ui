@@ -20,6 +20,7 @@ const {
 const {
   selectActiveDocumentVersions,
 } = require('../lib/documentVersions');
+const { invalidateSupersededFields } = require('../lib/currentSourceIntegrity');
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
 const {
@@ -144,19 +145,21 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   if (error) throw error;
   const recordId = saved?.id;
   clearBriefingCache(propertyId);
-  const { data: prior } = await supabase.from('deal_analyses').select('id')
+  const { data: prior } = await supabase.from('deal_analyses').select('id, source_hash, created_at')
     .eq('property_id', propertyId).eq('section', section).neq('id', recordId);
   const priorIds = (prior || []).map(row => row.id);
   if (priorIds.length) {
+    const supersededAt = new Date().toISOString();
     await supabase.from('deal_analyses').update({
-      is_active: false, superseded_at: new Date().toISOString(), superseded_by: recordId,
+      is_active: false, superseded_at: supersededAt, superseded_by: recordId,
     }).eq('property_id', propertyId).eq('section', section).neq('id', recordId);
-    await supabase.from('transaction_record_fields').update({
-      value_text: null, value_json: null, status: 'missing',
-      source_doc_id: null, source_doc_version: null, source_file_hash: null,
-      source_page: null, source_excerpt: null, updated_at: new Date().toISOString(),
-    }).eq('property_id', propertyId).in('source_doc_id', priorIds)
-      .in('status', ['extracted', 'needs_review', 'awaiting', 'awaiting_confirmation', 'conflicting']);
+    await invalidateSupersededFields({
+      supabase,
+      propertyId,
+      priorDocuments: prior || [],
+      replacementDocument: { id: recordId, source_hash: sourceHash },
+      now: supersededAt,
+    });
   }
   // Re-run canonical Transaction Record extraction from the replacement's
   // actual text before recalculating state. This makes newly supported fields
