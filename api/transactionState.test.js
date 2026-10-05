@@ -276,6 +276,7 @@ describe('transaction state recalculation', () => {
   it('persists duplicate history and conflict data before removing aliases', async () => {
     const calls = [];
     const originalFrom = supabase.from;
+    const originalRpc = supabase.rpc;
     supabase.from = table => {
       calls.push({ table, operation: 'from' });
       const query = {
@@ -303,10 +304,19 @@ describe('transaction state recalculation', () => {
         },
         then(resolve, reject) {
           calls.push({ table, operation: query.operation, payload: query.payload });
-          return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          const data = query.operation === 'select' ? [] : null;
+          return Promise.resolve({ data, error: null }).then(resolve, reject);
         },
       };
       return query;
+    };
+    supabase.rpc = async (functionName, args) => {
+      calls.push({
+        operation: 'rpc',
+        functionName,
+        payload: args.p_change_set,
+      });
+      return { data: { status: 'committed', field_ids: [] }, error: null };
     };
 
     try {
@@ -359,24 +369,31 @@ describe('transaction state recalculation', () => {
       ]));
       expect(normalized.conflicts).toEqual([
         expect.objectContaining({
-          id: 'conflict-1',
           field_key: 'transaction.closing_date',
           canonical_value: '2026-10-28',
           conflicting_value: '2026-10-29',
           status: 'unresolved',
         }),
       ]);
-      expect(calls).toEqual(expect.arrayContaining([
-        expect.objectContaining({ table: 'transaction_record_history', operation: 'insert' }),
-        expect.objectContaining({ table: 'transaction_record_fields', operation: 'delete' }),
-        expect.objectContaining({ table: 'transaction_record_conflicts', operation: 'insert' }),
+      const canonicalCommit = calls.find(call => call.operation === 'rpc');
+      expect(canonicalCommit.functionName).toBe('kontra_commit_canonical_change_set');
+      expect(canonicalCommit.payload.history_rows.length).toBeGreaterThan(0);
+      expect(canonicalCommit.payload.field_changes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ op: 'delete', id: 'closing-alias' }),
       ]));
-      const conflictInsert = calls.find(call =>
-        call.table === 'transaction_record_conflicts' && call.operation === 'insert'
-      );
-      expect(conflictInsert.payload.field_key).toBe('transaction.closing_date');
+      expect(canonicalCommit.payload.conflict_changes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          op: 'upsert',
+          payload: expect.objectContaining({
+            field_key: 'transaction.closing_date',
+            canonical_value: '2026-10-28',
+            conflicting_value: '2026-10-29',
+          }),
+        }),
+      ]));
     } finally {
       supabase.from = originalFrom;
+      supabase.rpc = originalRpc;
     }
   });
 
@@ -465,6 +482,7 @@ describe('transaction state recalculation', () => {
         field_key: 'transaction.type',
         value_text: 'Commercial acquisition',
         status: 'source_changed',
+        current_source_is_active: true,
       },
     ], 'cre_acquisition');
 
@@ -705,6 +723,7 @@ describe('transaction state recalculation', () => {
       value_text: selectedValue,
       status: 'verified',
       source_doc_id: selectedSource,
+      current_source_is_active: true,
     }];
     const readiness = computeTransactionReadiness(
       { workflow_pack_id: 'generic' },
@@ -735,6 +754,7 @@ describe('transaction state recalculation', () => {
         value_text: '$210,000',
         status: 'source_changed',
         source_doc_id: 'contractor-doc',
+        current_source_is_active: true,
       }],
       'generic',
       [{ key: 'financial.repair_costs', label: 'Repair Costs' }],

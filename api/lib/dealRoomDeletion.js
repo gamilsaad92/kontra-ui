@@ -243,18 +243,31 @@ async function deleteDealRoomData(propertyId, client = supabase) {
   );
   markResult('digital_asset_preparation_packages', preparationResult);
 
-  // Conflicts must be removed before canonical fields. Field children
-  // (history and approvals) cascade from transaction_record_fields.
+  // Guarded canonical rows are removed together under the same property lock.
+  // Field children (history and approvals) cascade from transaction_record_fields.
+  const canonicalDelete = await client.rpc('kontra_commit_canonical_change_set', {
+    p_change_set: {
+      property_id: propertyId,
+      operation: 'room_retention_delete',
+    },
+  });
+  if (canonicalDelete?.error) {
+    throw new Error(`Canonical room-retention delete failed: ${describeError(canonicalDelete.error)}`);
+  }
+  if (canonicalDelete?.data?.status !== 'committed') {
+    throw new Error(
+      `Canonical room-retention delete did not commit (${canonicalDelete?.data?.status || 'unknown'})`,
+    );
+  }
+  deletedTables.push('deal_analyses', 'transaction_record_conflicts', 'transaction_record_fields');
+
   for (const [table, filter] of [
-    ['deal_analyses', q => q.eq('property_id', propertyId)],
-    ['transaction_record_conflicts', q => q.eq('property_id', propertyId)],
     ['deal_room_tasks', q => q.eq('property_id', propertyId)],
     ['party_submissions', q => q.eq('property_id', propertyId)],
     ['deal_comments', q => q.eq('property_id', propertyId)],
     ['deal_notifications', q => q.eq('property_id', propertyId)],
     ['deal_events', q => q.eq('property_id', propertyId)],
     ['verified_asset_packages', q => q.eq('property_id', propertyId)],
-    ['transaction_record_fields', q => q.eq('property_id', propertyId)],
     ['transaction_generation_sessions', q => q.eq('created_room_id', propertyId)],
   ]) {
     const result = await deleteRows(client, table, filter);

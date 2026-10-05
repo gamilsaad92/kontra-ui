@@ -26,6 +26,12 @@ const {
 } = require('./tokenizationGuidance');
 const { selectActiveDocumentVersions } = require('./documentVersions');
 const {
+  commitCanonicalChangeSet,
+  expectedConflictSnapshot,
+  expectedFieldSnapshot,
+  requiredSource,
+} = require('./canonicalPersistence');
+const {
   currentSourceDocuments,
   hasDocumentProvenance,
   isConfirmationFromCurrentSource,
@@ -172,10 +178,10 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
-        .select('id, field_key, display_label, value_text, status, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, conflict_candidates, verified_by, verified_role, verified_at, updated_at')
+        .select('*')
         .eq('property_id', propertyId),
       supabase.from('transaction_record_conflicts')
-        .select('id, field_id, field_key, display_label, canonical_value, conflicting_value, canonical_source_doc_id, conflicting_source_doc_id, status')
+        .select('*')
         .eq('property_id', propertyId)
         .eq('status', 'unresolved'),
     ]);
@@ -212,26 +218,6 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       if (conflict.id) reconciliation.retiredConflictIds.add(conflict.id);
       reconciliation.retiredConflicts.push(conflict);
       const resolvedAt = new Date().toISOString();
-      let { error: resolveError } = await supabase.from('transaction_record_conflicts').update({
-        status: 'resolved',
-        resolved_at: resolvedAt,
-        resolution_note: 'Removed from live state because its sources are superseded or semantically unrelated.',
-        updated_at: resolvedAt,
-      }).eq('id', conflict.id).eq('property_id', propertyId);
-      // Existing rooms can be read by a runtime whose conflict table predates
-      // the additive resolution metadata. Keep durable cleanup best-effort;
-      // the in-memory retiredConflictIds projection below still prevents the
-      // stale row from reaching readiness or Operations Manager.
-      if (resolveError && /column|schema cache/i.test(resolveError.message || '')) {
-        ({ error: resolveError } = await supabase.from('transaction_record_conflicts').update({
-          status: 'resolved',
-          updated_at: resolvedAt,
-        }).eq('id', conflict.id).eq('property_id', propertyId));
-      }
-      if (resolveError && !/relation|schema cache|column/i.test(resolveError.message || '')) {
-        throw resolveError;
-      }
-
       // A stale conflict row often left its field in the conflicting state.
       // Repair that projection at the same boundary so readiness and Review
       // Record cannot continue to block on a retired comparison.
@@ -239,10 +225,15 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         (conflict.field_id && candidate.id === conflict.field_id)
           || (candidate.field_key && candidate.field_key === conflict.field_key)
       );
+      const fieldChanges = [];
+      const expectedFields = [];
       if (field && ['conflict', 'conflicting', 'source_changed'].includes(String(field.status || '').toLowerCase())) {
         const fieldSourceCurrent = isFieldSourceCurrent(field, documents || []);
-        const { error: fieldError } = await supabase.from('transaction_record_fields')
-          .update({
+        expectedFields.push(expectedFieldSnapshot(field));
+        fieldChanges.push({
+          op: 'update',
+          id: field.id,
+          patch: {
             ...(fieldSourceCurrent
               ? { status: field.verified_by ? 'verified' : 'extracted' }
               : {
@@ -253,12 +244,25 @@ async function reconcileStoredDocumentConflicts(propertyId) {
               }),
             conflict_candidates: [],
             updated_at: resolvedAt,
-          })
-          .eq('id', field.id)
-          .eq('property_id', propertyId);
-        if (fieldError && !/relation|schema cache|column/i.test(fieldError.message || '')) {
-          throw fieldError;
-        }
+          },
+        });
+      }
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          expected_fields: expectedFields,
+          field_changes: fieldChanges,
+          expected_conflicts: [expectedConflictSnapshot(conflict)],
+          conflict_changes: [{
+            op: 'resolve',
+            id: conflict.id,
+            field_key: conflict.field_key,
+            resolution_note: 'Removed from live state because its sources are superseded or semantically unrelated.',
+          }],
+        },
+      });
+      if (!['committed', 'retry_snapshot', 'stale_source'].includes(result.status)) {
+        throw result.error || new Error(`Retired conflict reconciliation failed (${result.status || 'unknown'})`);
       }
     }
 
@@ -279,21 +283,27 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         semantic,
       );
       if (candidate && candidateComparison.equivalent) {
-        const { error: compatibleFieldError } = await supabase.from('transaction_record_fields')
-          .update({
-            status: field.verified_by ? 'verified' : 'extracted',
-            conflict_candidates: [],
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', field.id)
-          .eq('property_id', propertyId);
-        if (compatibleFieldError && !/relation|schema cache|column/i.test(compatibleFieldError.message || '')) {
-          throw compatibleFieldError;
+        const result = await commitCanonicalChangeSet({
+          p_change_set: {
+            property_id: propertyId,
+            expected_fields: [expectedFieldSnapshot(field)],
+            field_changes: [{
+              op: 'update',
+              id: field.id,
+              patch: {
+                status: field.verified_by ? 'verified' : 'extracted',
+                conflict_candidates: [],
+                updated_at: new Date().toISOString(),
+              },
+            }],
+          },
+        });
+        if (!['committed', 'retry_snapshot', 'stale_source'].includes(result.status)) {
+          throw result.error || new Error(`Compatible field reconciliation failed (${result.status || 'unknown'})`);
         }
         continue;
       }
-      const { error: backfillError } = await supabase.from('transaction_record_conflicts').insert({
-        property_id: propertyId,
+      const payload = {
         field_id: field.id || null,
         field_key: field.field_key,
         display_label: field.display_label || field.field_key || 'Transaction Record field',
@@ -308,9 +318,17 @@ async function reconcileStoredDocumentConflicts(propertyId) {
         conflicting_source_excerpt: candidate?.source_excerpt || candidate?.sourceExcerpt || null,
         status: 'unresolved',
         updated_at: new Date().toISOString(),
+      };
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          expected_fields: [expectedFieldSnapshot(field)],
+          expected_conflicts: [expectedConflictSnapshot(null, field.field_key)],
+          conflict_changes: [{ op: 'upsert', payload }],
+        },
       });
-      if (backfillError && !/relation|schema cache|column/i.test(backfillError.message || '')) {
-        throw backfillError;
+      if (!['committed', 'retry_snapshot', 'stale_source'].includes(result.status)) {
+        throw result.error || new Error(`Field conflict backfill failed (${result.status || 'unknown'})`);
       }
     }
     const candidates = sourceDocuments.flatMap(document =>
@@ -385,25 +403,9 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       ) || different)
       : different;
 
-    let fieldId = field?.id || null;
-    if (!fieldId) {
-      const { data: created, error } = await supabase.from('transaction_record_fields').insert({
-        property_id: propertyId,
-        field_key: canonicalKey,
-        field_category: 'financial',
-        display_label: 'Repair Costs',
-        value_text: `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
-        status: 'extracted',
-        extracted_by: 'document_backfill',
-        source_doc_id: canonicalCandidate.document.id,
-        source_excerpt: canonicalCandidate.excerpt,
-      }).select('id').single();
-      if (error) throw error;
-      fieldId = created?.id || null;
-    }
     const { data: openConflict, error: conflictLookupError } = await supabase
       .from('transaction_record_conflicts')
-      .select('id, field_key, status, resolved_at')
+      .select('*')
       .eq('property_id', propertyId)
       .ilike('display_label', 'Repair Costs')
       .order('updated_at', { ascending: false });
@@ -419,8 +421,8 @@ async function reconcileStoredDocumentConflicts(propertyId) {
     const unresolvedConflict = (openConflict || []).find(conflict =>
       conflict.status === 'unresolved' && conflict.field_key === canonicalKey
     );
+    const fieldId = field?.id || null;
     const payload = {
-      property_id: propertyId,
       field_id: fieldId,
       field_key: canonicalKey,
       display_label: field?.display_label || 'Repair Costs',
@@ -435,11 +437,46 @@ async function reconcileStoredDocumentConflicts(propertyId) {
       status: 'unresolved',
       updated_at: new Date().toISOString(),
     };
-    const query = unresolvedConflict?.id
-      ? supabase.from('transaction_record_conflicts').update(payload).eq('id', unresolvedConflict.id)
-      : supabase.from('transaction_record_conflicts').insert(payload);
-    const { error: saveError } = await query;
-    if (saveError) throw saveError;
+    const fieldChanges = [];
+    const expectedFields = [];
+    if (field) {
+      expectedFields.push(expectedFieldSnapshot(field));
+    } else {
+      expectedFields.push(expectedFieldSnapshot(null, canonicalKey));
+      fieldChanges.push({
+        op: 'insert',
+        field_key: canonicalKey,
+        patch: {
+          field_key: canonicalKey,
+          field_category: 'financial',
+          display_label: 'Repair Costs',
+          value_text: `$${Math.round(canonicalAmount).toLocaleString('en-US')}`,
+          status: 'extracted',
+          extracted_by: 'document_backfill',
+          source_doc_id: canonicalCandidate.document.id,
+          source_excerpt: canonicalCandidate.excerpt,
+        },
+      });
+    }
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        required_sources: [
+          requiredSource(canonicalSource.document),
+          requiredSource(conflictingSource.document),
+        ].filter(Boolean),
+        expected_fields: expectedFields,
+        field_changes: fieldChanges,
+        expected_conflicts: [expectedConflictSnapshot(unresolvedConflict, canonicalKey)],
+        conflict_changes: [{
+          op: 'upsert',
+          payload: { ...(unresolvedConflict?.id ? { id: unresolvedConflict.id } : {}), ...payload },
+        }],
+      },
+    });
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Repair-cost conflict reconciliation failed (${result.status || 'unknown'})`);
+    }
     return reconciliation;
   } catch (error) {
     // Conflict migration rollout must not make every room unreadable.
@@ -610,19 +647,11 @@ function mergeRecordMetadata(winner, duplicate) {
   return update;
 }
 
-async function preserveCanonicalizedFieldHistory(propertyId, winner, duplicate, key) {
-  if (!winner?.id || !duplicate?.id || winner.id === duplicate.id) return true;
-  let preserved = true;
-  const { error: reassignError } = await supabase
-    .from('transaction_record_history')
-    .update({ field_id: winner.id })
-    .eq('property_id', propertyId)
-    .eq('field_id', duplicate.id);
-  if (reassignError && !/relation|schema cache|column/i.test(reassignError.message || '')) {
-    console.warn('[transaction-state] duplicate history reassignment failed:', reassignError.message);
-    preserved = false;
-  }
-  const { error: historyError } = await supabase.from('transaction_record_history').insert({
+function canonicalizedFieldHistoryChange(propertyId, winner, duplicate, key) {
+  if (!winner?.id || !duplicate?.id || winner.id === duplicate.id) return null;
+  return {
+    reassignment: { from_field_id: duplicate.id, to_field_id: winner.id },
+    history: {
     field_id: winner.id,
     property_id: propertyId,
     event_type: 'canonicalized_duplicate',
@@ -639,21 +668,17 @@ async function preserveCanonicalizedFieldHistory(propertyId, winner, duplicate, 
       original_field_key: duplicate.field_key || null,
       materially_different: recordValuesDiffer(winner, duplicate, key),
     },
-  });
-  if (historyError && !/relation|schema cache|column/i.test(historyError.message || '')) {
-    console.warn('[transaction-state] canonicalization history write failed:', historyError.message);
-    preserved = false;
-  }
-  return preserved;
+    },
+  };
 }
 
-async function persistCanonicalizedDuplicateConflict(propertyId, winner, duplicate, key) {
+function buildCanonicalizedDuplicateConflict(winner, duplicate, key, existingConflict = null) {
   const winnerValue = storedRecordValue(winner);
   const duplicateValue = storedRecordValue(duplicate);
   if (!winnerValue || !duplicateValue || !recordValuesDiffer(winner, duplicate, key)) return null;
 
   const payload = {
-    property_id: propertyId,
+    ...(existingConflict?.id ? { id: existingConflict.id } : {}),
     field_id: winner.id || null,
     field_key: key,
     display_label: winner.display_label || duplicate.display_label || key,
@@ -668,31 +693,15 @@ async function persistCanonicalizedDuplicateConflict(propertyId, winner, duplica
     status: 'unresolved',
     updated_at: new Date().toISOString(),
   };
-  const lookup = await supabase
-    .from('transaction_record_conflicts')
-    .select('id')
-    .eq('property_id', propertyId)
-    .eq('field_key', key)
-    .eq('status', 'unresolved')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (lookup.error) {
-    if (/relation|schema cache|column/i.test(lookup.error.message || '')) return null;
-    throw lookup.error;
-  }
-  const saved = lookup.data?.id
-    ? await supabase.from('transaction_record_conflicts').update(payload).eq('id', lookup.data.id).select('*').single()
-    : await supabase.from('transaction_record_conflicts').insert(payload).select('*').single();
-  if (saved.error) {
-    if (/relation|schema cache|column/i.test(saved.error.message || '')) return null;
-    throw saved.error;
-  }
-  return saved.data || payload;
+  return payload;
 }
 
 async function normalizeStoredTransactionRecord(propertyId, room, recordFields, schemaKey, proposal) {
   const fields = Array.isArray(recordFields) ? recordFields.map(field => ({ ...field })) : [];
+  const { data: openConflicts, error: conflictLookupError } = await supabase
+    .from('transaction_record_conflicts').select('*')
+    .eq('property_id', propertyId).eq('status', 'unresolved');
+  if (conflictLookupError) throw conflictLookupError;
 
   const definitions = Array.isArray(proposal?.transaction_record_fields)
     ? proposal.transaction_record_fields : [];
@@ -732,9 +741,22 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
   }
 
   const canonical = [];
-  const deleteWrites = [];
-  const updateWrites = [];
+  const expectedFields = new Map();
+  const expectedConflicts = new Map();
+  const fieldChanges = [];
+  const conflictChanges = [];
+  const historyReassignments = [];
+  const historyRows = [];
   const persistedConflicts = [];
+  const addFieldExpectation = field => {
+    if (!field?.id) return;
+    expectedFields.set(`id:${field.id}`, expectedFieldSnapshot(field));
+  };
+  const addConflictExpectation = (conflict, key) => {
+    const snapshot = expectedConflictSnapshot(conflict, key);
+    expectedConflicts.set(snapshot.id ? `id:${snapshot.id}` : `absent:${snapshot.field_key}`, snapshot);
+  };
+
   for (const [key, group] of groups) {
     group.sort((a, b) => {
       const rankDelta = recordStatusRank(b.field) - recordStatusRank(a.field);
@@ -777,10 +799,15 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
         .filter(value => value !== null && value !== undefined && String(value).trim() !== '')
         .map(value => String(value).slice(0, 2000));
       winner.conflict_candidates = [...new Set(values)];
-      const conflict = await persistCanonicalizedDuplicateConflict(
-        propertyId, winner, materiallyDifferentDuplicate.field, key,
+      const existingConflict = openConflicts.find(conflict => conflict.field_key === key) || null;
+      addConflictExpectation(existingConflict, key);
+      const conflictPayload = buildCanonicalizedDuplicateConflict(
+        winner, materiallyDifferentDuplicate.field, key, existingConflict,
       );
-      if (conflict) persistedConflicts.push(conflict);
+      if (conflictPayload) {
+        conflictChanges.push({ op: 'upsert', payload: conflictPayload });
+        persistedConflicts.push(conflictPayload);
+      }
     }
     canonical.push(winner);
     const original = recordFields.find(field => field.id === winner.id);
@@ -788,12 +815,16 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
     for (const duplicate of group.slice(1)) {
       const metadataUpdate = mergeRecordMetadata(winner, duplicate.field);
       metadataChanged = metadataChanged || Object.keys(metadataUpdate).length > 0;
-      const historyPreserved = await preserveCanonicalizedFieldHistory(
-        propertyId, winner, duplicate.field, key,
-      );
-      if (duplicate.field.id && historyPreserved) {
-        deleteWrites.push(supabase.from('transaction_record_fields')
-          .delete().eq('id', duplicate.field.id).eq('property_id', propertyId));
+      if (duplicate.field.id && winner.id) {
+        addFieldExpectation(duplicate.field);
+        const historyChange = canonicalizedFieldHistoryChange(
+          propertyId, winner, duplicate.field, key,
+        );
+        if (historyChange) {
+          historyReassignments.push(historyChange.reassignment);
+          historyRows.push(historyChange.history);
+        }
+        fieldChanges.push({ op: 'delete', id: duplicate.field.id });
       }
     }
     if (winner.id && original && (
@@ -806,31 +837,38 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
       || JSON.stringify(winner.conflict_candidates || []) !== JSON.stringify(original.conflict_candidates || [])
       || metadataChanged
     )) {
-      updateWrites.push(supabase.from('transaction_record_fields').update({
-        field_key: winner.field_key,
-        definition_key: winner.definition_key || null,
-        field_category: winner.field_category || String(key).split('.')[0] || 'transaction',
-        display_label: winner.display_label || key,
-        is_required: winner.is_required !== false,
-        status: winner.status || 'missing',
-        conflict_candidates: winner.conflict_candidates || [],
-        ...recordSourceMetadata(winner),
-        updated_at: new Date().toISOString(),
-      }).eq('id', winner.id).eq('property_id', propertyId));
+      addFieldExpectation(original);
+      fieldChanges.push({
+        op: 'update',
+        id: winner.id,
+        patch: {
+          field_key: winner.field_key,
+          definition_key: winner.definition_key || null,
+          field_category: winner.field_category || String(key).split('.')[0] || 'transaction',
+          display_label: winner.display_label || key,
+          is_required: winner.is_required !== false,
+          status: winner.status || 'missing',
+          conflict_candidates: winner.conflict_candidates || [],
+          ...recordSourceMetadata(winner),
+          updated_at: new Date().toISOString(),
+        },
+      });
     }
   }
-  if (deleteWrites.length) {
-    const results = await Promise.all(deleteWrites);
-    const failed = results.find(result => result.error);
-    if (failed?.error && !/column|schema cache|relation/i.test(failed.error.message || '')) {
-      console.warn('[transaction-state] record normalization write failed:', failed.error.message);
-    }
-  }
-  if (updateWrites.length) {
-    const results = await Promise.all(updateWrites);
-    const failed = results.find(result => result.error);
-    if (failed?.error && !/column|schema cache|relation/i.test(failed.error.message || '')) {
-      console.warn('[transaction-state] record normalization update failed:', failed.error.message);
+  if (fieldChanges.length || conflictChanges.length || historyReassignments.length || historyRows.length) {
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        expected_fields: [...expectedFields.values()],
+        field_changes: fieldChanges,
+        expected_conflicts: [...expectedConflicts.values()],
+        conflict_changes: conflictChanges,
+        history_reassignments: historyReassignments,
+        history_rows: historyRows,
+      },
+    });
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Transaction Record normalization did not commit (${result.status || 'unknown'})`);
     }
   }
   return { fields: canonical, conflicts: persistedConflicts };
@@ -849,7 +887,7 @@ async function reconcileConfirmedFieldHistory(propertyId) {
         .eq('property_id', propertyId)
         .order('created_at', { ascending: true }),
       supabase.from('transaction_record_fields')
-        .select('id, value_text, value_json, status, source_doc_id, source_doc_version, source_file_hash, verified_by, verified_role, updated_at')
+        .select('*')
         .eq('property_id', propertyId),
       supabase.from('deal_events')
         .select('event_type, description, metadata, created_at')
@@ -871,6 +909,8 @@ async function reconcileConfirmedFieldHistory(propertyId) {
     const activeDocuments = currentSourceDocuments(documents);
     const fieldsById = new Map((fields || []).map(field => [field.id, field]));
     const latestByField = new Map();
+    const expectedFields = new Map();
+    const fieldChanges = [];
     for (const event of history || []) {
       if (event?.field_id) latestByField.set(event.field_id, event);
     }
@@ -923,18 +963,31 @@ async function reconcileConfirmedFieldHistory(propertyId) {
         && String(field.value_text ?? field.value_json ?? '') === String(value ?? '')
         && ['verified', 'confirmed'].includes(status)
       ) continue;
-      const { error } = await supabase.from('transaction_record_fields')
-        .update({
+      expectedFields.set(`id:${fieldId}`, expectedFieldSnapshot(field));
+      fieldChanges.push({
+        op: 'update',
+        id: fieldId,
+        patch: {
           value_text: value,
           status: 'verified',
           verified_by: event.actor_email || field.verified_by || null,
           verified_role: event.actor_role || field.verified_role || null,
           verified_at: event.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', fieldId)
-        .eq('property_id', propertyId);
-      if (error && !/relation|schema cache|column/i.test(error.message || '')) throw error;
+        },
+      });
+    }
+    if (fieldChanges.length) {
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          expected_fields: [...expectedFields.values()],
+          field_changes: fieldChanges,
+        },
+      });
+      if (result.status !== 'committed') {
+        throw result.error || new Error(`Confirmed field history reconciliation did not commit (${result.status || 'unknown'})`);
+      }
     }
   } catch (error) {
     if (!/relation|schema cache|column/i.test(error.message || '')) {
@@ -1167,6 +1220,8 @@ function computeTransactionRecordState(recordFields, schemaKey, requiredKeysOver
       ? 'conflict'
       : CONFIRMED_RECORD_STATUSES.has(rawStatus)
         ? 'confirmed'
+        : rawStatus === 'source_changed' && field.current_source_is_active === true
+          ? 'confirmed'
         : AWAITING_RECORD_STATUSES.has(rawStatus)
           ? 'awaiting'
           : rawStatus === 'not_applicable'

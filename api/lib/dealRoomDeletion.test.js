@@ -1,6 +1,6 @@
 const { deleteDealRoomData } = require('./dealRoomDeletion');
 
-function createFakeClient({ failRemove = false } = {}) {
+function createFakeClient({ failRemove = false, failCanonicalDelete = false } = {}) {
   const roomId = 'room-1';
   const tables = {
     deal_analyses: [{ id: 'analysis-1', property_id: roomId, storage_path: `${roomId}/source.pdf` }],
@@ -78,6 +78,24 @@ function createFakeClient({ failRemove = false } = {}) {
     client: {
       from: query,
       storage: { from: storageBucket },
+      rpc: async (functionName, args) => {
+        operations.push({ type: 'rpc', functionName, args });
+        if (failCanonicalDelete) {
+          return { data: null, error: { message: 'canonical delete unavailable' } };
+        }
+        return {
+          data: {
+            status: 'committed',
+            operation: 'room_retention_delete',
+            deleted: {
+              deal_analyses: 1,
+              transaction_record_conflicts: 0,
+              transaction_record_fields: 0,
+            },
+          },
+          error: null,
+        };
+      },
     },
     operations,
     storageObjects,
@@ -97,17 +115,25 @@ describe('deal room deletion', () => {
     expect(fake.storageObjects.get('deal-documents')).toEqual(new Set(['other-room/private.pdf']));
     expect(fake.operations.map(operation => operation.table).at(-1)).toBe('deal_rooms');
     expect(fake.operations.map(operation => operation.table)).toEqual(expect.arrayContaining([
-      'deal_analyses',
-      'transaction_record_conflicts',
       'deal_room_tasks',
       'party_submissions',
       'deal_notifications',
       'deal_events',
-      'transaction_record_fields',
       'deal_room_invites',
       'deal_room_participants',
       'deal_rooms',
     ]));
+    expect(fake.operations.filter(operation => operation.type === 'rpc')).toEqual([
+      expect.objectContaining({
+        functionName: 'kontra_commit_canonical_change_set',
+        args: {
+          p_change_set: { property_id: 'room-1', operation: 'room_retention_delete' },
+        },
+      }),
+    ]);
+    expect(fake.operations.filter(operation => (
+      ['deal_analyses', 'transaction_record_conflicts', 'transaction_record_fields'].includes(operation.table)
+    ))).toHaveLength(0);
   });
 
   test('fails before database cleanup when storage removal fails and remains retryable', async () => {
@@ -118,5 +144,16 @@ describe('deal room deletion', () => {
     expect(fake.storageObjects.get('deal-documents')).toEqual(
       new Set(['room-1/source.pdf', 'room-1/nested/preparation.pdf', 'archive/room-preparation.pdf', 'other-room/private.pdf']),
     );
+  });
+
+  test('does not delete the room when guarded canonical retention cleanup fails', async () => {
+    const fake = createFakeClient({ failCanonicalDelete: true });
+
+    await expect(deleteDealRoomData('room-1', fake.client))
+      .rejects.toThrow(/canonical delete unavailable/i);
+    expect(fake.operations.filter(operation => operation.type === 'rpc')).toEqual([
+      expect.objectContaining({ functionName: 'kontra_commit_canonical_change_set' }),
+    ]);
+    expect(fake.operations.filter(operation => operation.table === 'deal_rooms')).toHaveLength(0);
   });
 });

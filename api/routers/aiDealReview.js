@@ -14,13 +14,16 @@ const { recalculateTransactionState } = require('../lib/transactionState');
 const { evaluateDealRoomForTasks } = require('../lib/taskEngine');
 const { runVerification } = require('../lib/verificationEngine');
 const {
+  activateDocumentVersion,
+  afterCanonicalCommit,
+} = require('../lib/canonicalPersistence');
+const {
   hasDocumentRole,
   getAssignedSectionsFromChecklist,
 } = require('../lib/documentAssignmentAccess');
 const {
   selectActiveDocumentVersions,
 } = require('../lib/documentVersions');
-const { invalidateSupersededFields } = require('../lib/currentSourceIntegrity');
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
 const {
@@ -97,83 +100,103 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
       // after sending raw DOCX ZIP bytes to the model. Re-uploading that same
       // file must replace the stale result, not return its id unchanged.
       existingRecordId = existing.id;
-      const refreshedPayload = {
-        filename,
-        analysis,
-        uploaded_by_role: role || 'unknown',
-        storage_path: storagePath,
-        source_hash: sourceHash,
-        processing_status: 'extracted',
-        is_active: true,
-      };
-      let { error: refreshError } = await supabase.from('deal_analyses')
-        .update(refreshedPayload)
-        .eq('id', existingRecordId);
-      if (refreshError && /column|schema cache/i.test(refreshError.message || '')) {
-        ({ error: refreshError } = await supabase.from('deal_analyses')
-          .update({
-            filename,
-            analysis,
-            uploaded_by_role: role || 'unknown',
-            storage_path: storagePath,
-          })
-          .eq('id', existingRecordId));
-      }
-      if (refreshError) throw refreshError;
     }
   }
-  // Keep the source hash and processing state when only the active-version
-  // columns are missing. The final payload is for older installations that
-  // predate the durable processing columns altogether.
-  const payloads = buildDocumentVersionInsertPayloads({
-    propertyId, section, filename, analysis, role, storagePath, sourceHash,
+  const startedAt = new Date().toISOString();
+  const activation = await activateDocumentVersion({
+    propertyId,
+    section,
+    existingDocumentId: existingRecordId,
+    document: {
+      filename,
+      analysis: { ...analysis, pending: true, processing_status: 'processing' },
+      uploaded_by_role: role || 'unknown',
+      storage_path: storagePath,
+      document_hash: sourceHash,
+      extracted_fields: null,
+      extraction_version: 1,
+      processing_status: 'processing',
+      source_hash: sourceHash,
+      processing_attempt: 0,
+      correlation_id: crypto.randomUUID(),
+      failure_reason: null,
+      processing_started_at: startedAt,
+      processing_completed_at: null,
+      post_completion: false,
+      post_completion_added_at: null,
+    },
   });
-  let saved = existingRecordId ? { id: existingRecordId } : null;
-  let error = null;
-  if (!existingRecordId) {
-    ({ data: saved, error } = await supabase.from('deal_analyses')
-      .insert(payloads[0]).select('id').single());
-    if (error && /column|schema cache/i.test(error.message || '')) {
-      for (const payload of payloads.slice(1)) {
-        ({ data: saved, error } = await supabase.from('deal_analyses')
-          .insert(payload).select('id').single());
-        if (!error) break;
-        if (!/column|schema cache/i.test(error.message || '')) break;
-      }
-    }
+  if (activation.status !== 'committed') {
+    throw activation.error || new Error(
+      activation.status === 'stale_source'
+        ? 'The AI document version changed before it could be activated.'
+        : 'The AI document version did not commit.',
+    );
   }
-  if (error) throw error;
-  const recordId = saved?.id;
+  const recordId = activation.document_id;
   clearBriefingCache(propertyId);
-  const { data: prior } = await supabase.from('deal_analyses').select('id, source_hash, created_at')
-    .eq('property_id', propertyId).eq('section', section).neq('id', recordId);
-  const priorIds = (prior || []).map(row => row.id);
-  if (priorIds.length) {
-    const supersededAt = new Date().toISOString();
-    await supabase.from('deal_analyses').update({
-      is_active: false, superseded_at: supersededAt, superseded_by: recordId,
-    }).eq('property_id', propertyId).eq('section', section).neq('id', recordId);
-    await invalidateSupersededFields({
-      supabase,
-      propertyId,
-      priorDocuments: prior || [],
-      replacementDocument: { id: recordId, source_hash: sourceHash },
-      now: supersededAt,
-    });
-  }
   // Re-run canonical Transaction Record extraction from the replacement's
   // actual text before recalculating state. This makes newly supported fields
   // (for example servicer-controlled insurance proceeds) enter as extracted /
   // awaiting confirmation instead of leaving the prior document's state live.
-  if (transactionFieldExtractor && extractedText) {
-    await transactionFieldExtractor(propertyId, recordId, extractedText, section);
+  if (!transactionFieldExtractor) {
+    const message = 'Canonical document extraction is unavailable.';
+    await supabase.from('deal_analyses').update({
+      analysis: { ...analysis, pending: false, processing_status: 'failed' },
+      processing_status: 'failed',
+      failure_reason: message,
+      processing_completed_at: new Date().toISOString(),
+    }).eq('id', recordId);
+    throw new Error(message);
   }
-  // Rebuild the cross-document evidence snapshot from active versions only.
-  // Otherwise a verification row generated before this replacement can
-  // continue to feed the live conflict/readiness path.
-  await runVerification(propertyId);
-  await recalculateTransactionState(propertyId, { source: 'ai_document_replacement' });
-  await evaluateDealRoomForTasks(propertyId, { source: 'ai_document_replacement' });
+  const extractionResult = await transactionFieldExtractor(
+    propertyId,
+    recordId,
+    extractedText || '',
+    section,
+  );
+  const outcome = await afterCanonicalCommit(extractionResult, async () => {
+    const { error } = await supabase.from('deal_analyses').update({
+      analysis: { ...analysis, pending: false, processing_status: 'extracted' },
+      processing_status: 'extracted',
+      failure_reason: null,
+      processing_completed_at: new Date().toISOString(),
+    }).eq('id', recordId);
+    if (error) throw error;
+    // Rebuild the cross-document evidence snapshot from active versions only.
+    // Otherwise a verification row generated before this replacement can
+    // continue to feed the live conflict/readiness path.
+    await runVerification(propertyId);
+    await recalculateTransactionState(propertyId, { source: 'ai_document_replacement' });
+    await evaluateDealRoomForTasks(propertyId, { source: 'ai_document_replacement' });
+  });
+  if (outcome === 'stale_source') {
+    const message = 'This document version was superseded before extraction could commit.';
+    const { error } = await supabase.from('deal_analyses').update({
+      analysis: { ...analysis, pending: false, processing_status: 'superseded' },
+      processing_status: 'superseded',
+      failure_reason: null,
+      processing_completed_at: new Date().toISOString(),
+    }).eq('id', recordId);
+    if (error) throw error;
+    clearBriefingCache(propertyId);
+    const staleError = new Error(message);
+    staleError.status = 409;
+    throw staleError;
+  }
+  if (outcome !== 'committed') {
+    const message = extractionResult?.error || 'Canonical document extraction failed.';
+    const { error } = await supabase.from('deal_analyses').update({
+      analysis: { ...analysis, pending: false, processing_status: 'failed' },
+      processing_status: 'failed',
+      failure_reason: message,
+      processing_completed_at: new Date().toISOString(),
+    }).eq('id', recordId);
+    if (error) throw error;
+    throw extractionResult?.error instanceof Error
+      ? extractionResult.error
+      : new Error(message);
+  }
   clearBriefingCache(propertyId);
   return recordId;
 }
@@ -865,6 +888,9 @@ Return only valid JSON. No extra text.`;
     res.json({ success: true, analysis: result });
   } catch (err) {
     console.error('[analyze-document]', err.message);
+    if (err.status === 409) {
+      return res.status(409).json({ error: 'Document version superseded', message: err.message });
+    }
     if (err.message === 'ENCRYPTED_PDF') return res.status(422).json({ error: 'This PDF is password-protected. Please remove the password and re-upload.' });
     if (err.status >= 429 || (err.status >= 500 && err.status < 600) || err.code === 'insufficient_quota' || err.code === 'ECONNRESET') {
       return res.json({ success: true, pending: true, analysis: { summary: 'Document received — AI analysis is queued and will complete shortly. Refresh in a few minutes.', pending: true, confidence: 0 } });

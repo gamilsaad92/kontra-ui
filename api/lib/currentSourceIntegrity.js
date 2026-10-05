@@ -3,8 +3,11 @@
 const VERIFIED_STATUSES = new Set(['verified', 'confirmed']);
 const NON_CURRENT_CONFLICT_STATUSES = new Set(['conflict', 'conflicting', 'source_changed']);
 const NON_REVIEWABLE_STATUSES = new Set(['missing', 'not_applicable']);
-const HISTORY_SCHEMA_ERROR = /relation|column|schema cache/i;
 const VERSION_SCHEMA_ERROR = /is_active|superseded_at|superseded_by|source_hash|schema cache|column .* does not exist/i;
+const {
+  commitCanonicalChangeSet,
+  expectedFieldSnapshot,
+} = require('./canonicalPersistence');
 const {
   inferSemanticDefinition,
   normalizeComparableValue,
@@ -211,39 +214,49 @@ async function invalidateSupersededFields({
   now = new Date().toISOString(),
 } = {}) {
   if (!supabase || !propertyId || !priorDocuments.length) return [];
-  const { data: fields, error } = await supabase
-    .from('transaction_record_fields')
-    .select('id, field_key, value_text, value_json, status, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
-    .eq('property_id', propertyId);
-  if (error) throw error;
-
-  const changed = [];
-  for (const field of fields || []) {
-    const transition = invalidationForSupersededField(field, priorDocuments, replacementDocument, now);
-    if (!transition || !field.id) continue;
-    const { error: updateError } = await supabase
+  let changed = [];
+  const result = await commitCanonicalChangeSet(async () => {
+    const { data: fields, error } = await supabase
       .from('transaction_record_fields')
-      .update(transition.update)
-      .eq('id', field.id)
+      .select('*')
       .eq('property_id', propertyId);
-    if (updateError) throw updateError;
+    if (error) throw error;
 
-    const history = {
-      ...transition.history,
-      property_id: propertyId,
-      field_id: field.id,
-      metadata: {
-        ...transition.history.metadata,
-        ...(correlationId ? { correlation_id: correlationId } : {}),
+    const expected_fields = [];
+    const field_changes = [];
+    const history_rows = [];
+    changed = [];
+    for (const field of fields || []) {
+      const transition = invalidationForSupersededField(field, priorDocuments, replacementDocument, now);
+      if (!transition || !field.id) continue;
+      expected_fields.push(expectedFieldSnapshot(field));
+      field_changes.push({
+        op: 'update',
+        id: field.id,
+        patch: transition.update,
+      });
+      history_rows.push({
+        ...transition.history,
+        property_id: propertyId,
+        field_id: field.id,
+        metadata: {
+          ...transition.history.metadata,
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+        },
+      });
+      changed.push(field.id);
+    }
+    return {
+      p_change_set: {
+        property_id: propertyId,
+        expected_fields,
+        field_changes,
+        history_rows,
       },
     };
-    const { error: historyError } = await supabase
-      .from('transaction_record_history')
-      .insert(history);
-    if (historyError && !HISTORY_SCHEMA_ERROR.test(historyError.message || '')) {
-      throw historyError;
-    }
-    changed.push(field.id);
+  });
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Superseded-source invalidation did not commit (${result.status || 'unknown'})`);
   }
   return changed;
 }

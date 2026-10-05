@@ -382,8 +382,40 @@ function createPgClient() {
     storage: storageSub,
     auth: authStub,
     rpc: async (fn, args) => {
-      console.warn(`[pgAdapter] rpc('${fn}') not implemented — returning empty`);
-      return { data: null, error: null };
+      try {
+        const pool = getPool();
+        let result;
+        if (fn === 'kontra_activate_document_version') {
+          const {
+            p_property_id,
+            p_section,
+            p_document,
+            p_existing_document_id = null,
+          } = args || {};
+          result = await pool.query(
+            `SELECT public.kontra_activate_document_version(
+              $1::text, $2::text, $3::jsonb, $4::uuid
+            ) AS data`,
+            [p_property_id, p_section, JSON.stringify(p_document || {}), p_existing_document_id],
+          );
+        } else if (fn === 'kontra_commit_canonical_change_set') {
+          result = await pool.query(
+            'SELECT public.kontra_commit_canonical_change_set($1::jsonb) AS data',
+            [JSON.stringify(args?.p_change_set || {})],
+          );
+        } else {
+          return {
+            data: null,
+            error: {
+              code: 'RPC_NOT_ALLOWLISTED',
+              message: `RPC '${fn}' is not supported by the PostgreSQL adapter`,
+            },
+          };
+        }
+        return { data: result.rows[0]?.data ?? null, error: null };
+      } catch (error) {
+        return { data: null, error };
+      }
     },
   };
 }

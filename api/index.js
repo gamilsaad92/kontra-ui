@@ -46,6 +46,14 @@ const helmet = require('helmet');
 const multer = require('multer');
 const { supabase, replica, isDatabaseConnected } = require('./db');
 const {
+  activateDocumentVersion,
+  afterCanonicalCommit,
+  commitCanonicalChangeSet,
+  expectedConflictSnapshot,
+  expectedFieldSnapshot,
+  requiredSource,
+} = require('./lib/canonicalPersistence');
+const {
   DEFAULT_PACK_ID,
   getPackStageConfig,
   getPackStageKeys,
@@ -137,7 +145,6 @@ const {
   conflictValueMatches,
   hasDocumentProvenance,
   isFieldSourceCurrent,
-  invalidateSupersededFields,
   loadSourceDocuments,
   projectCurrentSourceField,
   resolveCurrentSourceDocument,
@@ -4000,133 +4007,125 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
     );
     const existing = fieldsByCanonicalKey.get(key);
     const hasValue = field.value !== null && field.value !== undefined && String(field.value).trim() !== '';
-    if (hasValue && !isSemanticallyValidValue(field.value, field.key, field.label || field.display_label || '')) {
-      continue;
-    }
+    if (hasValue && !isSemanticallyValidValue(field.value, field.key, field.label || field.display_label || '')) continue;
     const existingHasValue = existing?.value !== null && existing?.value !== undefined
       && String(existing.value).trim() !== '';
-    if (!existing || (hasValue && !existingHasValue)) {
-      fieldsByCanonicalKey.set(key, { ...field, key });
-    }
+    if (!existing || (hasValue && !existingHasValue)) fieldsByCanonicalKey.set(key, { ...field, key });
   }
-  const fields = [...fieldsByCanonicalKey.values()];
-  for (const field of fields) {
-    if (!field?.key || !field?.label) continue;
-    const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
-    const fieldKey = canonicalizeTransactionRecordKey(
-      semanticRecordKey(field.key, field.label || field.display_label || '') || field.key,
-      'generic',
-    );
-    const canonicalCategory = {
-      asset: 'asset_identity',
-      ownership: 'beneficial_ownership',
-    }[fieldKey.split('.')[0]] || fieldKey.split('.')[0] || 'transaction';
-    const fieldCategory = String(canonicalCategory || field.category || field.field_category || 'transaction')
-      .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction';
-    const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
-    const hasValue = value !== null && value.trim() !== '';
-    const now = new Date().toISOString();
-    const aliasKeys = aliasKeysForCanonical(fieldKey, 'generic');
-    let lookup = await supabase
-      .from('transaction_record_fields')
-      .select('id, field_key, definition_key, field_category, display_label, status, value_text, is_required, source_type')
-      .eq('property_id', propertyId)
-      .in('field_key', aliasKeys);
+
+  const buildChangeSet = async () => {
+    const expectedFields = new Map();
+    const fieldChanges = [];
+    const historyRows = [];
     const statusRank = row => ({
       conflicting: 5, conflict: 5, verified: 4, confirmed: 4,
       source_changed: 4, extracted: 3, needs_review: 3, awaiting: 3,
     }[String(row?.status || '').toLowerCase()] || (row?.value_text ? 2 : 0));
-    const existingRows = lookup.data || [];
-    const canonicalExisting = existingRows.find(row => row.field_key === fieldKey) || null;
-    let existing = existingRows
-      .slice()
-      .sort((a, b) => {
+
+    for (const field of fieldsByCanonicalKey.values()) {
+      if (!field?.key || !field?.label) continue;
+      const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
+      const fieldKey = canonicalizeTransactionRecordKey(
+        semanticRecordKey(field.key, field.label || field.display_label || '') || field.key,
+        'generic',
+      );
+      const canonicalCategory = {
+        asset: 'asset_identity',
+        ownership: 'beneficial_ownership',
+      }[fieldKey.split('.')[0]] || fieldKey.split('.')[0] || 'transaction';
+      const fieldCategory = String(canonicalCategory || field.category || field.field_category || 'transaction')
+        .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction';
+      const value = field.value === null || field.value === undefined ? null : String(field.value).slice(0, 2000);
+      const hasValue = value !== null && value.trim() !== '';
+      const now = new Date().toISOString();
+      const aliasKeys = aliasKeysForCanonical(fieldKey, 'generic');
+      const { data: existingRows, error } = await supabase
+        .from('transaction_record_fields').select('*')
+        .eq('property_id', propertyId).in('field_key', aliasKeys);
+      if (error) throw error;
+      const canonicalExisting = (existingRows || []).find(row => row.field_key === fieldKey) || null;
+      const existing = (existingRows || []).slice().sort((a, b) => {
         const rank = statusRank(b) - statusRank(a);
         if (rank) return rank;
         return (a.field_key === fieldKey ? -1 : 0) - (b.field_key === fieldKey ? -1 : 0);
       })[0] || null;
-    const lookupError = lookup.error;
-    if (lookupError) throw lookupError;
-    // Do not delete alias rows here. Hydration performs the shared
-    // canonicalization/merge boundary so equivalent duplicates retain their
-    // provenance and materially different values become durable conflicts.
-    if (existing && existing.field_key !== fieldKey && !canonicalExisting) {
-      const { error: moveError } = await supabase.from('transaction_record_fields')
-        .update({ field_key: fieldKey, updated_at: now })
-        .eq('id', existing.id).eq('property_id', propertyId);
-      if (moveError) throw moveError;
-      existing = { ...existing, field_key: fieldKey };
-    }
-    // Room hydration/generation can run again after a coordinator confirms a
-    // value. Never let the proposal snapshot roll that durable decision back
-    // to "extracted" or replace a value selected during conflict resolution.
-    if (existing && ['verified', 'confirmed', 'source_changed'].includes(String(existing.status || '').toLowerCase())) {
-      const { error: metadataError } = await supabase.from('transaction_record_fields').update({
+      if (existing) {
+        const snapshot = expectedFieldSnapshot(existing);
+        expectedFields.set(`id:${existing.id}`, snapshot);
+      }
+      if (!existing || (existing.field_key !== fieldKey && !canonicalExisting)) {
+        const snapshot = expectedFieldSnapshot(null, fieldKey);
+        expectedFields.set(`absent:${fieldKey}`, snapshot);
+      }
+
+      // Hydration/generation must not roll back a durable coordinator decision.
+      if (existing && ['verified', 'confirmed', 'source_changed'].includes(String(existing.status || '').toLowerCase())) {
+        fieldChanges.push({
+          op: 'update',
+          id: existing.id,
+          patch: {
+            field_key: fieldKey,
+            field_category: existing.field_category || fieldCategory,
+            display_label: existing.display_label || String(field.label).slice(0, 160),
+            definition_key: existing.definition_key || definitionKey,
+            is_required: existing.is_required == null ? field.required !== false : existing.is_required,
+            updated_at: now,
+          },
+        });
+        continue;
+      }
+
+      const patch = {
         field_key: fieldKey,
-        field_category: existing.field_category || fieldCategory,
-        display_label: existing.display_label || String(field.label).slice(0, 160),
-        definition_key: existing.definition_key || definitionKey,
-        is_required: existing.is_required == null ? field.required !== false : existing.is_required,
+        field_category: fieldCategory,
+        display_label: String(field.label).slice(0, 160),
+        value_text: value,
+        status: hasValue ? 'extracted' : 'missing',
+        definition_key: definitionKey,
+        is_required: field.required !== false,
+        source_type: field.source_type || 'ai_recommendation',
+        conflict_candidates: [],
+        confidence: Number.isFinite(Number(field.confidence)) ? Number(field.confidence) : null,
+        source_doc_id: null,
+        source_page: null,
+        source_excerpt: field.source_excerpt || null,
+        extracted_by: hasValue ? 'ai' : null,
+        verified_by: null,
+        verified_at: null,
+        notes: field.source_type === 'transaction_description'
+          ? 'AI extracted from the transaction description; awaiting confirmation.'
+          : (field.rationale || null),
         updated_at: now,
-      }).eq('id', existing.id).eq('property_id', propertyId);
-      if (metadataError && !/column|schema cache/i.test(metadataError.message || '')) throw metadataError;
-      continue;
+      };
+      fieldChanges.push(existing
+        ? { op: 'update', id: existing.id, patch }
+        : { op: 'insert', field_key: fieldKey, patch });
+      if (!existing && hasValue) {
+        historyRows.push(transactionFieldHistoryRow({
+          fieldId: null,
+          fieldKey,
+          propertyId,
+          eventType: 'extracted',
+          actorEmail: actorEmail || 'Deal Owner',
+          actorRole: 'Deal Owner',
+          newValue: value,
+          newStatus: 'extracted',
+          metadata: { source: 'approved_generated_proposal', definitionKey },
+        }));
+      }
     }
-    const payload = {
+    return {
       property_id: propertyId,
-       field_key: fieldKey,
-      field_category: fieldCategory,
-      display_label: String(field.label).slice(0, 160),
-      value_text: value,
-      status: hasValue ? 'extracted' : 'missing',
-      // These columns are added by 021_ai_transaction_record_authority. They
-      // make the approved proposal durable metadata instead of UI-only schema.
-      definition_key: definitionKey,
-      is_required: field.required !== false,
-      source_type: field.source_type || 'ai_recommendation',
-      conflict_candidates: [],
-      confidence: Number.isFinite(Number(field.confidence)) ? Number(field.confidence) : null,
-      source_doc_id: null,
-      source_page: null,
-      source_excerpt: field.source_excerpt || null,
-      extracted_by: hasValue ? 'ai' : null,
-      verified_by: null,
-      verified_at: null,
-      notes: field.source_type === 'transaction_description'
-        ? 'AI extracted from the transaction description; awaiting confirmation.'
-        : (field.rationale || null),
-      updated_at: now,
+      expected_fields: [...expectedFields.values()],
+      field_changes: fieldChanges,
+      history_rows: historyRows,
     };
-    let write = existing
-      ? await supabase.from('transaction_record_fields').update(payload).eq('id', existing.id).eq('property_id', propertyId)
-      : await supabase.from('transaction_record_fields').insert(payload).select('id').single();
-    // Keep older installations readable until migration 021 is applied; the
-    // generated-room path still writes the same canonical row in that case.
-    if (write.error && /column|schema cache/i.test(write.error.message || '')) {
-      const legacyPayload = { ...payload };
-      delete legacyPayload.definition_key;
-      delete legacyPayload.is_required;
-      delete legacyPayload.source_type;
-      delete legacyPayload.conflict_candidates;
-      write = existing
-        ? await supabase.from('transaction_record_fields').update(legacyPayload).eq('id', existing.id).eq('property_id', propertyId)
-        : await supabase.from('transaction_record_fields').insert(legacyPayload).select('id').single();
-    }
-    const error = write.error;
-    if (error) throw error;
-    const fieldId = existing?.id || write.data?.id;
-    if (!existing && fieldId && hasValue) {
-      await recordTransactionFieldHistory({
-        fieldId,
-        propertyId,
-        eventType: 'extracted',
-        actorEmail: actorEmail || 'Deal Owner',
-        actorRole: 'Deal Owner',
-        newValue: value,
-        newStatus: 'extracted',
-        metadata: { source: 'approved_generated_proposal', definitionKey },
-      });
-    }
+  };
+  const result = await commitCanonicalChangeSet(
+    async () => ({ p_change_set: await buildChangeSet() }),
+  );
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Generated proposal fields did not commit (${result.status || 'unknown'})`);
   }
 }
 
@@ -4157,100 +4156,97 @@ async function syncMetadataToTransactionRecord(propertyId, values, room, actorEm
     );
   }
 
-  for (const [fieldId, mapping] of Object.entries(mappings)) {
-    if (!Object.prototype.hasOwnProperty.call(normalizedValues, fieldId)) continue;
-    const rawValue = normalizedValues[fieldId];
-    const hasValue = rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== '';
-    const now = new Date().toISOString();
-    const { data: existing, error: findError } = await supabase
-      .from('transaction_record_fields')
-      .select('id, value_text, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
-      .eq('property_id', propertyId)
-      .eq('field_key', mapping.fieldKey)
-      .maybeSingle();
-    if (findError) throw findError;
+  const buildChangeSet = async () => {
+    const { data: existingRows, error } = await supabase
+      .from('transaction_record_fields').select('*').eq('property_id', propertyId);
+    if (error) throw error;
+    const byKey = new Map((existingRows || []).map(field => [field.field_key, field]));
+    const expectedFields = new Map();
+    const fieldChanges = [];
+    const historyRows = [];
 
-    const nextValue = hasValue ? formatMetadataRecordValue(fieldId, rawValue) : null;
-    const inferred = inferredFieldIds.has(fieldId);
-    const nextStatus = hasValue ? (inferred ? 'extracted' : 'verified') : 'missing';
-    const update = {
-      field_category: mapping.fieldCategory,
-      display_label: mapping.displayLabel,
-      value_text: nextValue,
-      status: nextStatus,
-      confidence: null,
-      source_type: inferred ? 'ai' : 'manual',
-      source_doc_id: null,
-      source_doc_version: null,
-      source_file_hash: null,
-      source_page: null,
-      source_excerpt: null,
-      extracted_by: hasValue ? (inferred ? 'ai' : 'deal_owner') : null,
-      verified_by: hasValue && !inferred ? (actorEmail || 'Deal Owner') : null,
-      verified_role: hasValue && !inferred ? 'Deal Owner' : null,
-      verified_at: hasValue && !inferred ? now : null,
-      updated_at: now,
-    };
-
-    let fieldIdValue = existing?.id;
-    if (existing?.id) {
-      const { error } = await supabase
-        .from('transaction_record_fields')
-        .update(update)
-        .eq('id', existing.id)
-        .eq('property_id', propertyId);
-      if (error) throw error;
-    } else {
-      const { data: inserted, error } = await supabase
-        .from('transaction_record_fields')
-        .insert({
-          property_id: propertyId,
-          field_key: mapping.fieldKey,
-          created_at: now,
-          ...update,
-        })
-        .select('id')
-        .single();
-      if (error) throw error;
-      fieldIdValue = inserted?.id;
-    }
-
-    const documentProvenanceCleared = Boolean(
-      existing?.source_doc_id
-        || existing?.source_doc_version
-        || existing?.source_file_hash
-        || existing?.source_page
-        || existing?.source_excerpt,
-    );
-    if (!options.skipHistory && fieldIdValue && (
-      existing?.value_text !== nextValue
+    for (const [fieldId, mapping] of Object.entries(mappings)) {
+      if (!Object.prototype.hasOwnProperty.call(normalizedValues, fieldId)) continue;
+      const rawValue = normalizedValues[fieldId];
+      const hasValue = rawValue !== null && rawValue !== undefined && String(rawValue).trim() !== '';
+      const now = new Date().toISOString();
+      const existing = byKey.get(mapping.fieldKey) || null;
+      const nextValue = hasValue ? formatMetadataRecordValue(fieldId, rawValue) : null;
+      const inferred = inferredFieldIds.has(fieldId);
+      const nextStatus = hasValue ? (inferred ? 'extracted' : 'verified') : 'missing';
+      const patch = {
+        field_key: mapping.fieldKey,
+        field_category: mapping.fieldCategory,
+        display_label: mapping.displayLabel,
+        value_text: nextValue,
+        status: nextStatus,
+        confidence: null,
+        source_type: inferred ? 'ai' : 'manual',
+        source_doc_id: null,
+        source_doc_version: null,
+        source_file_hash: null,
+        source_page: null,
+        source_excerpt: null,
+        extracted_by: hasValue ? (inferred ? 'ai' : 'deal_owner') : null,
+        verified_by: hasValue && !inferred ? (actorEmail || 'Deal Owner') : null,
+        verified_role: hasValue && !inferred ? 'Deal Owner' : null,
+        verified_at: hasValue && !inferred ? now : null,
+        updated_at: now,
+      };
+      const documentProvenanceCleared = Boolean(
+        existing?.source_doc_id || existing?.source_doc_version || existing?.source_file_hash
+          || existing?.source_page || existing?.source_excerpt,
+      );
+      if (existing) {
+        expectedFields.set(`id:${existing.id}`, expectedFieldSnapshot(existing));
+        fieldChanges.push({ op: 'update', id: existing.id, patch });
+      } else {
+        expectedFields.set(`absent:${mapping.fieldKey}`, expectedFieldSnapshot(null, mapping.fieldKey));
+        fieldChanges.push({ op: 'insert', field_key: mapping.fieldKey, patch });
+      }
+      if (!options.skipHistory && (
+        existing?.value_text !== nextValue
         || existing?.status !== nextStatus
         || documentProvenanceCleared
-    )) {
-      await recordTransactionFieldHistory({
-        fieldId: fieldIdValue,
-        propertyId,
-        eventType: 'manual_edit',
-        actorEmail: actorEmail || 'Deal Owner',
-        actorRole: 'Deal Owner',
-        priorValue: existing?.value_text || null,
-        newValue: nextValue,
-        priorStatus: existing?.status || null,
-        newStatus: nextStatus,
-        metadata: {
-          source: inferred ? 'ai_creation_inference' : 'deal_owner_input',
-          metadataField: fieldId,
-          prior_source_doc_id: existing?.source_doc_id || null,
-          prior_source_doc_version: existing?.source_doc_version || null,
-          prior_source_file_hash: existing?.source_file_hash || null,
-          prior_source_page: existing?.source_page ?? null,
-          prior_source_excerpt: existing?.source_excerpt || null,
-          prior_verified_by: existing?.verified_by || null,
-          prior_verified_role: existing?.verified_role || null,
-          prior_verified_at: existing?.verified_at || null,
-        },
-      });
+      )) {
+        historyRows.push(transactionFieldHistoryRow({
+          fieldId: existing?.id || null,
+          fieldKey: mapping.fieldKey,
+          propertyId,
+          eventType: 'manual_edit',
+          actorEmail: actorEmail || 'Deal Owner',
+          actorRole: 'Deal Owner',
+          priorValue: existing?.value_text || null,
+          newValue: nextValue,
+          priorStatus: existing?.status || null,
+          newStatus: nextStatus,
+          metadata: {
+            source: inferred ? 'ai_creation_inference' : 'deal_owner_input',
+            metadataField: fieldId,
+            prior_source_doc_id: existing?.source_doc_id || null,
+            prior_source_doc_version: existing?.source_doc_version || null,
+            prior_source_file_hash: existing?.source_file_hash || null,
+            prior_source_page: existing?.source_page ?? null,
+            prior_source_excerpt: existing?.source_excerpt || null,
+            prior_verified_by: existing?.verified_by || null,
+            prior_verified_role: existing?.verified_role || null,
+            prior_verified_at: existing?.verified_at || null,
+          },
+        }));
+      }
     }
+    return {
+      property_id: propertyId,
+      expected_fields: [...expectedFields.values()],
+      field_changes: fieldChanges,
+      history_rows: historyRows,
+    };
+  };
+  const result = await commitCanonicalChangeSet(
+    async () => ({ p_change_set: await buildChangeSet() }),
+  );
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Metadata fields did not commit (${result.status || 'unknown'})`);
   }
 }
 
@@ -4697,14 +4693,16 @@ const TRANSACTION_RECORD_DEPENDENCIES = {
   ],
 };
 
-async function recordTransactionFieldHistory({
+function transactionFieldHistoryRow({
   fieldId, propertyId, eventType, actorEmail = null, actorRole = null,
   priorValue = null, newValue = null, priorStatus = null, newStatus = null,
   sourceDocId = null, sourcePage = null, sourceExcerpt = null, metadata = null,
+  fieldKey = null,
 }) {
-  const { error } = await supabase.from('transaction_record_history').insert({
+  return {
     field_id: fieldId,
     property_id: propertyId,
+    ...(fieldKey ? { field_key: fieldKey } : {}),
     event_type: eventType,
     actor_email: actorEmail,
     actor_role: actorRole,
@@ -4716,13 +4714,28 @@ async function recordTransactionFieldHistory({
     source_page: sourcePage,
     source_excerpt: sourceExcerpt,
     metadata,
+  };
+}
+
+async function recordTransactionFieldHistory(input) {
+  const history = transactionFieldHistoryRow(input);
+  const { data: field, error: lookupError } = await supabase
+    .from('transaction_record_fields')
+    .select('*')
+    .eq('id', input.fieldId)
+    .eq('property_id', input.propertyId)
+    .maybeSingle();
+  if (lookupError) throw lookupError;
+  if (!field) throw new Error('Transaction Record history target no longer exists');
+  const result = await commitCanonicalChangeSet({
+    p_change_set: {
+      property_id: input.propertyId,
+      expected_fields: [expectedFieldSnapshot(field)],
+      history_rows: [history],
+    },
   });
-  if (error) {
-    // The history table is additive and may not be present until migration 015
-    // is applied in an environment. Never let audit persistence interrupt the
-    // current Transaction Record write or document extraction.
-    console.warn('[transaction-record history]', error.message);
-    return false;
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Transaction Record history did not commit (${result.status || 'unknown'})`);
   }
   return true;
 }
@@ -4749,7 +4762,6 @@ async function upsertTransactionRecordConflict({
   if (!propertyId || !fieldKey || !conflictingValue || canonicalValue === conflictingValue
     || comparison.equivalent || !comparison.comparable) return null;
   const payload = {
-    property_id: propertyId,
     field_id: fieldId || null,
     field_key: fieldKey,
     display_label: displayLabel || fieldKey,
@@ -4764,56 +4776,84 @@ async function upsertTransactionRecordConflict({
     status: 'unresolved',
     updated_at: new Date().toISOString(),
   };
-  const { data: openConflict, error: lookupError } = await supabase
-    .from('transaction_record_conflicts')
-    .select('id')
+  const [{ data: field, error: fieldError }, { data: openConflict, error: lookupError }] = await Promise.all([
+    supabase.from('transaction_record_fields').select('*')
+      .eq('property_id', propertyId)
+      .match(fieldId ? { id: fieldId } : { field_key: fieldKey })
+      .maybeSingle(),
+    supabase.from('transaction_record_conflicts').select('*')
     .eq('property_id', propertyId)
     .eq('field_key', fieldKey)
     .eq('status', 'unresolved')
-    .maybeSingle();
+    .maybeSingle(),
+  ]);
+  if (fieldError) throw fieldError;
   if (lookupError) {
     if (/relation|schema cache|column/i.test(lookupError.message || '')) return null;
     throw lookupError;
   }
-  if (openConflict?.id) {
-    const { data, error } = await supabase
-      .from('transaction_record_conflicts')
-      .update(payload)
-      .eq('id', openConflict.id)
-      .select('id')
-      .single();
-    if (error) throw error;
-    await persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, [
-      canonicalValue,
-      conflictingValue,
-    ]);
-    return data;
+  const requiredSources = [];
+  if (conflictingSourceDocId) {
+    const { data: source, error: sourceError } = await supabase.from('deal_analyses')
+      .select('id, source_hash')
+      .eq('id', conflictingSourceDocId)
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (sourceError) throw sourceError;
+    if (source) requiredSources.push(requiredSource(source));
   }
-  const { data, error } = await supabase
-    .from('transaction_record_conflicts')
-    .insert(payload)
-    .select('id')
-    .single();
-  if (error) throw error;
-  await persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, [
-    canonicalValue,
-    conflictingValue,
-  ]);
-  return data;
+  const expectedFields = field ? [expectedFieldSnapshot(field)] : [];
+  const fieldChanges = field ? [{
+    op: 'update',
+    id: field.id,
+    patch: {
+      conflict_candidates: [...new Set([canonicalValue, conflictingValue]
+        .filter(value => value !== null && value !== undefined)
+        .map(value => String(value).slice(0, 2000)))],
+      updated_at: new Date().toISOString(),
+    },
+  }] : [];
+  const result = await commitCanonicalChangeSet({
+    p_change_set: {
+      property_id: propertyId,
+      required_sources: requiredSources.filter(Boolean),
+      expected_fields: expectedFields,
+      field_changes: fieldChanges,
+      expected_conflicts: [expectedConflictSnapshot(openConflict, fieldKey)],
+      conflict_changes: [{
+        op: 'upsert',
+        payload: { ...(openConflict?.id ? { id: openConflict.id } : {}), ...payload },
+      }],
+    },
+  });
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Transaction Record conflict did not commit (${result.status || 'unknown'})`);
+  }
+  return openConflict || payload;
 }
 
 async function persistTransactionFieldConflictCandidates(propertyId, fieldId, fieldKey, candidates) {
   const values = [...new Set(candidates.filter(value => value !== null && value !== undefined)
     .map(value => String(value).slice(0, 2000)))];
-  let query = supabase.from('transaction_record_fields').update({
-    conflict_candidates: values,
-    updated_at: new Date().toISOString(),
-  }).eq('property_id', propertyId);
-  query = fieldId ? query.eq('id', fieldId) : query.eq('field_key', fieldKey);
-  const { error } = await query;
-  // This metadata is additive; old installations continue using the durable
-  // conflict table until migration 021 is available.
-  if (error && !/column|schema cache|relation/i.test(error.message || '')) throw error;
+  const { data: field, error } = await supabase.from('transaction_record_fields')
+    .select('*').eq('property_id', propertyId)
+    .match(fieldId ? { id: fieldId } : { field_key: fieldKey }).maybeSingle();
+  if (error) throw error;
+  if (!field) return;
+  const result = await commitCanonicalChangeSet({
+    p_change_set: {
+      property_id: propertyId,
+      expected_fields: [expectedFieldSnapshot(field)],
+      field_changes: [{
+        op: 'update',
+        id: field.id,
+        patch: { conflict_candidates: values, updated_at: new Date().toISOString() },
+      }],
+    },
+  });
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Conflict candidates did not commit (${result.status || 'unknown'})`);
+  }
 }
 
 async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
@@ -4823,44 +4863,89 @@ async function resolveTransactionRecordConflicts(propertyId, fieldKey, {
   resolvedBy = 'coordinator',
 } = {}) {
   if (!propertyId || !fieldKey) return;
-  const { error } = await supabase
-    .from('transaction_record_conflicts')
-    .update({
-      status: 'resolved',
+  const [{ data: conflicts, error: conflictError }, { data: fields, error: fieldError }] = await Promise.all([
+    supabase.from('transaction_record_conflicts').select('*')
+      .eq('property_id', propertyId).eq('status', 'unresolved')
+      .match(conflictId ? { id: conflictId } : { field_key: fieldKey}),
+    supabase.from('transaction_record_fields').select('*')
+      .eq('property_id', propertyId).eq('field_key', fieldKey),
+  ]);
+  if (conflictError) throw conflictError;
+  if (fieldError) throw fieldError;
+  const result = await commitCanonicalChangeSet({
+    p_change_set: {
+      property_id: propertyId,
+      expected_fields: (fields || []).map(field => expectedFieldSnapshot(field)),
+      field_changes: (fields || []).map(field => ({
+        op: 'update',
+        id: field.id,
+        patch: { conflict_candidates: [], updated_at: new Date().toISOString() },
+      })),
+      expected_conflicts: (conflicts || []).map(conflict => expectedConflictSnapshot(conflict)),
+      conflict_changes: (conflicts || []).map(conflict => ({
+        op: 'resolve',
+        id: conflict.id,
+        field_key: fieldKey,
+        resolution_value: resolutionValue,
+        resolution_note: resolutionNote,
+        resolved_by: resolvedBy,
+      })),
+    },
+  });
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Conflict resolution did not commit (${result.status || 'unknown'})`);
+  }
+}
+
+async function buildTransactionConflictResolutionChanges(propertyId, fieldKey, {
+  conflictId = null,
+  resolutionValue = null,
+  resolutionNote = null,
+  resolvedBy = null,
+} = {}) {
+  const { data: conflicts, error } = await supabase.from('transaction_record_conflicts')
+    .select('*').eq('property_id', propertyId).eq('field_key', fieldKey)
+    .eq('status', 'unresolved');
+  if (error) throw error;
+  const rows = conflicts || [];
+  const selected = conflictId ? rows.filter(conflict => conflict.id === conflictId) : rows;
+  const expected_conflicts = rows.length
+    ? rows.map(conflict => expectedConflictSnapshot(conflict))
+    : [expectedConflictSnapshot(null, fieldKey)];
+  return {
+    expected_conflicts,
+    conflict_changes: selected.map(conflict => ({
+      op: 'resolve',
+      id: conflict.id,
+      field_key: fieldKey,
       resolution_value: resolutionValue,
       resolution_note: resolutionNote,
       resolved_by: resolvedBy,
-      resolved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('property_id', propertyId)
-    .eq('status', 'unresolved')
-    .match(conflictId ? { id: conflictId } : { field_key: fieldKey });
-  if (error && !/relation|schema cache|column/i.test(error.message || '')) throw error;
-  const clear = await supabase
-    .from('transaction_record_fields')
-    .update({ conflict_candidates: [], updated_at: new Date().toISOString() })
-    .eq('property_id', propertyId)
-    .eq('field_key', fieldKey);
-  if (clear.error && !/column|schema cache|relation/i.test(clear.error.message || '')) throw clear.error;
+    })),
+  };
 }
 
-async function markDependentTransactionFieldsNotApplicable(propertyId, dependencyKey, actorEmail = 'coordinator', actorRole = 'Deal Coordinator') {
+async function buildDependentTransactionChanges(propertyId, dependencyKey, actorEmail = 'coordinator', actorRole = 'Deal Coordinator') {
   const dependentKeys = TRANSACTION_RECORD_DEPENDENCIES[dependencyKey] || [];
-  if (!dependentKeys.length) return;
-  const { data: dependents } = await supabase
+  if (!dependentKeys.length) return { expected_fields: [], field_changes: [], history_rows: [] };
+  const { data: dependents, error } = await supabase
     .from('transaction_record_fields')
-    .select('id, field_key, value_text, status')
+    .select('*')
     .eq('property_id', propertyId)
     .in('field_key', dependentKeys);
+  if (error) throw error;
+  const expected_fields = [];
+  const field_changes = [];
+  const history_rows = [];
   for (const field of dependents || []) {
     if (field.status === 'not_applicable') continue;
-    await supabase.from('transaction_record_fields').update({
-      status: 'not_applicable',
-      value_text: null,
-      updated_at: new Date().toISOString(),
-    }).eq('id', field.id).eq('property_id', propertyId);
-    await recordTransactionFieldHistory({
+    expected_fields.push(expectedFieldSnapshot(field));
+    field_changes.push({
+      op: 'update',
+      id: field.id,
+      patch: { status: 'not_applicable', value_text: null, updated_at: new Date().toISOString() },
+    });
+    history_rows.push(transactionFieldHistoryRow({
       fieldId: field.id,
       propertyId,
       eventType: 'marked_not_applicable',
@@ -4870,14 +4955,23 @@ async function markDependentTransactionFieldsNotApplicable(propertyId, dependenc
       priorStatus: field.status,
       newStatus: 'not_applicable',
       metadata: { reason: 'dependency_not_applicable', dependencyKey },
-    });
+    }));
+  }
+  return { expected_fields, field_changes, history_rows };
+}
+
+async function markDependentTransactionFieldsNotApplicable(propertyId, dependencyKey, actorEmail = 'coordinator', actorRole = 'Deal Coordinator') {
+  const changes = await buildDependentTransactionChanges(propertyId, dependencyKey, actorEmail, actorRole);
+  if (!changes.field_changes.length) return;
+  const result = await commitCanonicalChangeSet({
+    p_change_set: { property_id: propertyId, ...changes },
+  });
+  if (result.status !== 'committed') {
+    throw result.error || new Error(`Dependent field changes did not commit (${result.status || 'unknown'})`);
   }
 }
 
 async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
-  if (!text || text.trim().length < 50) {
-    return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [] };
-  }
   try {
     const [{ data: room }, sourceResult] = await Promise.all([
       supabase
@@ -4897,7 +4991,10 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         .eq('id', docId)
         .eq('property_id', propertyId)
         .maybeSingle();
+      if (legacySource.error) throw legacySource.error;
       sourceDocument = legacySource.data;
+    } else if (sourceResult.error) {
+      throw sourceResult.error;
     }
     const isCurrentSource = async () => {
       if (!docId || !sourceDocument) return !docId;
@@ -4915,11 +5012,12 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
           .eq('property_id', propertyId)
           .maybeSingle());
       }
+      if (currentSourceError) throw currentSourceError;
       if (!isActiveDocumentVersion(currentSource)) return false;
       // Environments still rolling out version columns fall back to newest
       // section semantics; once explicit state is present, it is authoritative.
       if (currentSource.is_active === true) return true;
-      const { data: newest } = await supabase
+      const { data: newest, error: newestError } = await supabase
         .from('deal_analyses')
         .select('id')
         .eq('property_id', propertyId)
@@ -4927,14 +5025,42 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (newestError) throw newestError;
       return newest?.id === docId;
     };
     if (docId && !(await isCurrentSource())) {
-      return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [], skipped: 'superseded' };
+      return {
+        status: 'stale_source', rawCount: 0, savedCount: 0, rawKeys: [],
+        canonicalKeys: [], skipped: 'superseded',
+      };
     }
-    const activeSourceDocuments = currentSourceDocuments(
-      await loadSourceDocuments(supabase, propertyId),
-    );
+    const commitEmptyExtraction = async () => {
+      const source = requiredSource(sourceDocument);
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          required_sources: source ? [source] : [],
+          expected_fields: [],
+          field_changes: [],
+          expected_conflicts: [],
+          conflict_changes: [],
+          history_rows: [],
+        },
+      });
+      if (result.status === 'stale_source') {
+        return {
+          status: 'stale_source', rawCount: 0, savedCount: 0,
+          rawKeys: [], canonicalKeys: [], skipped: 'superseded',
+        };
+      }
+      if (result.status !== 'committed') {
+        throw result.error || new Error(
+          `Empty canonical extraction did not commit (${result.status || 'unknown'})`,
+        );
+      }
+      return { status: 'committed', rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [] };
+    };
+    if (!text || text.trim().length < 50) return await commitEmptyExtraction();
     const schemaKey = await getTransactionRecordSchemaKey(room);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -4963,10 +5089,9 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     const rawKeys = validExtracted.map(f => String(f.field_key));
     console.log(`[tx-record] raw ${validExtracted.length} fields for ${propertyId} pack=${schemaKey} keys=${rawKeys.join(',') || 'none'}`);
     if (!validExtracted.length) {
-      return { rawCount: 0, savedCount: 0, rawKeys, canonicalKeys: [] };
+      return await commitEmptyExtraction();
     }
 
-    const canonicalKeys = [];
     const normalizeComparableValue = (value, fieldKey, displayLabel) =>
       normalizeSemanticComparableValue(
         value,
@@ -4983,190 +5108,225 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         schemaKey,
       );
     };
-    const clearEquivalentOpenConflict = async (fieldKey, valueText) => {
-      const { data: openConflicts, error: conflictError } = await supabase
-        .from('transaction_record_conflicts')
-        .select('id, canonical_value, conflicting_value, field_key')
-        .eq('property_id', propertyId)
-        .eq('field_key', fieldKey)
-        .eq('status', 'unresolved');
-      if (conflictError) {
-        if (/relation|schema cache|column/i.test(conflictError.message || '')) return;
-        throw conflictError;
-      }
-      for (const conflict of openConflicts || []) {
-        const canonical = normalizeComparableValue(conflict.canonical_value, fieldKey, '');
-        const conflicting = normalizeComparableValue(conflict.conflicting_value, fieldKey, '');
-        const semantic = inferSemanticDefinition(fieldKey, null, '');
-        const comparison = compareComparableValues(canonical, conflicting, semantic);
-        if (comparison.equivalent || !comparison.comparable) {
-          await supabase.from('transaction_record_conflicts').update({
-            status: 'resolved',
-            resolved_at: new Date().toISOString(),
-            resolution_note: 'Evidence values normalized to the same semantic value.',
-            updated_at: new Date().toISOString(),
-          }).eq('id', conflict.id).eq('property_id', propertyId);
-        }
-      }
-    };
-    for (const f of validExtracted) {
-      // A replacement can arrive while the AI call is in flight. Recheck for
-      // every field so an older job can never restore superseded evidence.
-      if (docId && !(await isCurrentSource())) {
-        return { rawCount: rawKeys.length, savedCount: canonicalKeys.length, rawKeys, canonicalKeys, skipped: 'superseded' };
-      }
-      const canonicalKey = resolveExtractedCanonicalKey(String(f.field_key), f.display_label);
-      canonicalKeys.push(canonicalKey);
-      const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
-      const { data: existingRows } = await supabase
-        .from('transaction_record_fields')
-        .select('id, field_key, definition_key, field_category, is_required, source_type, status, value_text, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role')
-        .eq('property_id', propertyId)
-        .in('field_key', aliasKeys);
-      let existing = (existingRows || []).find(row => row.field_key === canonicalKey)
-        || (existingRows || [])[0]
-        || null;
-      const aliasRows = (existingRows || []).filter(row => row.id !== existing?.id);
-
-       // Migrate a legacy alias row in place when no canonical row exists.
-       // When both exist, hydration owns the merge so it can preserve history
-       // and create a conflict for materially different values.
-      if (existing && existing.field_key !== canonicalKey) {
-        const { error: aliasMoveError } = await supabase
-          .from('transaction_record_fields')
-          .update({ field_key: canonicalKey })
-          .eq('id', existing.id)
-          .eq('property_id', propertyId);
-        if (aliasMoveError) throw aliasMoveError;
-        existing = { ...existing, field_key: canonicalKey };
-      }
-      if (existing && !isFieldSourceCurrent(existing, activeSourceDocuments)) {
-        existing = projectCurrentSourceField(existing, activeSourceDocuments);
-      }
-      const priorValue = existing?.value_text || null;
-      const priorStatus = existing?.status || null;
-      const existingWasVerified = ['verified', 'confirmed'].includes(String(priorStatus || '').toLowerCase())
-        && isFieldSourceCurrent(existing || {}, activeSourceDocuments);
-      const priorComparable = existing?.value_text
-        ? normalizeComparableValue(existing.value_text, canonicalKey, existing.display_label || f.display_label)
-        : null;
-      const nextComparable = normalizeComparableValue(f.value_text, canonicalKey, f.display_label);
-      const semanticDefinition = inferSemanticDefinition(
-        canonicalKey,
-        f.value_text,
-        f.display_label || existing?.display_label || '',
+    const extractedByCanonicalKey = new Map();
+    for (const field of validExtracted) {
+      const key = resolveExtractedCanonicalKey(String(field.field_key), field.display_label);
+      if (key && !extractedByCanonicalKey.has(key)) extractedByCanonicalKey.set(key, field);
+    }
+    const canonicalKeys = [...extractedByCanonicalKey.keys()];
+    const buildCanonicalChangeSet = async () => {
+      const [{ data: allFields, error: fieldsError }, { data: openConflicts, error: conflictsError }] = await Promise.all([
+        supabase.from('transaction_record_fields').select('*').eq('property_id', propertyId),
+        supabase.from('transaction_record_conflicts').select('*')
+          .eq('property_id', propertyId).eq('status', 'unresolved'),
+      ]);
+      if (fieldsError) throw fieldsError;
+      if (conflictsError) throw conflictsError;
+      const activeSourceDocuments = currentSourceDocuments(
+        await loadSourceDocuments(supabase, propertyId),
       );
-      const valueComparison = compareComparableValues(
-        priorComparable,
-        nextComparable,
-        semanticDefinition,
-      );
-      const semanticallySame = priorComparable && valueComparison.equivalent;
-      const differs = Boolean(existing?.value_text)
-        && valueComparison.comparable
-        && !valueComparison.equivalent;
-      const eventType = existingWasVerified && differs
-        ? 'source_changed'
-        : differs ? 'conflict' : 'extracted';
-      const nextStatus = existingWasVerified
-        ? (eventType === 'source_changed' ? 'source_changed' : 'verified')
-        : eventType === 'source_changed'
-          ? 'source_changed'
-          : eventType === 'conflict' ? 'conflicting' : 'extracted';
-      // A later document must never replace the first canonical value. The
-      // disagreement is persisted separately so the coordinator can decide
-      // which source should become authoritative.
-      const nextValue = differs
-        ? existing.value_text
-        : String(f.value_text).slice(0, 2000);
+      const expectedFields = new Map();
+      const expectedConflicts = new Map();
+      const fieldChanges = [];
+      const conflictChanges = [];
+      const historyRows = [];
+      const conflictOperationIds = new Set();
 
-      const extractionPayload = {
-        property_id:    propertyId,
-        field_key:      canonicalKey,
-      // Preserve generated definition metadata when extraction fulfills the
-      // row; otherwise use the canonical namespace rather than the AI's raw
-      // category spelling.
-      field_category: existing?.field_category || ({
-        asset: 'asset_identity',
-        ownership: 'beneficial_ownership',
-      }[canonicalKey.split('.')[0]] || canonicalKey.split('.')[0] || f.field_category),
-        display_label:  f.display_label || canonicalKey,
-        value_text:     nextValue,
-        status:         nextStatus,
-        confidence:     f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
-        source_doc_id:  differs ? (existing.source_doc_id || docId || null) : (docId || null),
-        source_doc_version: differs ? (existing.source_doc_version || null) : (docId || null),
-        source_file_hash: differs ? (existing.source_file_hash || null) : (sourceDocument?.source_hash || null),
-        source_page:    differs ? (existing.source_page || f.source_page || null) : (f.source_page || null),
-        source_excerpt: differs
-          ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
-          : (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null),
-        extracted_by:   'ai',
-        verified_by:    nextStatus === 'verified' ? (existing?.verified_by || null) : null,
-        verified_role:  nextStatus === 'verified' ? (existing?.verified_role || null) : null,
-        verified_at:    nextStatus === 'verified' ? (existing?.verified_at || null) : null,
-        // Newly discovered fields from an uploaded document are optional
-        // evidence unless they already belong to an approved required
-        // definition. This prevents an optional document from expanding the
-        // readiness denominator or creating a required blocker by default.
-        is_required: existing ? existing.is_required !== false : false,
-        updated_at:     new Date().toISOString(),
+      const addFieldExpectation = (field, key) => {
+        const snapshot = expectedFieldSnapshot(field, key);
+        expectedFields.set(snapshot.id ? `id:${snapshot.id}` : `absent:${snapshot.field_key}`, snapshot);
       };
-      let { data: savedField, error: saveError } = await supabase
-        .from('transaction_record_fields')
-        .upsert(extractionPayload, { onConflict: 'property_id,field_key', ignoreDuplicates: false })
-        .select('id')
-        .single();
-      // Migration 021 is additive. Keep document extraction usable while an
-      // older runtime is still waiting for the metadata columns.
-      if (saveError && /column|schema cache/i.test(saveError.message || '')) {
-        const legacyPayload = { ...extractionPayload };
-        delete legacyPayload.is_required;
-        ({ data: savedField, error: saveError } = await supabase
-          .from('transaction_record_fields')
-          .upsert(legacyPayload, { onConflict: 'property_id,field_key', ignoreDuplicates: false })
-          .select('id')
-          .single());
-      }
-      if (saveError) throw saveError;
-      console.log(`[tx-record] field ${propertyId} pack=${schemaKey} raw=${String(f.field_key)} canonical=${canonicalKey} status=${nextStatus} source_doc_id=${docId || 'none'}`);
-      await recordTransactionFieldHistory({
-        fieldId: savedField.id,
-        propertyId,
-        eventType,
-        priorValue,
-        newValue: String(f.value_text).slice(0, 2000),
-        priorStatus,
-        newStatus: nextStatus,
-        sourceDocId: docId || null,
-        sourcePage: f.source_page || null,
-        sourceExcerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
-        metadata: { sectionLabel },
-      });
-      if (differs) {
-        await upsertTransactionRecordConflict({
-          propertyId,
-          fieldId: savedField.id,
-          fieldKey: canonicalKey,
-          displayLabel: f.display_label || canonicalKey,
-          canonicalValue: existing.value_text,
-          conflictingValue: f.value_text,
-          canonicalSourceDocId: existing.source_doc_id,
-          conflictingSourceDocId: docId || null,
-          canonicalSourcePage: existing.source_page,
-          conflictingSourcePage: f.source_page,
-          canonicalSourceExcerpt: existing.source_excerpt,
-          conflictingSourceExcerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+      const addConflictExpectation = (conflict, key) => {
+        const snapshot = expectedConflictSnapshot(conflict, key);
+        expectedConflicts.set(snapshot.id ? `id:${snapshot.id}` : `absent:${snapshot.field_key}`, snapshot);
+      };
+
+      for (const [canonicalKey, f] of extractedByCanonicalKey) {
+        const aliasKeys = aliasKeysForCanonical(canonicalKey, schemaKey);
+        const matchingRows = (allFields || []).filter(row => aliasKeys.includes(row.field_key));
+        const storedField = matchingRows.find(row => row.field_key === canonicalKey)
+          || matchingRows[0]
+          || null;
+        const existing = storedField && !isFieldSourceCurrent(storedField, activeSourceDocuments)
+          ? projectCurrentSourceField(storedField, activeSourceDocuments)
+          : storedField;
+        const conflictsForKey = (openConflicts || []).filter(conflict => conflict.field_key === canonicalKey);
+
+        addFieldExpectation(storedField, canonicalKey);
+        if (!storedField || storedField.field_key !== canonicalKey) {
+          addFieldExpectation(null, canonicalKey);
+        }
+        if (conflictsForKey.length) {
+          conflictsForKey.forEach(conflict => addConflictExpectation(conflict, canonicalKey));
+        } else {
+          addConflictExpectation(null, canonicalKey);
+        }
+
+        const priorValue = existing?.value_text || null;
+        const priorStatus = existing?.status || null;
+        const existingWasVerified = ['verified', 'confirmed'].includes(String(priorStatus || '').toLowerCase())
+          && isFieldSourceCurrent(existing || {}, activeSourceDocuments);
+        const priorComparable = existing?.value_text
+          ? normalizeComparableValue(existing.value_text, canonicalKey, existing.display_label || f.display_label)
+          : null;
+        const nextComparable = normalizeComparableValue(f.value_text, canonicalKey, f.display_label);
+        const semanticDefinition = inferSemanticDefinition(
+          canonicalKey,
+          f.value_text,
+          f.display_label || existing?.display_label || '',
+        );
+        const valueComparison = compareComparableValues(
+          priorComparable,
+          nextComparable,
+          semanticDefinition,
+        );
+        const differs = Boolean(existing?.value_text)
+          && valueComparison.comparable
+          && !valueComparison.equivalent;
+        const eventType = existingWasVerified && differs
+          ? 'source_changed'
+          : differs ? 'conflict' : 'extracted';
+        const nextStatus = existingWasVerified
+          ? (eventType === 'source_changed' ? 'source_changed' : 'verified')
+          : eventType === 'source_changed'
+            ? 'source_changed'
+            : eventType === 'conflict' ? 'conflicting' : 'extracted';
+        const nextValue = differs
+          ? existing.value_text
+          : String(f.value_text).slice(0, 2000);
+        const fieldPatch = {
+          field_key: canonicalKey,
+          field_category: storedField?.field_category || ({
+            asset: 'asset_identity',
+            ownership: 'beneficial_ownership',
+          }[canonicalKey.split('.')[0]] || canonicalKey.split('.')[0] || f.field_category),
+          display_label: f.display_label || canonicalKey,
+          value_text: nextValue,
+          status: nextStatus,
+          confidence: f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
+          source_doc_id: differs ? (existing.source_doc_id || docId || null) : (docId || null),
+          source_doc_version: differs ? (existing.source_doc_version || null) : (docId || null),
+          source_file_hash: differs ? (existing.source_file_hash || null) : (sourceDocument?.source_hash || null),
+          source_page: differs ? (existing.source_page || f.source_page || null) : (f.source_page || null),
+          source_excerpt: differs
+            ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
+            : (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null),
+          extracted_by: 'ai',
+          verified_by: nextStatus === 'verified' ? (existing?.verified_by || null) : null,
+          verified_role: nextStatus === 'verified' ? (existing?.verified_role || null) : null,
+          verified_at: nextStatus === 'verified' ? (existing?.verified_at || null) : null,
+          is_required: storedField ? storedField.is_required !== false : false,
+          updated_at: new Date().toISOString(),
+        };
+        if (differs) {
+          fieldPatch.conflict_candidates = [...new Set([
+            existing.value_text,
+            String(f.value_text).slice(0, 2000),
+          ].filter(value => value !== null && value !== undefined))];
+        }
+        fieldChanges.push(storedField
+          ? { op: 'update', id: storedField.id, patch: fieldPatch }
+          : { op: 'insert', field_key: canonicalKey, patch: fieldPatch });
+        historyRows.push({
+          field_id: storedField?.id || null,
+          field_key: canonicalKey,
+          event_type: eventType,
+          prior_value: priorValue,
+          new_value: String(f.value_text).slice(0, 2000),
+          prior_status: priorStatus,
+          new_status: nextStatus,
+          source_doc_id: docId || null,
+          source_page: f.source_page || null,
+          source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+          metadata: { sectionLabel },
         });
-      } else if (existing?.value_text) {
-        await clearEquivalentOpenConflict(canonicalKey, f.value_text);
+
+        if (differs) {
+          const openConflict = conflictsForKey[0] || null;
+          const payload = {
+            ...(openConflict?.id ? { id: openConflict.id } : {}),
+            field_id: storedField?.id || null,
+            field_key: canonicalKey,
+            display_label: f.display_label || canonicalKey,
+            canonical_value: existing.value_text || null,
+            conflicting_value: String(f.value_text).slice(0, 2000),
+            canonical_source_doc_id: existing.source_doc_id || null,
+            conflicting_source_doc_id: docId || null,
+            canonical_source_page: existing.source_page || null,
+            conflicting_source_page: f.source_page || null,
+            canonical_source_excerpt: existing.source_excerpt || null,
+            conflicting_source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+            status: 'unresolved',
+            updated_at: new Date().toISOString(),
+          };
+          conflictChanges.push({ op: 'upsert', payload });
+        } else if (existing?.value_text) {
+          for (const conflict of conflictsForKey) {
+            const canonical = normalizeComparableValue(conflict.canonical_value, canonicalKey, '');
+            const conflicting = normalizeComparableValue(conflict.conflicting_value, canonicalKey, '');
+            const comparison = compareComparableValues(
+              canonical,
+              conflicting,
+              inferSemanticDefinition(canonicalKey, null, ''),
+            );
+            if ((comparison.equivalent || !comparison.comparable) && !conflictOperationIds.has(conflict.id)) {
+              conflictOperationIds.add(conflict.id);
+              conflictChanges.push({
+                op: 'resolve',
+                id: conflict.id,
+                field_key: canonicalKey,
+                resolution_note: 'Evidence values normalized to the same semantic value.',
+              });
+            }
+          }
+        }
+        console.log(`[tx-record] field ${propertyId} pack=${schemaKey} raw=${String(f.field_key)} canonical=${canonicalKey} status=${nextStatus} source_doc_id=${docId || 'none'}`);
       }
+
+      const source = requiredSource(sourceDocument);
+      return {
+        property_id: propertyId,
+        required_sources: source ? [source] : [],
+        expected_fields: [...expectedFields.values()],
+        field_changes: fieldChanges,
+        expected_conflicts: [...expectedConflicts.values()],
+        conflict_changes: conflictChanges,
+        history_rows: historyRows,
+      };
+    };
+
+    const result = await commitCanonicalChangeSet(
+      async () => ({ p_change_set: await buildCanonicalChangeSet() }),
+    );
+    if (result.status === 'stale_source') {
+      return {
+        status: 'stale_source',
+        rawCount: rawKeys.length, savedCount: 0, rawKeys, canonicalKeys,
+        skipped: 'superseded',
+      };
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Canonical extraction did not commit (${result.status || 'unknown'})`);
     }
     console.log(`[tx-record] extracted ${canonicalKeys.length} fields for ${propertyId} (${sectionLabel})`);
-    return { rawCount: rawKeys.length, savedCount: canonicalKeys.length, rawKeys, canonicalKeys, schemaKey };
+    return {
+      status: 'committed',
+      rawCount: rawKeys.length,
+      savedCount: canonicalKeys.length,
+      rawKeys,
+      canonicalKeys,
+      schemaKey,
+    };
   } catch (err) {
     console.warn('[tx-record extraction]', err.message);
-    return { rawCount: 0, savedCount: 0, rawKeys: [], canonicalKeys: [], error: err.message };
+    return {
+      status: 'error',
+      rawCount: 0,
+      savedCount: 0,
+      rawKeys: [],
+      canonicalKeys: [],
+      error: err.message,
+    };
   }
 }
 
@@ -5599,74 +5759,6 @@ async function updateDocumentProcessing(recordId, patch, legacyPatch = {}) {
   }
 }
 
-// A changed re-upload creates a new evidence version. Historical rows remain
-// available for audit, but their unconfirmed findings must stop influencing the
-// live Transaction Record, readiness, and task surfaces immediately.
-async function supersedePriorDocumentVersions(propertyId, section, recordId, correlationId) {
-  if (!propertyId || !section || !recordId) return { replaced: false, priorIds: [] };
-
-  const { data: priorRows, error: priorError } = await supabase
-    .from('deal_analyses')
-    .select('id, source_hash, created_at')
-    .eq('property_id', propertyId)
-    .eq('section', section)
-    .neq('id', recordId);
-  if (priorError) throw priorError;
-
-  const priorIds = (priorRows || []).map(row => row.id).filter(Boolean);
-  if (!priorIds.length) return { replaced: false, priorIds: [] };
-
-  const supersededAt = new Date().toISOString();
-  const { error: versionError } = await supabase
-    .from('deal_analyses')
-    .update({
-      is_active: false,
-      superseded_at: supersededAt,
-      superseded_by: recordId,
-    })
-    .eq('property_id', propertyId)
-    .eq('section', section)
-    .neq('id', recordId);
-  // Until the additive migration is applied, read projections still choose the
-  // newest row per section; do not block a valid replacement during rollout.
-  if (versionError && !/column|schema cache/i.test(versionError.message || '')) {
-    throw versionError;
-  }
-
-  await invalidateSupersededFields({
-    supabase,
-    propertyId,
-    priorDocuments: priorRows || [],
-    replacementDocument: { id: recordId },
-    correlationId,
-    now: supersededAt,
-  });
-
-  const conflictPatch = {
-    status: 'resolved',
-    resolved_at: supersededAt,
-    resolution_note: 'Source document was replaced; review the replacement evidence.',
-    updated_at: supersededAt,
-  };
-  await Promise.all([
-    supabase.from('transaction_record_conflicts').update(conflictPatch)
-      .eq('property_id', propertyId).in('canonical_source_doc_id', priorIds),
-    supabase.from('transaction_record_conflicts').update(conflictPatch)
-      .eq('property_id', propertyId).in('conflicting_source_doc_id', priorIds),
-  ]).catch(error => {
-    if (!/relation|schema cache|column/i.test(error?.message || '')) throw error;
-  });
-
-  logEvent(propertyId, 'document_replaced', 'system', null,
-    `${section.replace(/_/g, ' ')} replacement uploaded`, {
-      section,
-      replacement_document_id: recordId,
-      superseded_document_ids: priorIds,
-      correlationId,
-    }).catch(() => {});
-  return { replaced: true, priorIds };
-}
-
 async function documentImpact(propertyId, correlationId, beforeState = null, context = {}) {
   try {
     const before = beforeState
@@ -5867,43 +5959,50 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         }
       : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
 
-    const insertAnalysis = async () => {
-      const full = await supabase.from('deal_analyses').insert({
-        property_id: propertyId, section, filename,
-        analysis: initialAnalysis,
-        uploaded_by_role: effectiveRole,
-        source_hash: hash,
-        extraction_version: hasAiPrompt || needsTransactionExtraction ? DOCUMENT_EXTRACTION_VERSION : null,
-        processing_status: initialProcessingStatus,
-        processing_attempt: 0,
-        correlation_id: correlationId,
-        is_active: true,
-        ...(initialProcessingStatus === 'extracted' ? { processing_completed_at: new Date().toISOString() } : {}),
-        ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
-      }).select('id').single();
-      if (!full.error) return full;
-      const legacy = await supabase.from('deal_analyses').insert({
-        property_id: propertyId, section, filename,
-        analysis: initialAnalysis,
-        uploaded_by_role: effectiveRole,
-        ...(isPostCompletion ? { post_completion: true, post_completion_added_at: new Date().toISOString() } : {}),
-      }).select('id').single();
-      return legacy;
-    };
-
     // Persist bytes before creating the active analysis record. A storage
     // failure must leave the prior active version untouched and make the
     // upload retryable instead of creating a live record with no file.
     const storagePath = buf
       ? await uploadToStorage(buf, mime, propertyId, section, filename)
       : null;
-    const insertRes = await insertAnalysis();
-    if (insertRes.error) throw insertRes.error;
-    const recordId = insertRes.data?.id;
+    const activatedAt = new Date().toISOString();
+    const activation = await activateDocumentVersion({
+      propertyId,
+      section,
+      document: {
+        filename,
+        analysis: initialAnalysis,
+        uploaded_by_role: effectiveRole,
+        storage_path: storagePath,
+        document_hash: hash,
+        extracted_fields: null,
+        extraction_version: hasAiPrompt || needsTransactionExtraction
+          ? DOCUMENT_EXTRACTION_VERSION
+          : null,
+        processing_status: initialProcessingStatus,
+        source_hash: hash,
+        processing_attempt: 0,
+        correlation_id: correlationId,
+        failure_reason: null,
+        processing_started_at: null,
+        processing_completed_at: initialProcessingStatus === 'extracted' ? activatedAt : null,
+        post_completion: isPostCompletion,
+        post_completion_added_at: isPostCompletion ? activatedAt : null,
+      },
+    });
+    if (activation.status !== 'committed') {
+      throw activation.error || new Error(
+        activation.status === 'stale_source'
+          ? 'Document activation was rejected because its source changed.'
+          : 'Document activation did not commit.',
+      );
+    }
+    const recordId = activation.document_id;
+    const replacement = {
+      replaced: activation.replaced === true,
+      priorIds: Array.isArray(activation.prior_ids) ? activation.prior_ids : [],
+    };
     clearBriefingCache(propertyId);
-    const replacement = !isPostCompletion
-      ? await supersedePriorDocumentVersions(propertyId, section, recordId, correlationId)
-      : { replaced: false, priorIds: [] };
 
     logEvent(propertyId, 'document_uploaded', effectiveRole, null,
       `${sectionLabel}${replacement.replaced ? ' replacement' : ''} uploaded`,
@@ -5944,7 +6043,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // and Digital Asset Readiness update after a coordinator uploads an LOI.
     if (buf && !LIGHTWEIGHT_AI_PROMPTS[section] && recordId) {
       (async () => {
-        let extractionResult = { savedCount: 0 };
+        let extractionResult = {
+          status: 'error',
+          savedCount: 0,
+          error: 'Document text extraction did not complete.',
+        };
         let beforeState = null;
         try {
           beforeState = (await recalculateTransactionState(propertyId, {
@@ -5981,50 +6084,82 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           } else {
             text = buf.toString('utf8', 0, Math.min(buf.length, 10000)).replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
           }
-          if (text && text.trim().length > 50) {
-            extractionResult = await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
-            console.log(`[track-document] ✓ transaction fields extracted from ${section} (non-AI-prompt path)`);
-          }
+          extractionResult = await extractTransactionFields(
+            propertyId,
+            recordId,
+            text,
+            SECTION_LABELS[section] || section,
+          );
         } catch (extractErr) {
           console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
         }
-        const impact = await documentImpact(propertyId, correlationId, beforeState, {
-          affectedRoles: [effectiveRole],
-          actorId: access.actorId,
-          actorType: access.actorType,
-        });
-        const completedAnalysis = extractionResult.savedCount > 0
-          ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
-          : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
-        await updateDocumentProcessing(recordId, {
-          analysis: { ...completedAnalysis, processing_status: 'extracted', processing_impact: impact },
-          storage_path: storagePath,
-          processing_status: 'extracted',
-          extraction_version: DOCUMENT_EXTRACTION_VERSION,
-          correlation_id: correlationId,
-          failure_reason: null,
-          processing_completed_at: new Date().toISOString(),
-        }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
-        if (access.mode === 'participant') {
-          await syncParticipantSubmissionFromDocument({
-            supabase,
-            propertyId,
-            role: effectiveRole,
-            email: access.email,
+        const outcome = await afterCanonicalCommit(extractionResult, async () => {
+          const impact = await documentImpact(propertyId, correlationId, beforeState, {
+            affectedRoles: [effectiveRole],
+            actorId: access.actorId,
+            actorType: access.actorType,
           });
+          const completedAnalysis = extractionResult.savedCount > 0
+            ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
+            : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
+          await updateDocumentProcessing(recordId, {
+            analysis: { ...completedAnalysis, processing_status: 'extracted', processing_impact: impact },
+            storage_path: storagePath,
+            processing_status: 'extracted',
+            extraction_version: DOCUMENT_EXTRACTION_VERSION,
+            correlation_id: correlationId,
+            failure_reason: null,
+            processing_completed_at: new Date().toISOString(),
+          }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
+          if (access.mode === 'participant') {
+            await syncParticipantSubmissionFromDocument({
+              supabase,
+              propertyId,
+              role: effectiveRole,
+              email: access.email,
+            });
+          }
+          clearBriefingCache(propertyId);
+          emitInternalEvent('document.extracted', {
+            propertyId, documentId: recordId, section, filename,
+            extractedFieldCount: extractionResult.savedCount || 0,
+            impact, correlationId,
+          }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+          // Lightweight sections refresh verification only after the canonical
+          // extraction result has committed.
+          getRoomPackId(propertyId)
+            .then(packId => runVerification(propertyId, packId))
+            .catch(error => console.warn('[verification] non-AI trigger failed:', error.message));
+        });
+        if (outcome !== 'committed') {
+          const status = outcome === 'stale_source' ? 'superseded' : 'failed';
+          const message = outcome === 'stale_source'
+            ? 'The document was superseded before its Transaction Record changes could commit.'
+            : (extractionResult.error || 'Canonical document extraction failed.');
+          const failedAnalysis = {
+            summary: outcome === 'stale_source'
+              ? `${sectionLabel} was superseded before processing completed.`
+              : `${sectionLabel} could not be processed.`,
+            documentType: sectionLabel,
+            confidence: 0,
+            pending: false,
+            processing_status: status,
+          };
+          await updateDocumentProcessing(recordId, {
+            analysis: failedAnalysis,
+            processing_status: status,
+            failure_reason: outcome === 'failed' ? message : null,
+            processing_completed_at: new Date().toISOString(),
+          });
+          clearBriefingCache(propertyId);
+          if (outcome === 'failed') {
+            emitInternalEvent('document.failed', {
+              propertyId, documentId: recordId, section, filename,
+              failureReason: message, correlationId,
+            }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
+          }
+          return;
         }
-        clearBriefingCache(propertyId);
-        emitInternalEvent('document.extracted', {
-          propertyId, documentId: recordId, section, filename,
-          extractedFieldCount: extractionResult.savedCount || 0,
-          impact, correlationId,
-        }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
-        // Lightweight sections do not pass through the AI-analysis branch,
-        // so they must explicitly refresh the shared cross-document
-        // verification snapshot after Transaction Record extraction.
-        getRoomPackId(propertyId)
-          .then(packId => runVerification(propertyId, packId))
-          .catch(error => console.warn('[verification] non-AI trigger failed:', error.message));
       })().catch(() => {});
     }
 
@@ -6061,6 +6196,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
         };
         let beforeState = null;
+        let canonicalOutcome = null;
         try {
           beforeState = (await recalculateTransactionState(propertyId, {
             correlationId,
@@ -6159,12 +6295,38 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             }, { timeout: 30000 });
           }
           const result = JSON.parse(completion.choices[0].message.content);
-          await extractTransactionFields(propertyId, recordId, text, SECTION_LABELS[section] || section);
-          await clearPending(result);
-          notifyOwner(propertyId, section, result.summary).catch(() => {});
-          // Extract structured transaction record fields from the same document text
-          logEvent(propertyId, 'document_analyzed', effectiveRole, null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
-          getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
+          const extractionResult = await extractTransactionFields(
+            propertyId,
+            recordId,
+            text,
+            SECTION_LABELS[section] || section,
+          );
+          canonicalOutcome = extractionResult.status === 'committed'
+            ? 'committed'
+            : extractionResult.status === 'stale_source' || extractionResult.skipped === 'superseded'
+              ? 'stale_source'
+              : 'failed';
+          if (canonicalOutcome === 'stale_source') {
+            const summary = `${SECTION_LABELS[section]} was superseded before processing completed.`;
+            await updateDocumentProcessing(recordId, {
+              analysis: { summary, documentType: SECTION_LABELS[section], confidence: 0, pending: false, processing_status: 'superseded' },
+              processing_status: 'superseded',
+              failure_reason: null,
+              processing_completed_at: new Date().toISOString(),
+            });
+            clearBriefingCache(propertyId);
+            return;
+          }
+          if (canonicalOutcome !== 'committed') {
+            throw extractionResult.error || new Error('Canonical document extraction failed.');
+          }
+          await afterCanonicalCommit(extractionResult, async () => {
+            await clearPending(result);
+            notifyOwner(propertyId, section, result.summary).catch(() => {});
+            logEvent(propertyId, 'document_analyzed', effectiveRole, null, `${SECTION_LABELS[section]} analyzed by AI`, { section, filename }).catch(() => {});
+            getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId))
+              .catch(e => console.warn('[verification] trigger failed:', e.message));
+          });
           console.log(`[track-document] ✓ ${section} analyzed${needsVision ? ' (vision)' : ''} — confidence ${result.confidence}`);
         } catch (aiErr) {
           console.warn(`[track-document] AI failed for ${section}:`, aiErr.message);
@@ -6189,7 +6351,10 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
              propertyId, documentId: recordId, section, filename,
              failureReason: aiErr.message, correlationId,
            }, { correlationId, source: 'document-agent', actorId: access.actorId, actorType: access.actorType });
-            getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId)).catch(e => console.warn('[verification] trigger failed:', e.message));
+            if (canonicalOutcome !== 'failed' && canonicalOutcome !== 'stale_source') {
+              getRoomPackId(propertyId).then(packId => runVerification(propertyId, packId))
+                .catch(e => console.warn('[verification] trigger failed:', e.message));
+            }
         }
       });
       // Hard 50-second timeout so the record never stays "pending" forever
@@ -10210,7 +10375,7 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
   try {
     const { data: existing } = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
+      .select('*')
       .eq('id', fieldId)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -10251,6 +10416,7 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
       source_page: null,
       source_excerpt: null,
     };
+    const requiredSources = [];
 
     update.updated_at = now;
     if (value_text !== undefined) {
@@ -10279,6 +10445,7 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
         update.verified_by = access.email || 'coordinator';
         update.verified_role = 'Deal Coordinator';
         update.verified_at = now;
+        if (sourceState.document) requiredSources.push(requiredSource(sourceState.document));
       } else {
         update.verified_by = null;
         update.verified_role = null;
@@ -10286,12 +10453,6 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
         if (acceptedStatus === 'not_applicable') Object.assign(update, manualSourcePatch);
       }
     }
-    const { error } = await supabase
-      .from('transaction_record_fields')
-      .update(update)
-      .eq('id', fieldId)
-      .eq('property_id', propertyId);
-    if (error) throw error;
     const nextStatus = update.status || existing.status;
     const valueForHistory = value => typeof value === 'string' ? value : JSON.stringify(value);
     const nextValue = update.value_text !== undefined
@@ -10314,8 +10475,13 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
             || (acceptedStatus && acceptedStatus !== existing.status)
             ? 'manual_edit'
             : null;
+    const expectedFields = new Map([[`id:${existing.id}`, expectedFieldSnapshot(existing)]]);
+    const fieldChanges = [{ op: 'update', id: fieldId, patch: update }];
+    const historyRows = [];
+    let expectedConflicts = [];
+    let conflictChanges = [];
     if (eventType) {
-      await recordTransactionFieldHistory({
+      historyRows.push(transactionFieldHistoryRow({
         fieldId,
         propertyId,
         eventType,
@@ -10342,17 +10508,50 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
           prior_source_excerpt: existing.source_excerpt || null,
           manual_value_edit: valueChanged,
         },
-      });
+      }));
     }
     if (nextStatus === 'not_applicable') {
-      await markDependentTransactionFieldsNotApplicable(propertyId, existing.field_key, access.email || 'coordinator');
+      const dependentChanges = await buildDependentTransactionChanges(
+        propertyId, existing.field_key, access.email || 'coordinator',
+      );
+      dependentChanges.expected_fields.forEach(snapshot => expectedFields.set(`id:${snapshot.id}`, snapshot));
+      fieldChanges.push(...dependentChanges.field_changes);
+      historyRows.push(...dependentChanges.history_rows);
     }
     if (nextStatus === 'verified') {
-      await resolveTransactionRecordConflicts(propertyId, existing.field_key, {
+      const resolution = await buildTransactionConflictResolutionChanges(propertyId, existing.field_key, {
         resolutionValue: nextValue,
         resolutionNote: notes || 'Coordinator confirmed the canonical Transaction Record value.',
         resolvedBy: access.email || 'coordinator',
       });
+      expectedConflicts = resolution.expected_conflicts;
+      conflictChanges = resolution.conflict_changes;
+    }
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        required_sources: requiredSources.filter(Boolean),
+        expected_fields: [...expectedFields.values()],
+        field_changes: fieldChanges,
+        expected_conflicts: expectedConflicts,
+        conflict_changes: conflictChanges,
+        history_rows: historyRows,
+      },
+    });
+    if (result.status === 'stale_source') {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'This field source changed while it was being saved. Refresh and review the latest evidence.',
+      });
+    }
+    if (result.status === 'retry_snapshot') {
+      return res.status(409).json({
+        error: 'FIELD_CHANGED',
+        message: 'This field changed while it was being reviewed. Refresh the Transaction Record and review the latest value.',
+      });
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Transaction Record field update did not commit (${result.status || 'unknown'})`);
     }
     await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_updated',
@@ -10391,7 +10590,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       .select('id').eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (fErr) throw fErr;
     const { data: existing } = await supabase.from('transaction_record_fields')
-      .select('id, field_key, value_text, value_json, status, updated_at, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt')
+      .select('*')
       .eq('id', fieldId).eq('property_id', propertyId).maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
     const valueForVerification = value => {
@@ -10427,36 +10626,47 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       const approvalTime = new Date().toISOString();
       const approvalRole = 'Workspace Owner';
       const approvalEmail = access.email || room?.customer_email || 'coordinator';
-      const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
-        field_id: fieldId,
-        property_id: propertyId,
-        action: 'approved',
-        actor_email: approvalEmail,
-        actor_role: approvalRole,
-        is_manual: true,
-        prior_value: verificationValue,
-        new_value: verificationValue,
-        note: 'Owner approved the current confirmed value as manual provenance for Verified Asset readiness.',
-        created_at: approvalTime,
-      });
-      if (approvalError && !/relation|schema cache|column/i.test(approvalError.message || '')) {
-        throw approvalError;
-      }
-      await recordTransactionFieldHistory({
-        fieldId,
-        propertyId,
-        eventType: 'provenance_approved',
-        actorEmail: approvalEmail,
-        actorRole: approvalRole,
-        priorValue: verificationValue,
-        newValue: verificationValue,
-        priorStatus: existing.status,
-        newStatus: existing.status,
-        metadata: {
-          verification_kind: 'manual_provenance_approval',
-          approved_at: approvalTime,
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          expected_fields: [expectedFieldSnapshot(existing)],
+          approval_rows: [{
+            field_id: fieldId,
+            action: 'approved',
+            actor_email: approvalEmail,
+            actor_role: approvalRole,
+            is_manual: true,
+            prior_value: verificationValue,
+            new_value: verificationValue,
+            note: 'Owner approved the current confirmed value as manual provenance for Verified Asset readiness.',
+            created_at: approvalTime,
+          }],
+          history_rows: [transactionFieldHistoryRow({
+            fieldId,
+            propertyId,
+            eventType: 'provenance_approved',
+            actorEmail: approvalEmail,
+            actorRole: approvalRole,
+            priorValue: verificationValue,
+            newValue: verificationValue,
+            priorStatus: existing.status,
+            newStatus: existing.status,
+            metadata: {
+              verification_kind: 'manual_provenance_approval',
+              approved_at: approvalTime,
+            },
+          })],
         },
       });
+      if (result.status !== 'committed') {
+        if (result.status === 'retry_snapshot') {
+          return res.status(409).json({
+            error: 'FIELD_CHANGED',
+            message: 'This field changed while the approval was being recorded. Refresh and review it again.',
+          });
+        }
+        throw result.error || new Error(`Manual provenance approval did not commit (${result.status || 'unknown'})`);
+      }
       const recalculated = await recalculateTransactionState(propertyId, {
         source: 'transaction_record_provenance_approved',
         actorId: access.actorId,
@@ -10500,7 +10710,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
     const nextValue = verificationValue;
     const confirmationTime = new Date().toISOString();
     const manualField = !hasDocumentProvenance(existing);
-    const { data: verifiedRows, error: updateError } = await supabase.from('transaction_record_fields').update({
+    const fieldPatch = {
       status: 'verified',
       source_type: manualField ? 'manual' : 'document',
       ...(manualField ? {
@@ -10514,16 +10724,25 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       verified_role: actorRole || 'coordinator',
       verified_at: confirmationTime,
       updated_at: confirmationTime,
-    }).eq('id', fieldId).eq('property_id', propertyId).eq('status', existing.status)
-      .eq('updated_at', existing.updated_at).select('id');
-    if (updateError) throw updateError;
-    if (!verifiedRows?.length) {
-      return res.status(409).json({
-        error: 'FIELD_CHANGED',
-        message: 'This field changed while it was being reviewed. Refresh the Transaction Record and review the latest value.',
-      });
-    }
-    await recordTransactionFieldHistory({
+    };
+    const conflictResolution = await buildTransactionConflictResolutionChanges(
+      propertyId,
+      canonicalFieldKey,
+      {
+        resolutionValue: nextValue,
+        resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
+        resolvedBy: email,
+      },
+    );
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        required_sources: manualField ? [] : [requiredSource(sourceState.document)].filter(Boolean),
+        expected_fields: [expectedFieldSnapshot(existing)],
+        field_changes: [{ op: 'update', id: fieldId, patch: fieldPatch }],
+        expected_conflicts: conflictResolution.expected_conflicts,
+        conflict_changes: conflictResolution.conflict_changes,
+        history_rows: [transactionFieldHistoryRow({
       fieldId, propertyId, eventType: 'confirmed',
       actorEmail: email, actorRole: actorRole || 'coordinator',
       priorValue: existing.value_text || valueForVerification(existing.value_json),
@@ -10538,19 +10757,30 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
         source_doc_version: manualField ? null : existing.source_doc_version || sourceDocumentId(existing),
         source_file_hash: manualField ? null : sourceState.document?.source_hash || existing.source_file_hash || null,
       },
+        })],
+        approval_rows: [{
+          field_id: fieldId,
+          action: 'approved',
+          actor_email: email,
+          actor_role: actorRole || 'coordinator',
+        }],
+      },
     });
-    const { error: approvalError } = await supabase.from('transaction_record_approvals').insert({
-      field_id: fieldId, property_id: propertyId,
-      action: 'approved', actor_email: email, actor_role: actorRole || 'coordinator',
-    });
-    if (approvalError && !/relation|schema cache|column/i.test(approvalError.message || '')) {
-      throw approvalError;
+    if (result.status === 'stale_source') {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'This field is based on an inactive or superseded document. Review the current evidence before confirming it.',
+      });
     }
-    await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
-      resolutionValue: nextValue,
-      resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
-      resolvedBy: email,
-    });
+    if (result.status === 'retry_snapshot') {
+      return res.status(409).json({
+        error: 'FIELD_CHANGED',
+        message: 'This field changed while it was being reviewed. Refresh the Transaction Record and review the latest value.',
+      });
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Transaction Record confirmation did not commit (${result.status || 'unknown'})`);
+    }
     const recalculated = await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_confirmed',
       actorId: access.actorId,
@@ -10572,7 +10802,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
   try {
     const { data: conflict, error: conflictError } = await supabase
       .from('transaction_record_conflicts')
-      .select('id, field_id, field_key, canonical_value, conflicting_value, display_label, status, canonical_source_doc_id, conflicting_source_doc_id, canonical_source_page, conflicting_source_page, canonical_source_excerpt, conflicting_source_excerpt')
+      .select('*')
       .eq('id', conflictId)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -10591,7 +10821,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
     }
     let { data: field, error: fieldError } = await supabase
       .from('transaction_record_fields')
-      .select('id, field_key, field_category, display_label, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
+      .select('*')
       .eq('id', conflict.field_id)
       .eq('property_id', propertyId)
       .maybeSingle();
@@ -10602,7 +10832,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
     if (!field && conflict.field_key) {
       const fallback = await supabase
         .from('transaction_record_fields')
-        .select('id, field_key, field_category, display_label, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
+        .select('*')
         .eq('property_id', propertyId)
         .eq('field_key', conflict.field_key)
         .maybeSingle();
@@ -10698,95 +10928,90 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
         source_page: null,
         source_excerpt: null,
       };
-    const priorField = field ? {
-      value_text: field.value_text,
-      value_json: field.value_json,
-      status: field.status,
-      source_type: field.source_type,
-      source_doc_id: field.source_doc_id,
-      source_doc_version: field.source_doc_version,
-      source_file_hash: field.source_file_hash,
-      source_page: field.source_page,
-      source_excerpt: field.source_excerpt,
-      verified_by: field.verified_by,
-      verified_role: field.verified_role,
-      verified_at: field.verified_at,
-    } : null;
-    if (field) {
-      const { error } = await supabase.from('transaction_record_fields').update({
-        value_text: selectedValue,
-        status: 'verified',
-        verified_by: access.email || 'coordinator',
-        verified_role: 'Deal Coordinator',
-        verified_at: new Date().toISOString(),
-        ...selectedSourceMetadata,
-        updated_at: new Date().toISOString(),
-      }).eq('id', field.id).eq('property_id', propertyId);
-      if (error) throw error;
-    } else {
-      const { data: createdField, error: createFieldError } = await supabase
-        .from('transaction_record_fields')
-        .insert({
-          property_id: propertyId,
-          field_key: String(conflict.field_key).slice(0, 120),
-          field_category: String(conflict.field_key).split('.')[0] || 'transaction',
-          display_label: conflict.display_label || conflict.field_key,
-          value_text: selectedValue,
-          status: 'verified',
-          ...selectedSourceMetadata,
-          extracted_by: 'conflict_resolution',
-          verified_by: access.email || 'coordinator',
-          verified_role: 'Deal Coordinator',
-          verified_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select('id, field_key, value_text, status')
-        .single();
-      if (createFieldError) throw createFieldError;
-      field = createdField;
-    }
-    try {
-      await resolveTransactionRecordConflicts(propertyId, conflict.field_key, {
-        conflictId,
-        resolutionValue: selectedValue,
-        resolutionNote: note ? String(note).slice(0, 500) : 'Coordinator resolved the material source discrepancy.',
-        resolvedBy: access.email || 'coordinator',
-      });
-    } catch (resolutionError) {
-      // Keep the persisted field and conflict row aligned if the second write
-      // fails. Without compensation, the audit trail can say "confirmed" while
-      // the conflict remains blocking (or vice versa).
-      if (field && priorField) {
-        await supabase.from('transaction_record_fields').update({
-          ...priorField,
-          updated_at: new Date().toISOString(),
-        }).eq('id', field.id).eq('property_id', propertyId);
-      }
-      throw resolutionError;
-    }
-    if (field) {
-      await recordTransactionFieldHistory({
-        fieldId: field.id,
-        propertyId,
-        eventType: 'confirmed',
-        actorEmail: access.email || 'coordinator',
-        actorRole: 'Deal Coordinator',
-        priorValue: priorField?.value_text,
-        newValue: selectedValue,
-        priorStatus: priorField?.status,
-        newStatus: 'verified',
-        sourceDocId: selectedSourceDocId,
-        sourcePage: selectedSourceMetadata.source_page,
-        sourceExcerpt: selectedSourceMetadata.source_excerpt,
-        metadata: {
-          conflictId,
-          resolution: true,
-          source_doc_id: selectedSourceDocId,
-          source_doc_version: selectedSourceMetadata.source_doc_version,
-          source_file_hash: selectedSourceMetadata.source_file_hash,
+    const now = new Date().toISOString();
+    const canonicalFieldKey = String(conflict.field_key).slice(0, 120);
+    const fieldPatch = {
+      field_key: canonicalFieldKey,
+      field_category: field?.field_category || canonicalFieldKey.split('.')[0] || 'transaction',
+      display_label: field?.display_label || conflict.display_label || conflict.field_key,
+      value_text: selectedValue,
+      status: 'verified',
+      ...selectedSourceMetadata,
+      extracted_by: field?.extracted_by || 'conflict_resolution',
+      verified_by: access.email || 'coordinator',
+      verified_role: 'Deal Coordinator',
+      verified_at: now,
+      updated_at: now,
+    };
+    const fieldChanges = field
+      ? [{ op: 'update', id: field.id, patch: fieldPatch }]
+      : [{
+        op: 'insert',
+        field_key: canonicalFieldKey,
+        patch: {
+          ...fieldPatch,
+          created_at: now,
         },
+      }];
+    const expectedFields = field
+      ? [expectedFieldSnapshot(field)]
+      : [expectedFieldSnapshot(null, canonicalFieldKey)];
+    const history = transactionFieldHistoryRow({
+      fieldId: field?.id || null,
+      fieldKey: canonicalFieldKey,
+      propertyId,
+      eventType: 'confirmed',
+      actorEmail: access.email || 'coordinator',
+      actorRole: 'Deal Coordinator',
+      priorValue: field?.value_text,
+      newValue: selectedValue,
+      priorStatus: field?.status,
+      newStatus: 'verified',
+      sourceDocId: selectedSourceDocId,
+      sourcePage: selectedSourceMetadata.source_page,
+      sourceExcerpt: selectedSourceMetadata.source_excerpt,
+      metadata: {
+        conflictId,
+        resolution: true,
+        source_doc_id: selectedSourceDocId,
+        source_doc_version: selectedSourceMetadata.source_doc_version,
+        source_file_hash: selectedSourceMetadata.source_file_hash,
+      },
+    });
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        required_sources: [requiredSource(selectedSourceState.document)].filter(Boolean),
+        expected_fields: expectedFields,
+        field_changes: fieldChanges,
+        expected_conflicts: [expectedConflictSnapshot(conflict)],
+        conflict_changes: [{
+          op: 'resolve',
+          id: conflictId,
+          field_key: conflict.field_key,
+          resolution_value: selectedValue,
+          resolution_note: note
+            ? String(note).slice(0, 500)
+            : 'Coordinator resolved the material source discrepancy.',
+          resolved_by: access.email || 'coordinator',
+        }],
+        history_rows: [history],
+      },
+    });
+    if (result.status === 'stale_source') {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'The selected conflict value comes from an inactive or superseded document. Choose current evidence or enter a document-independent value.',
       });
+    }
+    if (result.status === 'retry_snapshot') {
+      return res.status(409).json({
+        error: 'CONFLICT_CHANGED',
+        message: 'This discrepancy changed while it was being resolved. Refresh and review the current evidence.',
+      });
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Transaction Record conflict resolution did not commit (${result.status || 'unknown'})`);
     }
     const recalculated = await recalculateTransactionState(propertyId, {
       source: 'transaction_record_conflict_resolved',
@@ -10827,10 +11052,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
   const ALLOWED_STATUSES = ['missing','extracted','needs_review','verified','not_applicable'];
   const now = new Date().toISOString();
   try {
-    // Try update first (in case a record already exists for this key)
-      const { data: existingRowsData, error: existingLookupError } = await supabase
+    const { data: existingRowsData, error: existingLookupError } = await supabase
       .from('transaction_record_fields')
-        .select('id, field_key, value_text, value_json, status, source_type, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, verified_by, verified_role, verified_at')
+      .select('*')
       .eq('property_id', propertyId)
       .in('field_key', canonicalAliases);
     if (existingLookupError) throw existingLookupError;
@@ -10840,6 +11064,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       .sort((a, b) => (a.field_key === canonicalFieldKey ? -1 : 0) - (b.field_key === canonicalFieldKey ? -1 : 0))[0] || null;
     if (existing?.id) {
       const update = { updated_at: now };
+      const requiredSources = [];
       const manualInputProvided = value_text !== undefined;
       const acceptedStatus = status && ALLOWED_STATUSES.includes(status) ? status : null;
       const nextValue = manualInputProvided
@@ -10886,6 +11111,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
           update.verified_by = access.email || 'coordinator';
           update.verified_role = 'Deal Coordinator';
           update.verified_at = now;
+          if (sourceState.document) requiredSources.push(requiredSource(sourceState.document));
         } else {
           update.verified_by = null;
           update.verified_role = null;
@@ -10903,86 +11129,114 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
         }
       }
       if (notes !== undefined) update.notes = String(notes).slice(0, 500);
-      const { error } = await supabase.from('transaction_record_fields').update(update)
-        .eq('id', existing.id).eq('property_id', propertyId);
-      if (error) throw error;
-        const nextStatus = update.status || existing.status;
-        const valueChanged = nextValue !== existing.value_text;
-        const eventType = nextStatus === 'not_applicable'
-          ? 'marked_not_applicable'
-          : nextStatus === 'verified' && (manualInputProvided || existing.status !== 'verified')
-            ? 'confirmed'
-            : valueChanged
-              || (manualInputProvided && (
-                existing.source_doc_id
-                  || existing.source_doc_version
-                  || existing.source_file_hash
-                  || existing.source_page
-                  || existing.source_excerpt
-              ))
-              || (acceptedStatus && acceptedStatus !== existing.status)
-                ? 'manual_edit'
-                : null;
-        if (eventType) {
-          await recordTransactionFieldHistory({
-            fieldId: existing.id,
-            propertyId,
-            eventType,
-            actorEmail: access.email || 'coordinator',
-            actorRole: 'Deal Coordinator',
-            priorValue: existing.value_text,
-            newValue: nextValue,
-            priorStatus: existing.status,
-            newStatus: nextStatus,
-            sourceDocId: update.source_doc_id !== undefined
-              ? update.source_doc_id
-              : existing.source_doc_id || null,
-            metadata: {
-              source_doc_id: update.source_doc_id !== undefined
-                ? update.source_doc_id
-                : existing.source_doc_id || null,
-              source_doc_version: update.source_doc_version !== undefined
-                ? update.source_doc_version
-                : existing.source_doc_version || null,
-              source_file_hash: update.source_file_hash !== undefined
-                ? update.source_file_hash
-                : existing.source_file_hash || null,
-              prior_source_doc_id: existing.source_doc_id || null,
-              prior_source_doc_version: existing.source_doc_version || null,
-              prior_source_file_hash: existing.source_file_hash || null,
-              prior_source_page: existing.source_page ?? null,
-              prior_source_excerpt: existing.source_excerpt || null,
-            },
-          });
-        }
-        if (nextStatus === 'verified') {
-          await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
-            resolutionValue: nextValue,
-            resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
-            resolvedBy: access.email || 'coordinator',
-          });
-        }
-        if (nextStatus === 'not_applicable') {
-        await markDependentTransactionFieldsNotApplicable(propertyId, canonicalFieldKey, access.email || 'coordinator');
-        }
       if (existing.field_key !== canonicalFieldKey) {
-        await supabase.from('transaction_record_fields')
-          .update({ field_key: canonicalFieldKey, field_category: canonicalFieldCategory, updated_at: now })
-          .eq('id', existing.id).eq('property_id', propertyId);
+        update.field_key = canonicalFieldKey;
+        update.field_category = canonicalFieldCategory;
       }
       // Leave alias rows for the shared hydration reconciliation. It merges
       // equivalent values with provenance/history and records a durable
       // conflict before removing materially different duplicate rows.
-        await recalculateTransactionState(propertyId, {
-          source: 'transaction_record_field_updated',
-          actorId: access.actorId,
-          actorType: access.actorType,
+      const nextStatus = update.status || existing.status;
+      const valueChanged = nextValue !== existing.value_text;
+      const eventType = nextStatus === 'not_applicable'
+        ? 'marked_not_applicable'
+        : nextStatus === 'verified' && (manualInputProvided || existing.status !== 'verified')
+          ? 'confirmed'
+          : valueChanged
+            || (manualInputProvided && (
+              existing.source_doc_id
+                || existing.source_doc_version
+                || existing.source_file_hash
+                || existing.source_page
+                || existing.source_excerpt
+            ))
+            || (acceptedStatus && acceptedStatus !== existing.status)
+              ? 'manual_edit'
+              : null;
+      const expectedFields = new Map([[`id:${existing.id}`, expectedFieldSnapshot(existing)]]);
+      if (existing.field_key !== canonicalFieldKey) {
+        expectedFields.set(`absent:${canonicalFieldKey}`, expectedFieldSnapshot(null, canonicalFieldKey));
+      }
+      const fieldChanges = [{ op: 'update', id: existing.id, patch: update }];
+      const historyRows = eventType ? [transactionFieldHistoryRow({
+        fieldId: existing.id,
+        propertyId,
+        eventType,
+        actorEmail: access.email || 'coordinator',
+        actorRole: 'Deal Coordinator',
+        priorValue: existing.value_text,
+        newValue: nextValue,
+        priorStatus: existing.status,
+        newStatus: nextStatus,
+        sourceDocId: update.source_doc_id !== undefined
+          ? update.source_doc_id
+          : existing.source_doc_id || null,
+        fieldKey: canonicalFieldKey,
+        metadata: {
+          source_doc_id: update.source_doc_id !== undefined
+            ? update.source_doc_id
+            : existing.source_doc_id || null,
+          source_doc_version: update.source_doc_version !== undefined
+            ? update.source_doc_version
+            : existing.source_doc_version || null,
+          source_file_hash: update.source_file_hash !== undefined
+            ? update.source_file_hash
+            : existing.source_file_hash || null,
+          prior_source_doc_id: existing.source_doc_id || null,
+          prior_source_doc_version: existing.source_doc_version || null,
+          prior_source_file_hash: existing.source_file_hash || null,
+          prior_source_page: existing.source_page ?? null,
+          prior_source_excerpt: existing.source_excerpt || null,
+        },
+      })] : [];
+      let expectedConflicts = [];
+      let conflictChanges = [];
+      if (nextStatus === 'verified') {
+        const resolution = await buildTransactionConflictResolutionChanges(propertyId, canonicalFieldKey, {
+          resolutionValue: nextValue,
+          resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
+          resolvedBy: access.email || 'coordinator',
         });
+        expectedConflicts = resolution.expected_conflicts;
+        conflictChanges = resolution.conflict_changes;
+      }
+      if (nextStatus === 'not_applicable') {
+        const dependentChanges = await buildDependentTransactionChanges(
+          propertyId, canonicalFieldKey, access.email || 'coordinator',
+        );
+        dependentChanges.expected_fields.forEach(snapshot => expectedFields.set(`id:${snapshot.id}`, snapshot));
+        fieldChanges.push(...dependentChanges.field_changes);
+        historyRows.push(...dependentChanges.history_rows);
+      }
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          required_sources: requiredSources.filter(Boolean),
+          expected_fields: [...expectedFields.values()],
+          field_changes: fieldChanges,
+          expected_conflicts: expectedConflicts,
+          conflict_changes: conflictChanges,
+          history_rows: historyRows,
+        },
+      });
+      if (result.status === 'retry_snapshot') {
+        return res.status(409).json({
+          error: 'FIELD_CHANGED',
+          message: 'This field changed while it was being edited. Refresh and review the latest value.',
+        });
+      }
+      if (result.status !== 'committed') {
+        throw result.error || new Error(`Transaction Record field update did not commit (${result.status || 'unknown'})`);
+      }
+      await recalculateTransactionState(propertyId, {
+        source: 'transaction_record_field_updated',
+        actorId: access.actorId,
+        actorType: access.actorType,
+      });
       return res.json({ ok: true, action: 'updated', id: existing.id });
     }
     // Insert new
     const insert = {
-      property_id:    propertyId,
       field_key:      canonicalFieldKey.slice(0, 100),
       display_label:  display_label ? String(display_label).slice(0, 200) : canonicalFieldKey,
       field_category: canonicalFieldCategory.slice(0, 100),
@@ -10999,7 +11253,6 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
       verified_by:   status === 'verified' ? (access.email || 'coordinator') : null,
       verified_role: status === 'verified' ? 'Deal Coordinator' : null,
       verified_at:   status === 'verified' ? now : null,
-      created_at:     now,
       updated_at:     now,
     };
     if (insert.status === 'verified' && !hasMeaningfulTransactionFieldValue(insert.value_text)) {
@@ -11008,13 +11261,16 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
         message: 'A populated field is required before it can be confirmed.',
       });
     }
-    const { data, error } = await supabase.from('transaction_record_fields').insert(insert).select('id').single();
-    if (error) throw error;
     const eventType = insert.status === 'not_applicable'
       ? 'marked_not_applicable'
       : insert.status === 'verified' ? 'confirmed' : 'manual_edit';
-    await recordTransactionFieldHistory({
-      fieldId: data.id,
+    const fieldChanges = [{
+      op: 'insert',
+      field_key: canonicalFieldKey,
+      patch: { ...insert, created_at: now },
+    }];
+    const historyRows = [transactionFieldHistoryRow({
+      fieldKey: canonicalFieldKey,
       propertyId,
       eventType,
       actorEmail: access.email || 'coordinator',
@@ -11025,23 +11281,53 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
         verification_kind: insert.status === 'verified' ? 'manual_confirmation' : undefined,
         source: 'manual_owner_input',
       },
-    });
+    })];
+    const expectedFields = [expectedFieldSnapshot(null, canonicalFieldKey)];
+    let expectedConflicts = [];
+    let conflictChanges = [];
     if (insert.status === 'verified') {
-      await resolveTransactionRecordConflicts(propertyId, canonicalFieldKey, {
+      const resolution = await buildTransactionConflictResolutionChanges(propertyId, canonicalFieldKey, {
         resolutionValue: insert.value_text,
         resolutionNote: 'Coordinator confirmed the canonical Transaction Record value.',
         resolvedBy: access.email || 'coordinator',
       });
+      expectedConflicts = resolution.expected_conflicts;
+      conflictChanges = resolution.conflict_changes;
     }
     if (insert.status === 'not_applicable') {
-      await markDependentTransactionFieldsNotApplicable(propertyId, canonicalFieldKey, access.email || 'coordinator');
+      const dependentChanges = await buildDependentTransactionChanges(
+        propertyId, canonicalFieldKey, access.email || 'coordinator',
+      );
+      expectedFields.push(...dependentChanges.expected_fields);
+      fieldChanges.push(...dependentChanges.field_changes);
+      historyRows.push(...dependentChanges.history_rows);
     }
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        expected_fields: expectedFields,
+        field_changes: fieldChanges,
+        expected_conflicts: expectedConflicts,
+        conflict_changes: conflictChanges,
+        history_rows: historyRows,
+      },
+    });
+    if (result.status === 'retry_snapshot') {
+      return res.status(409).json({
+        error: 'FIELD_CHANGED',
+        message: 'This field was created elsewhere while you were editing. Refresh and review the latest value.',
+      });
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Transaction Record field creation did not commit (${result.status || 'unknown'})`);
+    }
+    const createdId = result.field_ids?.[0] || null;
     await recalculateTransactionState(propertyId, {
       source: 'transaction_record_field_created',
       actorId: access.actorId,
       actorType: access.actorType,
     });
-    res.json({ ok: true, action: 'created', id: data?.id });
+    res.json({ ok: true, action: 'created', id: createdId });
   } catch (err) {
     console.error('[transaction-record POST field]', err.message);
     res.status(500).json({ error: err.message });
