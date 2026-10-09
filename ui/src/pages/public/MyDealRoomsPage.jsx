@@ -105,7 +105,7 @@ function PartyMini({ parties, workflowPackId }) {
   );
 }
 
-function DealCard({ room, email, onDeleted }) {
+function DealCard({ room, onDeleted }) {
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -125,13 +125,25 @@ function DealCard({ room, email, onDeleted }) {
     setDeleting(true);
     setDeleteError("");
     try {
+      let ownerWriteToken = "";
+      try {
+        ownerWriteToken = localStorage.getItem(`kontra_owner_token_${room.property_id}`) || "";
+      } catch {}
+      if (!ownerWriteToken) {
+        setDeleteError("Verify your email again before deleting this room.");
+        return;
+      }
       const res = await fetch(`${API_BASE}/api/public/my-rooms/${room.property_id}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-owner-write-token": ownerWriteToken,
+        },
+        body: JSON.stringify({ ownerWriteToken }),
       });
       const data = await res.json();
       if (data.ok) {
+        try { localStorage.removeItem(`kontra_owner_token_${room.property_id}`); } catch {}
         onDeleted(room.property_id);
         setConfirmDelete(false);
       } else {
@@ -341,10 +353,37 @@ export default function MyDealRoomsPage() {
   }, []);
 
   useEffect(() => {
-    if (step !== "dashboard" || !email) return;
-    fetch(`${API_BASE}/api/public/my-rooms/analytics?email=${encodeURIComponent(email.trim().toLowerCase())}`)
-      .then(r => r.json()).then(d => setAnalytics(d)).catch(() => {});
-  }, [step, email]);
+    if (step !== "dashboard" || !email || rooms.length === 0) {
+      setAnalytics(null);
+      return;
+    }
+    const propertyId = rooms.find(room => room.property_id)?.property_id;
+    if (!propertyId) {
+      setAnalytics(null);
+      return;
+    }
+    let ownerWriteToken = "";
+    try {
+      ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || "";
+    } catch {}
+    if (!ownerWriteToken) {
+      setAnalytics(null);
+      return;
+    }
+    const query = new URLSearchParams({
+      email: email.trim().toLowerCase(),
+      propertyId,
+    });
+    fetch(`${API_BASE}/api/public/my-rooms/analytics?${query}`, {
+      headers: { "x-owner-write-token": ownerWriteToken },
+    })
+      .then(r => {
+        if (!r.ok) throw new Error("Room analytics unavailable");
+        return r.json();
+      })
+      .then(d => setAnalytics(d))
+      .catch(() => setAnalytics(null));
+  }, [step, email, rooms]);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -400,8 +439,12 @@ export default function MyDealRoomsPage() {
   }
 
   function signOut() {
+    rooms.forEach(room => {
+      if (!room.property_id) return;
+      try { localStorage.removeItem(`kontra_owner_token_${room.property_id}`); } catch {}
+    });
     sessionStorage.removeItem(SESSION_KEY);
-    setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError("");
+    setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError(""); setAnalytics(null);
   }
 
   async function manageBilling() {
@@ -414,6 +457,11 @@ export default function MyDealRoomsPage() {
       const data = await res.json();
       if (data.error === "billing_portal_not_configured") {
         setBillingState("not_configured");
+        setTimeout(() => setBillingState("idle"), 5000);
+        return;
+      }
+      if (res.status === 503 && data.code === "INTERIM_SECURITY_RESTRICTION") {
+        setBillingState("unavailable");
         setTimeout(() => setBillingState("idle"), 5000);
         return;
       }
@@ -606,7 +654,7 @@ export default function MyDealRoomsPage() {
                   </p>
                 </div>
                 <div className="space-y-3">
-                  {activeRooms.map(r => <DealCard key={r.property_id} room={r} email={email} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
+                  {activeRooms.map(r => <DealCard key={r.property_id} room={r} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
                 </div>
               </section>
             )}
@@ -619,7 +667,7 @@ export default function MyDealRoomsPage() {
                   </p>
                 </div>
                 <div className="space-y-3 opacity-70">
-                  {otherRooms.map(r => <DealCard key={r.property_id} room={r} email={email} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
+                  {otherRooms.map(r => <DealCard key={r.property_id} room={r} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
                 </div>
               </section>
             )}
@@ -640,6 +688,7 @@ export default function MyDealRoomsPage() {
               className="text-xs font-medium text-gray-500 hover:text-gray-700 transition disabled:opacity-40">
               {billingState === "loading" ? "Opening billing…"
                 : billingState === "not_configured" ? "Billing not configured yet"
+                : billingState === "unavailable" ? "Billing temporarily unavailable"
                 : billingState === "error" ? "Try again later"
                 : "💳 Manage Billing"}
             </button>

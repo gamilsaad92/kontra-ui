@@ -1,4 +1,5 @@
 const express = require('express');
+const { isStripeWebhookConfigured } = require('../lib/stripeWebhookConfig');
 let stripe;
 try {
   stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
@@ -12,6 +13,12 @@ router.post('/payments/stripe', async (req, res) => {
   const { amount, currency = 'usd', order_id, metadata, method } = req.body || {};
   if (!amount) {
     return res.status(400).json({ message: 'Missing amount' });
+  }
+  if (!isStripeWebhookConfigured()) {
+    return res.status(503).json({
+      code: 'STRIPE_WEBHOOK_UNCONFIGURED',
+      message: 'Payments are temporarily unavailable.',
+    });
   }
   if (!process.env.STRIPE_SECRET_KEY) {
     return res.status(500).json({ message: 'Stripe not configured' });

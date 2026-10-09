@@ -103,10 +103,30 @@ jest.mock('./db', () => {
     return chain;
   };
 
-  return { supabase: { from } };
+  return {
+    supabase: {
+      from,
+      rpc: jest.fn(async (functionName, args = {}) => {
+        if (functionName === 'kontra_activate_document_version') {
+          const id = args.p_existing_document_id || `doc-${mockRows.length + 1}`;
+          const existing = mockRows.find(row => row.id === id);
+          if (existing) Object.assign(existing, args.p_document);
+          else mockRows.push({
+            ...args.p_document,
+            id,
+            property_id: args.p_property_id,
+            section: args.p_section,
+          });
+          return { data: { status: 'committed', document_id: id }, error: null };
+        }
+        return { data: { status: 'committed' }, error: null };
+      }),
+    },
+  };
 });
 
 const router = require('./routers/aiDealReview');
+router.setTransactionFieldExtractor(async () => ({ status: 'committed' }));
 const app = express();
 app.use('/api/ai', router);
 

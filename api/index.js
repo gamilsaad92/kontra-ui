@@ -40,6 +40,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const express = require('express');
+const { isStripeWebhookConfigured } = require('./lib/stripeWebhookConfig');
 const Sentry = require('@sentry/node');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -1144,22 +1145,10 @@ app.get(['/health', '/api/health'], (_req, res) => {
 });
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──
-app.get('/api/public/my-rooms', async (req, res) => {
-  const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
-  try {
-    const { data, error } = await supabase
-      .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
-      .ilike('customer_email', email)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json({ rooms: data || [] });
-  } catch (err) {
-    console.error('[my-rooms-early]', err.message);
-    res.status(500).json({ error: 'Failed to fetch rooms' });
-  }
-});
+app.get('/api/public/my-rooms', (_req, res) => res.status(401).json({
+  code: 'ROOM_OTP_REQUIRED',
+  error: 'Verify your email to access deal rooms',
+}));
 
 // Original documents are addressed by a server-resolved analysis ID. Never
 // accept a client-supplied Storage path: paths are sensitive and can be
@@ -1240,6 +1229,46 @@ app.get(['/api/public/document-url', '/api/public/deal-room/:propertyId/document
 app.use(verifiedAssetPackageRouter);
 
 // ── End early public routes ──────────────────────────────────────────────────
+
+// Interim fail-closed gate for endpoints whose authorization model is not yet
+// trustworthy. Register these exact prefixes before org discovery and before
+// requireOrgContext so neither an earlier alias nor the global tenancy
+// middleware can reach the underlying routers. Keep /api/auth, public deal
+// rooms, checkout, and Stripe webhooks outside this prefix gate. Selected trade
+// methods have exact interim guards immediately below.
+const interimSecurityUnavailable = (_req, res) => res.status(503).json({
+  code: 'INTERIM_SECURITY_RESTRICTION',
+  message: 'This endpoint is temporarily unavailable while security controls are reviewed.',
+});
+
+[
+  '/api/orgs',
+  '/api/organizations',
+  '/api/billing',
+  '/api/sso',
+  '/api/exchange',
+  '/api/exchange-programs',
+  '/api/subscription',
+].forEach((prefix) => app.use(prefix, interimSecurityUnavailable));
+
+// Restrict only the legacy trade surfaces identified for interim review.
+// Keep unrelated trade endpoints (for example /api/trades/compliance) intact.
+app.get('/api/trades', interimSecurityUnavailable);
+app.post('/api/trades', interimSecurityUnavailable);
+app.post('/api/trades/:id/settle', interimSecurityUnavailable);
+app.get('/api/market/trades', interimSecurityUnavailable);
+app.post('/api/market/trades/:id/settle', interimSecurityUnavailable);
+
+// orgDiscoveryRouter is also mounted at /api/me for account context. Preserve
+// its read-only self endpoints, but disable its organization creation,
+// auto-provisioning, and organization-switch operations during this interim.
+app.use('/api/me/bootstrap', interimSecurityUnavailable);
+app.post('/api/me', interimSecurityUnavailable);
+app.post('/api/me/select', interimSecurityUnavailable);
+
+// Keep the public plan catalog reachable. The subscription prefix gate above
+// still blocks this router's organization-scoped subscription endpoints.
+app.use('/api', subscriptionsRouter);
 
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
@@ -2215,8 +2244,86 @@ app.get('/api/workflow-packs/:packId', async (req, res) => {
 // In-memory store for pending deal rooms (checkout → webhook bridge)
 const pendingDealRooms = new Map();
 
+const GUEST_CHECKOUT_PLANS = Object.freeze({
+  deal: { name: 'Kontra Deal Room', amount: 49900, mode: 'payment' },
+  pro_monthly: { name: 'Kontra Pro — Monthly', amount: 29900, mode: 'subscription', interval: 'month' },
+  pro_annual: { name: 'Kontra Pro — Annual', amount: 249900, mode: 'subscription', interval: 'year' },
+});
+const STRIPE_CHECKOUT_SESSION_PLACEHOLDER = '{CHECKOUT_SESSION_ID}';
+
+function buildGuestCheckoutSuccessUrl(origin, plan, propertyId, propertyName, sessionId = STRIPE_CHECKOUT_SESSION_PLACEHOLDER) {
+  const successUrl = new URL('/checkout/success', origin);
+  successUrl.searchParams.set('plan', plan);
+  if (propertyId) successUrl.searchParams.set('property', propertyId);
+  if (propertyName) successUrl.searchParams.set('name', propertyName);
+
+  if (sessionId === STRIPE_CHECKOUT_SESSION_PLACEHOLDER) {
+    return `${successUrl.toString()}&session_id=${STRIPE_CHECKOUT_SESSION_PLACEHOLDER}`;
+  }
+  successUrl.searchParams.set('session_id', sessionId);
+  return successUrl.toString();
+}
+
+function isVerifiedPaidCheckoutSession(session) {
+  const plan = GUEST_CHECKOUT_PLANS[session?.metadata?.plan];
+  return Boolean(
+    plan
+    && session.status === 'complete'
+    && session.payment_status === 'paid'
+    && session.mode === plan.mode
+    && session.currency === 'usd'
+    && Number(session.amount_total) === plan.amount,
+  );
+}
+
+function guestCheckoutIdempotencyKey(propertyId, plan, previousSessionId = '') {
+  const attempt = previousSessionId || 'initial';
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${plan}:${propertyId}:${attempt}`)
+    .digest('hex');
+  return `kontra-guest-${digest}`;
+}
+
+async function readGuestCheckoutIntent(propertyId) {
+  const { data, error } = await supabase
+    .from('deal_room_checkout_intents')
+    .select('property_id, stripe_session_id, owner_write_token, plan, status')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function getOrCreateGuestCheckoutIntent(propertyId, plan) {
+  let intent = await readGuestCheckoutIntent(propertyId);
+  if (intent) return intent;
+
+  const ownerWriteToken = crypto.randomBytes(32).toString('hex');
+  const { data, error } = await supabase
+    .from('deal_room_checkout_intents')
+    .insert({ property_id: propertyId, owner_write_token: ownerWriteToken, plan })
+    .select('property_id, stripe_session_id, owner_write_token, plan, status')
+    .single();
+  if (!error && data) return data;
+
+  // Parallel checkout requests for one room converge on the single durable
+  // intent row; its owner token must never be rotated by a retry.
+  if (error?.code === '23505') {
+    intent = await readGuestCheckoutIntent(propertyId);
+    if (intent) return intent;
+  }
+  throw error || new Error('Checkout access could not be saved');
+}
+
 app.post('/api/checkout/guest', async (req, res) => {
   try {
+    if (!isStripeWebhookConfigured()) {
+      return res.status(503).json({
+        code: 'STRIPE_WEBHOOK_UNCONFIGURED',
+        message: 'Payments are temporarily unavailable.',
+      });
+    }
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
       return res.status(503).json({
@@ -2225,7 +2332,16 @@ app.post('/api/checkout/guest', async (req, res) => {
       });
     }
     const stripe = require('stripe')(stripeKey);
-    const { propertyId, propertyName, plan = 'deal', email, role = 'lender', meta = {} } = req.body;
+    const { propertyName, plan: requestedPlan = 'deal', email, role = 'lender', meta = {} } = req.body || {};
+    const propertyId = typeof req.body?.propertyId === 'string' ? req.body.propertyId.trim() : '';
+    const plan = Object.hasOwn(GUEST_CHECKOUT_PLANS, requestedPlan) ? requestedPlan : 'deal';
+    const cfg = GUEST_CHECKOUT_PLANS[plan];
+    if (propertyId.length > 200) {
+      return res.status(400).json({ error: 'Invalid property identifier' });
+    }
+    if (plan === 'deal' && !propertyId) {
+      return res.status(400).json({ error: 'A property identifier is required to create a deal room' });
+    }
     let transactionEntryMode;
     try {
       transactionEntryMode = normalizeTransactionEntryMode(meta.transactionEntryMode);
@@ -2278,12 +2394,6 @@ app.post('/api/checkout/guest', async (req, res) => {
     );
     const origin = req.headers.origin || 'https://kontraplatform.com';
 
-    const PLANS = {
-      deal: { name: 'Kontra Deal Room', amount: 49900, mode: 'payment' },
-      pro_monthly: { name: 'Kontra Pro — Monthly', amount: 29900, mode: 'subscription', interval: 'month' },
-      pro_annual: { name: 'Kontra Pro — Annual', amount: 249900, mode: 'subscription', interval: 'year' },
-    };
-    const cfg = PLANS[plan] || PLANS.deal;
     const description = propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties';
 
     const lineItem = {
@@ -2296,16 +2406,11 @@ app.post('/api/checkout/guest', async (req, res) => {
       },
     };
 
-    // Generate an unforgeable owner write token for this workspace. It is
-    // embedded in the success URL so the coordinator can store it client-side
-    // and use it to authorize server-side checklist mutations later.
-    const ownerWriteToken = crypto.randomBytes(32).toString('hex');
-
     const sessionParams = {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
+      success_url: buildGuestCheckoutSuccessUrl(origin, plan, propertyId, propertyName),
       cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
       metadata: {
         plan,
@@ -2341,7 +2446,109 @@ app.post('/api/checkout/guest', async (req, res) => {
     };
     if (email) sessionParams.customer_email = email;
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    let checkoutIntent = null;
+    let previousSessionId = '';
+    if (propertyId) {
+      const { data: existingRoom, error: roomError } = await supabase
+        .from('deal_rooms')
+        .select('property_id, status')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      if (roomError) {
+        console.error('[checkout/guest] room availability check failed');
+        return res.status(503).json({
+          code: 'CHECKOUT_STORAGE_UNAVAILABLE',
+          message: 'Payments are temporarily unavailable. Please try again shortly.',
+        });
+      }
+      if (existingRoom) {
+        return res.status(409).json({
+          code: 'DEAL_ROOM_ALREADY_EXISTS',
+          message: 'A room already exists for this property. Open the existing room instead of starting another checkout.',
+        });
+      }
+
+      try {
+        checkoutIntent = await getOrCreateGuestCheckoutIntent(propertyId, plan);
+      } catch (_) {
+        console.error('[checkout/guest] durable checkout intent could not be saved');
+        return res.status(503).json({
+          code: 'CHECKOUT_STORAGE_UNAVAILABLE',
+          message: 'Payments are temporarily unavailable. Please try again shortly.',
+        });
+      }
+      if (
+        checkoutIntent.plan !== plan
+        || typeof checkoutIntent.owner_write_token !== 'string'
+        || checkoutIntent.owner_write_token.length < 32
+      ) {
+        return res.status(409).json({
+          code: 'CHECKOUT_ALREADY_IN_PROGRESS',
+          message: 'A different checkout is already associated with this property.',
+        });
+      }
+
+      if (checkoutIntent.stripe_session_id) {
+        let existingSession;
+        try {
+          existingSession = await stripe.checkout.sessions.retrieve(checkoutIntent.stripe_session_id);
+        } catch (_) {
+          console.error('[checkout/guest] existing Stripe checkout could not be verified');
+          return res.status(503).json({
+            code: 'CHECKOUT_STATUS_UNAVAILABLE',
+            message: 'The existing checkout could not be verified. Please try again shortly.',
+          });
+        }
+
+        if (
+          existingSession.metadata?.propertyId !== propertyId
+          || existingSession.metadata?.plan !== plan
+        ) {
+          return res.status(409).json({
+            code: 'CHECKOUT_ALREADY_IN_PROGRESS',
+            message: 'A different checkout is already associated with this property.',
+          });
+        }
+        if (existingSession.status === 'open' && existingSession.url) {
+          return res.json({ url: existingSession.url });
+        }
+        if (isVerifiedPaidCheckoutSession(existingSession)) {
+          return res.json({
+            url: buildGuestCheckoutSuccessUrl(origin, plan, propertyId, propertyName, existingSession.id),
+          });
+        }
+        if (existingSession.status !== 'expired') {
+          return res.status(409).json({
+            code: 'CHECKOUT_ALREADY_IN_PROGRESS',
+            message: 'The existing payment is still being processed. Do not start another checkout.',
+          });
+        }
+        previousSessionId = existingSession.id;
+      }
+    }
+
+    let session;
+    if (propertyId) {
+      session = await stripe.checkout.sessions.create(sessionParams, {
+        idempotencyKey: guestCheckoutIdempotencyKey(propertyId, plan, previousSessionId),
+      });
+      const { data: savedIntent, error: saveSessionError } = await supabase
+        .from('deal_room_checkout_intents')
+        .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
+        .eq('property_id', propertyId)
+        .eq('owner_write_token', checkoutIntent.owner_write_token)
+        .select('property_id, stripe_session_id')
+        .maybeSingle();
+      if (saveSessionError || savedIntent?.stripe_session_id !== session.id) {
+        console.error('[checkout/guest] Stripe session reference could not be durably saved');
+        return res.status(503).json({
+          code: 'CHECKOUT_STORAGE_UNAVAILABLE',
+          message: 'The checkout could not be safely started. Please retry before paying.',
+        });
+      }
+    } else {
+      session = await stripe.checkout.sessions.create(sessionParams);
+    }
 
     // Store deal room data in memory (webhook picks it up within seconds)
     if (propertyId) {
@@ -2377,7 +2584,6 @@ app.post('/api/checkout/guest', async (req, res) => {
           custom_config_approved_at: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
          workflow_pack_id: finalPackId,
          transaction_entry_mode: transactionEntryMode,
-        owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
       });
     }
@@ -2387,6 +2593,75 @@ app.post('/api/checkout/guest', async (req, res) => {
   } catch (err) {
     console.error('[checkout/guest]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/checkout/owner-token', async (req, res) => {
+  res.set('Cache-Control', 'no-store, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Referrer-Policy', 'no-referrer');
+  try {
+    const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
+    if (!/^cs_[A-Za-z0-9_]{8,255}$/.test(sessionId)) {
+      return res.status(400).json({ error: 'A valid Checkout Session ID is required' });
+    }
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({ error: 'Payment verification is temporarily unavailable' });
+    }
+
+    let session;
+    try {
+      session = await require('stripe')(stripeKey).checkout.sessions.retrieve(sessionId);
+    } catch (_) {
+      return res.status(404).json({ error: 'Paid checkout could not be verified' });
+    }
+    if (!isVerifiedPaidCheckoutSession(session) || !session.metadata?.propertyId) {
+      return res.status(403).json({ error: 'Paid checkout could not be verified' });
+    }
+
+    const { data: intent, error: intentError } = await supabase
+      .from('deal_room_checkout_intents')
+      .select('property_id, stripe_session_id, owner_write_token, plan, status')
+      .eq('stripe_session_id', session.id)
+      .maybeSingle();
+    if (intentError) {
+      return res.status(503).json({ error: 'Owner access is temporarily unavailable' });
+    }
+    if (
+      !intent
+      || intent.property_id !== session.metadata.propertyId
+      || intent.plan !== session.metadata.plan
+      || intent.stripe_session_id !== session.id
+      || typeof intent.owner_write_token !== 'string'
+    ) {
+      return res.status(404).json({ error: 'Paid checkout could not be verified' });
+    }
+
+    const { data: room, error: roomError } = await supabase
+      .from('deal_rooms')
+      .select('property_id, status, owner_write_token')
+      .eq('property_id', intent.property_id)
+      .maybeSingle();
+    if (roomError) {
+      return res.status(503).json({ error: 'Owner access is temporarily unavailable' });
+    }
+    if (
+      intent.status !== 'fulfilled'
+      || !room
+      || room.status !== 'active'
+      || room.owner_write_token !== intent.owner_write_token
+    ) {
+      return res.status(202).json({
+        code: 'CHECKOUT_FULFILLMENT_PENDING',
+        message: 'Your payment is verified and the room is still being prepared.',
+      });
+    }
+
+    return res.json({ propertyId: intent.property_id, ownerToken: intent.owner_write_token });
+  } catch (_) {
+    console.error('[checkout/owner-token] access exchange failed');
+    return res.status(503).json({ error: 'Owner access is temporarily unavailable' });
   }
 });
 
@@ -2931,18 +3206,29 @@ app.post('/api/webhook/stripe',
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     const sig = req.headers['stripe-signature'];
+    if (!isStripeWebhookConfigured()) {
+      return res.status(503).json({
+        code: 'STRIPE_WEBHOOK_UNCONFIGURED',
+        message: 'Stripe webhook processing is temporarily unavailable.',
+      });
+    }
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
+      return res.status(503).json({
+        code: 'STRIPE_NOT_CONFIGURED',
+        message: 'Stripe webhook processing is temporarily unavailable.',
+      });
+    }
+    const payload = req.rawBody || req.body;
     let event;
 
     try {
-      if (webhookSecret) {
-        const stripeKey = process.env.STRIPE_SECRET_KEY;
-        const stripe = require('stripe')(stripeKey);
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      } else {
-        event = JSON.parse(req.body.toString());
-        console.warn('[webhook] STRIPE_WEBHOOK_SECRET not set — skipping signature verification');
+      if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) {
+        return res.status(400).json({ error: 'Webhook payload must be raw JSON' });
       }
+      const stripe = require('stripe')(stripeKey);
+      event = stripe.webhooks.constructEvent(payload, sig, webhookSecret);
     } catch (err) {
       console.error('[webhook] Signature verification failed:', err.message);
       return res.status(400).json({ error: `Webhook error: ${err.message}` });
@@ -2985,6 +3271,35 @@ app.post('/api/webhook/stripe',
          generationSessionId: metadataGenerationSessionId,
          transactionEntryMode: metadataTransactionEntryMode,
       } = session.metadata || {};
+      if (!isVerifiedPaidCheckoutSession(session) || (plan === 'deal' && !propertyId)) {
+        console.error('[webhook] checkout session payment validation failed');
+        return res.status(400).json({ error: 'Checkout payment could not be verified' });
+      }
+
+      let checkoutIntent = null;
+      if (propertyId) {
+        const { data: intent, error: intentError } = await supabase
+          .from('deal_room_checkout_intents')
+          .select('property_id, stripe_session_id, owner_write_token, plan, status')
+          .eq('stripe_session_id', session.id)
+          .maybeSingle();
+        if (intentError) {
+          console.error('[webhook] durable checkout intent lookup failed');
+          return res.status(503).json({ error: 'Room fulfillment is temporarily unavailable' });
+        }
+        if (
+          !intent
+          || intent.property_id !== propertyId
+          || intent.plan !== plan
+          || intent.stripe_session_id !== session.id
+          || typeof intent.owner_write_token !== 'string'
+        ) {
+          console.error('[webhook] paid checkout has no matching durable room intent');
+          return res.status(503).json({ error: 'Room fulfillment is temporarily unavailable' });
+        }
+        checkoutIntent = intent;
+      }
+
       let transactionEntryMode;
        try {
          transactionEntryMode = normalizeTransactionEntryMode(
@@ -2998,6 +3313,24 @@ app.post('/api/webhook/stripe',
       const amountPaid = (session.amount_total / 100).toFixed(2);
 
       console.log(`[webhook] ✅ Payment confirmed — $${amountPaid} | ${plan} | ${propertyId} | ${customerEmail}`);
+
+      // Standalone Pro subscriptions are not room purchases. Preserve their
+      // successful webhook acknowledgment without creating an empty-ID room.
+      if (!propertyId) {
+        try {
+          await supabase.from('deal_room_activations').insert({
+            stripe_session_id: session.id,
+            plan,
+            property_id: propertyId,
+            property_name: propertyName,
+            role,
+            customer_email: customerEmail,
+            amount_paid: parseFloat(amountPaid),
+            activated_at: new Date().toISOString(),
+          });
+        } catch (_) {}
+        return res.json({ received: true });
+      }
 
       const generationSessionId = metadataGenerationSessionId || pending.generation_session_id || '';
       const generatedProposal = await getApprovedGenerationProposal(generationSessionId);
@@ -3041,6 +3374,7 @@ app.post('/api/webhook/stripe',
         amount_paid: parseFloat(amountPaid),
         activated_at: new Date().toISOString(),
         status: 'active',
+        ...(checkoutIntent ? { owner_write_token: checkoutIntent.owner_write_token } : {}),
         address: metadataAddress || pending.address || '',
         property_type: metadataPropertyType || pending.property_type || '',
         property_size: metadataPropertySize || pending.property_size || '',
@@ -3116,13 +3450,6 @@ app.post('/api/webhook/stripe',
         // Set link_token separately (graceful — skipped if column not yet migrated)
         supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
           .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
-        // Persist owner_write_token from the pending record (generated at Stripe session creation)
-        if (pending.owner_write_token) {
-          supabase.from('deal_rooms')
-            .update({ owner_write_token: pending.owner_write_token })
-            .eq('property_id', dealRoomRecord.property_id)
-            .then(() => {}).catch(() => {});
-        }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
         if (dbErr.code === 'HISTORICAL_ROOM_MIGRATION_REQUIRED') {
@@ -3137,6 +3464,10 @@ app.post('/api/webhook/stripe',
             message: 'Workspace creation is temporarily unavailable while the workspace database is updated. No room was created.',
           });
         }
+        return res.status(503).json({
+          error: 'WORKSPACE_DATABASE_UNAVAILABLE',
+          message: 'Room creation is temporarily unavailable. Stripe will retry fulfillment.',
+        });
       }
 
       try {
@@ -3156,6 +3487,20 @@ app.post('/api/webhook/stripe',
         // Throw so Stripe retries the event instead of leaving a room whose
         // approved facts exist only in generated_proposal JSON.
         throw recordErr;
+      }
+
+      if (checkoutIntent) {
+        const { data: fulfilledIntent, error: intentUpdateError } = await supabase
+          .from('deal_room_checkout_intents')
+          .update({ status: 'fulfilled', updated_at: new Date().toISOString() })
+          .eq('property_id', checkoutIntent.property_id)
+          .eq('stripe_session_id', session.id)
+          .select('property_id')
+          .maybeSingle();
+        if (intentUpdateError || !fulfilledIntent) {
+          console.error('[webhook] checkout fulfillment state could not be saved');
+          return res.status(503).json({ error: 'Room fulfillment is temporarily unavailable' });
+        }
       }
 
       // Also log to activations table (legacy)
@@ -3523,8 +3868,15 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 });
 
 // ── My deal rooms — OTP auth + dashboard ────────────────────────────────────
-// In-memory OTP store: email → { code, expiresAt }
+// In-memory OTP store: normalized email → { code, issuedAt, expiresAt, attempts }
 const otpStore = new Map();
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+
+function escapeIlikePattern(value) {
+  return String(value).replace(/[\\%_]/g, '\\$&');
+}
 
 function buildOwnerTokenMap(rooms) {
   return (rooms || []).reduce((tokens, room) => {
@@ -3540,8 +3892,14 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
   if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
   const email = (req.body?.email || '').trim().toLowerCase();
   if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+  const now = Date.now();
+  const current = otpStore.get(email);
+  if (current && now < current.expiresAt && now - current.issuedAt < OTP_RESEND_COOLDOWN_MS) {
+    return res.status(429).json({ error: 'Please wait before requesting another code.' });
+  }
+  const code = String(crypto.randomInt(100000, 1000000));
+  const challenge = { code, issuedAt: now, expiresAt: now + OTP_TTL_MS, attempts: 0 };
+  otpStore.set(email, challenge);
   try {
     const sendRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -3565,11 +3923,13 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
     });
     const sendData = await sendRes.json();
     if (!sendRes.ok) {
+      if (otpStore.get(email) === challenge) otpStore.delete(email);
       console.error('[request-otp] Resend error:', JSON.stringify(sendData));
       return res.status(500).json({ error: `Email delivery failed: ${sendData?.message || sendData?.name || 'unknown error'}` });
     }
     res.json({ ok: true });
   } catch (err) {
+    if (otpStore.get(email) === challenge) otpStore.delete(email);
     console.error('[request-otp]', err.message);
     res.status(500).json({ error: 'Failed to send code' });
   }
@@ -3581,17 +3941,24 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   if (!email || !code) return res.status(400).json({ error: 'email and code required' });
   const stored = otpStore.get(email);
   if (!stored) return res.status(401).json({ error: 'No code found. Request a new one.' });
-  if (Date.now() > stored.expiresAt) {
+  if (Date.now() >= stored.expiresAt) {
     otpStore.delete(email);
     return res.status(401).json({ error: 'Code expired. Request a new one.' });
   }
-  if (stored.code !== code) return res.status(401).json({ error: 'Incorrect code.' });
+  if (stored.code !== code) {
+    stored.attempts += 1;
+    if (stored.attempts >= OTP_MAX_ATTEMPTS) {
+      otpStore.delete(email);
+      return res.status(401).json({ error: 'Too many incorrect attempts. Request a new code.' });
+    }
+    return res.status(401).json({ error: 'Incorrect code.' });
+  }
   otpStore.delete(email);
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
       .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at, owner_write_token')
-      .ilike('customer_email', email)
+      .ilike('customer_email', escapeIlikePattern(email))
       .order('created_at', { ascending: false });
     if (error) throw error;
     const ownerTokens = buildOwnerTokenMap(rooms);
@@ -3661,14 +4028,14 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
 // ── Delete deal room — owner only, verified by email match ───────────────────
 app.delete('/api/public/my-rooms/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
-  const email = (req.body?.email || '').trim().toLowerCase();
-  if (!email || !propertyId) return res.status(400).json({ error: 'email and propertyId required' });
   try {
+    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    if (access.mode !== 'owner') {
+      return accessDenied(res, 'Only the verified deal-room owner can delete this room');
+    }
     const { data: room, error: findErr } = await supabase
-      .from('deal_rooms').select('id, customer_email, property_name').eq('property_id', propertyId).maybeSingle();
+      .from('deal_rooms').select('id, property_name').eq('property_id', propertyId).maybeSingle();
     if (findErr || !room) return res.status(404).json({ error: 'Room not found' });
-    if ((room.customer_email || '').toLowerCase() !== email)
-      return res.status(403).json({ error: 'Not authorized to delete this room' });
     const cleanup = await deleteDealRoomData(propertyId);
     res.json({
       ok: true,
@@ -3688,49 +4055,26 @@ app.delete('/api/public/my-rooms/:propertyId', async (req, res) => {
 
 // ── Stripe billing portal — lets owner manage/cancel subscription ────────────
 app.post('/api/public/billing-portal', async (req, res) => {
-  const email = (req.body?.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey || stripeKey.startsWith('placeholder')) {
-    return res.status(500).json({ error: 'Billing not configured' });
-  }
-  try {
-    const stripe = require('stripe')(stripeKey);
-    // Find the Stripe customer by email
-    const customers = await stripe.customers.list({ email, limit: 5 });
-    if (!customers.data.length) {
-      return res.status(404).json({ error: 'No billing account found for this email. Make sure you are using the same email from your Stripe receipt.' });
-    }
-    // Use the most recent customer (last created)
-    const customer = customers.data[0];
-    const returnUrl = process.env.SITE_URL
-      ? `${process.env.SITE_URL}/my-deal-rooms`
-      : `${FRONTEND_URL}/my-deal-rooms`;
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customer.id,
-      return_url: returnUrl,
-    });
-    console.log(`[billing-portal] created for customer ${customer.id} (${email})`);
-    res.json({ url: portalSession.url });
-  } catch (err) {
-    console.error('[billing-portal]', err.message);
-    // Billing portal not configured in Stripe dashboard
-    if (err.message?.includes('configuration') || err.code === 'portal_configuration_not_found') {
-      return res.status(503).json({ error: 'billing_portal_not_configured' });
-    }
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(503).json({
+    code: 'INTERIM_SECURITY_RESTRICTION',
+    error: 'Billing management is temporarily unavailable.',
+  });
 });
 
 // ── Owner analytics dashboard ──────────────────────────────────────────────────
 app.get('/api/public/my-rooms/analytics', async (req, res) => {
   const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
+  const propertyId = String(req.query.propertyId || '').trim();
+  if (!email || !propertyId) return res.status(403).json({ error: 'Owner access required' });
   try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode !== 'owner' || String(access.email || '').trim().toLowerCase() !== email) {
+      return accessDenied(res, 'Only the verified deal-room owner can view these analytics');
+    }
     const { data: rooms } = await supabase
       .from('deal_rooms')
       .select('property_id, deal_stage, status, activated_at, workflow_pack_id, deal_type, property_type, checklist_items')
-      .ilike('customer_email', email);
+      .ilike('customer_email', escapeIlikePattern(email));
 
     if (!rooms?.length) {
       return res.json({
@@ -3826,20 +4170,10 @@ app.get('/api/public/my-rooms/analytics', async (req, res) => {
 
 // Legacy GET — backwards compat
 app.get('/api/public/my-rooms', async (req, res) => {
-  const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
-  try {
-    const { data, error } = await supabase
-      .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at, workflow_pack_id')
-      .ilike('customer_email', email)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json({ rooms: data || [] });
-  } catch (err) {
-    console.error('[my-rooms]', err.message);
-    res.status(500).json({ error: 'Failed to fetch rooms' });
-  }
+  return res.status(401).json({
+    code: 'ROOM_OTP_REQUIRED',
+    error: 'Verify your email to access deal rooms',
+  });
 });
 
 // ── Document-assignment config — used for role-scoped analyses filtering ──────
@@ -8707,7 +9041,6 @@ app.use('/api/borrower', borrowerRouter);
 app.use('/api/marketplace', marketplaceRouter);
 app.use('/api/capital-markets/tokens', capitalMarketsTokensRouter);
 app.use('/api/legal', legalRouter);
-app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);
@@ -10227,6 +10560,12 @@ app.delete('/api/user-properties/:id', authenticate, async (req, res) => {
 // ── Stripe Checkout ────────────────────────────────────────────────────────
 app.post('/api/checkout', authenticate, async (req, res) => {
   try {
+    if (!isStripeWebhookConfigured()) {
+      return res.status(503).json({
+        code: 'STRIPE_WEBHOOK_UNCONFIGURED',
+        message: 'Payments are temporarily unavailable.',
+      });
+    }
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeKey || stripeKey.startsWith('placeholder') || stripeKey.length < 20) {
       return res.status(503).json({
