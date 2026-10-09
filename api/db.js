@@ -13,6 +13,9 @@ const isRealSupabase = process.env.SUPABASE_URL &&
 
 const hasLocalDb = !!process.env.DATABASE_URL;
 
+// TEMP release diagnostic: remove when the verified release replaces this build.
+require('./lib/releaseDbDiagnostic').logReleaseDbIdentity();
+
 let supabase, replica;
 let databaseConnected = false;
 
