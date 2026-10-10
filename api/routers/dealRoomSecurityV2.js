@@ -42,7 +42,10 @@ const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_R
 // ── Resend email sender ──────────────────────────────────────────────────────
 const RESEND_KEY  = process.env.RESEND_API_KEY;
 const FROM_EMAIL  = TRANSACTION_NOTIFICATION_FROM;
-const BASE_URL    = process.env.APP_BASE_URL || 'https://kontraplatform.com';
+const { isStagingIsolationEnabled } = require('../lib/stagingIsolation');
+const BASE_URL    = (isStagingIsolationEnabled()
+  ? (process.env.FRONTEND_URL || '')
+  : (process.env.APP_BASE_URL || 'https://kontraplatform.com')).replace(/\/$/, '');
 
 async function sendResendEmail({ to, subject, text, html }) {
   if (!RESEND_KEY) throw new Error('RESEND_API_KEY not configured');

@@ -2,8 +2,12 @@ const OpenAI = require('openai');
 
 const DEV_PLACEHOLDER_KEY = 'sk-not-configured';
 const STANDARD_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+const { isStagingIsolationEnabled } = require('./stagingIsolation');
 
 function resolveOpenAIKey() {
+  if (isStagingIsolationEnabled()) {
+    return process.env.OPENAI_API_KEY || DEV_PLACEHOLDER_KEY;
+  }
   return process.env.OPENAI_API_KEY1 || process.env.OPENAI_API_KEY || DEV_PLACEHOLDER_KEY;
 }
 

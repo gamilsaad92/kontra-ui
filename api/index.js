@@ -2,10 +2,22 @@
 // In development, override: true lets .env win over the shell-level placeholder
 // fallbacks set in the workflow command. In production (Render), we do NOT
 // override so that env vars set in the Render dashboard take precedence.
-require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: true } : {});
+const stagingIsolationRequestedBeforeDotenv = process.env.KONTRA_STAGING_ISOLATION === 'true';
+require('dotenv').config(
+  !stagingIsolationRequestedBeforeDotenv && process.env.NODE_ENV !== 'production'
+    ? { override: true }
+    : {},
+);
+
+const {
+  isStagingIsolationEnabled,
+  assertStagingEnvironment,
+} = require('./lib/stagingIsolation');
+const STAGING_ISOLATION_ENABLED = isStagingIsolationEnabled();
+if (STAGING_ISOLATION_ENABLED) assertStagingEnvironment(process.env);
 
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
-if (process.env.OPENAI_API_KEY1) {
+if (!STAGING_ISOLATION_ENABLED && process.env.OPENAI_API_KEY1) {
   process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
 }
 
@@ -540,25 +552,27 @@ const defaultAllowedOrigins = [
   'https://www.kontraplatform.com',
 ];
 
-const allowedOrigins = Array.from(new Set([
-  ...defaultAllowedOrigins,
-  ...envOrigins,
-]));
+const allowedOrigins = STAGING_ISOLATION_ENABLED
+  ? envOrigins
+  : Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
 
 // Canonical frontend base URL for building links in emails and notifications.
 // Set FRONTEND_URL on Render (or any host) to match your deployed domain.
 // Falls back to kontraplatform.com so existing emails continue working if
 // the env var is not yet configured.
-const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
+const FRONTEND_URL = (process.env.FRONTEND_URL
+  || (STAGING_ISOLATION_ENABLED ? '' : 'https://kontraplatform.com')).replace(/\/$/, '');
 
-const allowedOriginMatchers = [
-  ...allowedOrigins,
-  /\.vercel\.app$/,
-  /\.replit\.dev(:\d+)?$/,
-  /\.repl\.co(:\d+)?$/,
-  /localhost(:\d+)?$/,
-  /127\.0\.0\.1(:\d+)?$/,
-];
+const allowedOriginMatchers = STAGING_ISOLATION_ENABLED
+  ? [...allowedOrigins]
+  : [
+      ...allowedOrigins,
+      /\.vercel\.app$/,
+      /\.replit\.dev(:\d+)?$/,
+      /\.repl\.co(:\d+)?$/,
+      /localhost(:\d+)?$/,
+      /127\.0\.0\.1(:\d+)?$/,
+    ];
 
 const corsOptions = {
   origin(origin, callback) {
@@ -2392,7 +2406,9 @@ app.post('/api/checkout/guest', async (req, res) => {
       finalPackId,
       meta.transactionTypeLabel,
     );
-    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const origin = STAGING_ISOLATION_ENABLED
+      ? FRONTEND_URL
+      : (req.headers.origin || 'https://kontraplatform.com');
 
     const description = propertyName ? `Deal room for ${propertyName}` : 'Per-deal access for all parties';
 
@@ -2600,6 +2616,9 @@ app.post('/api/checkout/owner-token', async (req, res) => {
   res.set('Cache-Control', 'no-store, private');
   res.set('Pragma', 'no-cache');
   res.set('Referrer-Policy', 'no-referrer');
+  if (STAGING_ISOLATION_ENABLED && !isStripeWebhookConfigured()) {
+    return res.status(503).json({ code: 'STAGING_STRIPE_DISABLED', message: 'Staging payment verification is disabled.' });
+  }
   try {
     const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId.trim() : '';
     if (!/^cs_[A-Za-z0-9_]{8,255}$/.test(sessionId)) {
@@ -2667,6 +2686,12 @@ app.post('/api/checkout/owner-token', async (req, res) => {
 
 // ── Demo Checkout — bypasses Stripe for local/internal testing ──────────────
 app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
+  if (STAGING_ISOLATION_ENABLED) {
+    return res.status(503).json({
+      code: 'STAGING_DEMO_CHECKOUT_DISABLED',
+      message: 'Demo checkout is disabled in staging.',
+    });
+  }
   try {
     const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
     let transactionEntryMode;
@@ -2686,7 +2711,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         message: workflowApproval.message,
       });
     }
-    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const origin = STAGING_ISOLATION_ENABLED
+      ? FRONTEND_URL
+      : (req.headers.origin || 'https://kontraplatform.com');
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -2989,7 +3016,9 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
       return res.status(400).json({ error: 'workspaceName, pilotName, pilotEmail are required' });
     }
 
-    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const origin = STAGING_ISOLATION_ENABLED
+      ? FRONTEND_URL
+      : (req.headers.origin || 'https://kontraplatform.com');
     const pid = workspaceName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
       + '-' + Date.now().toString(36).slice(-4);
 
@@ -8595,7 +8624,10 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
 
     const notif = notifRes.data;
     const room  = roomRes.data;
-    const workspaceUrl = `${req.headers.origin || 'https://kontraplatform.com'}/deal-room/${propertyId}`;
+    const workspaceOrigin = STAGING_ISOLATION_ENABLED
+      ? FRONTEND_URL
+      : (req.headers.origin || 'https://kontraplatform.com');
+    const workspaceUrl = `${workspaceOrigin}/deal-room/${propertyId}`;
 
     await sendResendEmail(RESEND_KEY, {
       from: 'Kontra <notifications@kontraplatform.com>',
@@ -10575,7 +10607,9 @@ app.post('/api/checkout', authenticate, async (req, res) => {
     }
     const stripe = require('stripe')(stripeKey);
     const { propertyId, propertyName, plan = 'deal' } = req.body;
-    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const origin = STAGING_ISOLATION_ENABLED
+      ? FRONTEND_URL
+      : (req.headers.origin || 'https://kontraplatform.com');
     const userId = req.user?.id;
     const userEmail = req.user?.email;
 
@@ -13034,7 +13068,7 @@ async function ensureWorkflowPackIdColumn() {
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && !STAGING_ISOLATION_ENABLED) {
     startJobSchedulers();
   }
   const server = http.createServer(app);
@@ -13042,7 +13076,7 @@ if (require.main === module) {
   attachCollabServer(server);
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Kontra API listening on port ${PORT}`);
-    void ensureWorkflowPackIdColumn();
+    if (!STAGING_ISOLATION_ENABLED) void ensureWorkflowPackIdColumn();
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }

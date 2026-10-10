@@ -521,7 +521,9 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
     if (email) {
       const RESEND_KEY = process.env.RESEND_API_KEY;
       if (RESEND_KEY) {
-        const frontendUrl = process.env.FRONTEND_URL || 'https://kontraplatform.com';
+        const frontendUrl = (process.env.FRONTEND_URL
+          || (process.env.KONTRA_STAGING_ISOLATION === 'true' ? '' : 'https://kontraplatform.com'))
+          .replace(/\/$/, '');
         const shareUrl = `${frontendUrl}/verify/${token}`;
         const assetName = room.property_name || propertyId;
         const senderName = room.first_name || 'Your deal team';

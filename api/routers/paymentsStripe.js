@@ -1,4 +1,5 @@
 const express = require('express');
+const { isStagingIsolationEnabled, isStagingStripeReady } = require('../lib/stagingIsolation');
 const { isStripeWebhookConfigured } = require('../lib/stripeWebhookConfig');
 let stripe;
 try {
@@ -10,6 +11,9 @@ try {
 const router = express.Router();
 
 router.post('/payments/stripe', async (req, res) => {
+  if (isStagingIsolationEnabled() && !isStagingStripeReady()) {
+    return res.status(503).json({ code: 'STAGING_STRIPE_DISABLED', message: 'Staging checkout is disabled.' });
+  }
   const { amount, currency = 'usd', order_id, metadata, method } = req.body || {};
   if (!amount) {
     return res.status(400).json({ message: 'Missing amount' });

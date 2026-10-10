@@ -11,6 +11,13 @@ const isRealSupabase = process.env.SUPABASE_URL &&
   !process.env.SUPABASE_URL.includes('placeholder') &&
   process.env.SUPABASE_URL.startsWith('https://');
 
+const {
+  isStagingIsolationEnabled,
+  assertStagingDatabaseEnvironment,
+} = require('./lib/stagingIsolation');
+const stagingIsolationEnabled = isStagingIsolationEnabled();
+if (stagingIsolationEnabled) assertStagingDatabaseEnvironment(process.env);
+
 const hasLocalDb = !!process.env.DATABASE_URL;
 
 let supabase, replica;
@@ -33,6 +40,9 @@ if (hasLocalDb) {
     : supabase;
   databaseConnected = true;
   console.log('[db] Connected to Supabase:', process.env.SUPABASE_URL);
+
+} else if (stagingIsolationEnabled) {
+  throw new Error('Staging isolation refused to start without the designated Supabase database');
 
 } else {
   // ── Path 3: No credentials at all — stub that returns empty data ───────────

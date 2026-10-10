@@ -9,8 +9,9 @@ const {
 } = require('./dealRoomHelpers');
 const { normalizeAssignmentRole } = require('./documentAssignmentEvents');
 const { createParticipantAccessToken } = require('./participantAccessTokens');
+const { isStagingIsolationEnabled } = require('./stagingIsolation');
 
-const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
+const FRONTEND_URL = (process.env.FRONTEND_URL || (isStagingIsolationEnabled() ? '' : 'https://kontraplatform.com')).replace(/\/$/, '');
 const INACTIVE_STATUSES = new Set(['revoked', 'expired', 'removed', 'inactive', 'declined']);
 const ACTIVE_INVITE_STATUSES = new Set(['accepted', 'active']);
 const OPEN_TASK_STATUSES = new Set(['pending', 'in_progress', 'escalated']);
