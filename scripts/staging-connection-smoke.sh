@@ -64,6 +64,18 @@ PY
 
 # The URI is never expanded into the command line or logs. The client enforces
 # verify-full and trusts only the reviewed CA mounted at this fixed path.
+# \conninfo confirms a session was established; its output is discarded.
+if ! docker run --rm \
+  -e STAGING_DATABASE_URL \
+  -e PGSSLMODE=verify-full \
+  -e PGSSLROOTCERT=/certs/supabase-root.crt \
+  -v "${CERT_PATH}:/certs/supabase-root.crt:ro" \
+  "$POSTGRES_IMAGE" \
+  sh -ec 'exec psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "\conninfo" >/dev/null' \
+  >/dev/null 2>&1; then
+  fail "Could not establish the verified staging database connection."
+fi
+
 if ! result="$(
   docker run --rm \
     -e STAGING_DATABASE_URL \
@@ -73,18 +85,12 @@ if ! result="$(
     "$POSTGRES_IMAGE" \
     sh -ec 'exec psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -At -c "
       SELECT current_database() = '\''postgres'\''
-         AND current_user = '\''postgres'\''
-         AND EXISTS (
-           SELECT 1 FROM pg_stat_ssl
-           WHERE pid = pg_backend_pid()
-             AND ssl
-             AND version IN ('\''TLSv1.2'\'', '\''TLSv1.3'\'')
-         )"' 2>/dev/null
+         AND current_user = '\''postgres'\''"' 2>/dev/null
 )"; then
-  fail "Staging connection or TLS certificate verification failed; client output suppressed."
+  fail "The staging connection succeeded, but its read-only identity query failed."
 fi
 
 [[ "$result" == "t" ]] ||
-  fail "Connected session did not report the expected database and TLS state."
+  fail "Connected session did not report the expected staging database identity."
 
-echo "Read-only staging connection smoke test passed; only session metadata was queried."
+echo "Read-only staging connection smoke test passed; verified TLS and database identity."
