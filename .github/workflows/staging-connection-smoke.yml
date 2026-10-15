@@ -1,0 +1,28 @@
+name: Staging connection smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kontra-staging-connection-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: ${{ github.ref == 'refs/heads/staging-migrations' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: kontra-staging
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify staging connection without changing data
+        run: bash scripts/staging-connection-smoke.sh
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
