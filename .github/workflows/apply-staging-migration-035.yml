@@ -1,0 +1,44 @@
+name: Apply staging migration 035
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration:
+        description: Confirm the reviewed migration
+        type: choice
+        options: ["035"]
+        required: true
+      confirmation:
+        description: Type APPLY 035 TO jpemuoapbgzwapydqiio
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kontra-staging-migration-035
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: ${{ github.ref == 'refs/heads/staging-migrations' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: kontra-staging
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Build reviewed package
+        run: node scripts/build-staging-phase5-package.mjs
+      - name: One-shot verified migration
+        run: python3 scripts/apply-staging-migration-035.py
+        env:
+          INPUT_MIGRATION: ${{ inputs.migration }}
+          INPUT_CONFIRMATION: ${{ inputs.confirmation }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
