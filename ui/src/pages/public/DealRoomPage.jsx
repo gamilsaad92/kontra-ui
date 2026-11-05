@@ -14,6 +14,7 @@ import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId, getEffectiveStages, getCapabilities, isInSettlementPhase } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
+import { hasServerConfirmedRoomOwnerAccess } from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
@@ -8434,7 +8435,7 @@ function DigitalAssetPackageModal({
 function VerifiedAssetReadinessCard({
   verifiedAssetReadiness,
   isDemo = false,
-  ownerToken,
+  ownerAccess,
   snapshotAction,
   snapshotHistory = [],
   packageHistory = [],
@@ -8604,7 +8605,7 @@ function VerifiedAssetReadinessCard({
           <p className="text-xs text-gray-500">
             {isDemo
               ? 'Public demo exhibit — no room changes are available.'
-              : ownerToken
+              : ownerAccess
                 ? 'Owner session active — snapshots can be recorded.'
                 : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
           </p>
@@ -8617,7 +8618,7 @@ function VerifiedAssetReadinessCard({
         <button
           type="button"
           onClick={onRecordSnapshot}
-           disabled={isDemo || !ownerToken || action.loading}
+            disabled={isDemo || !ownerAccess || action.loading}
           className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] transition hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
         >
            {action.loading ? 'Recording…' : isDemo ? 'Demo snapshot is read-only' : 'Record readiness snapshot'}
@@ -8719,6 +8720,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [packageAction, setPackageAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
+  const [ownerAccessRejected, setOwnerAccessRejected] = useState(false);
   const [advancingStage, setAdvancingStage] = useState(false);
   const [stageActionError, setStageActionError] = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
@@ -8728,6 +8730,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
+  useEffect(() => {
+    setOwnerAccessRejected(false);
+  }, [propertyId, property?.access?.mode]);
+
+  const hasOwnerAccess = !isDemo
+    && hasServerConfirmedRoomOwnerAccess(property)
+    && !ownerAccessRejected;
 
   const load = useCallback(async () => {
     if (!propertyId) return;
@@ -8814,7 +8823,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   }, [load]);
 
   const recordReadinessSnapshot = useCallback(async () => {
-    if (!propertyId || !ownerToken || snapshotAction.loading) return;
+    if (!propertyId || !hasOwnerAccess || snapshotAction.loading) return;
     setSnapshotAction({ loading: true, message: '', error: false });
     try {
       const response = await fetch(
@@ -8822,11 +8831,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         {
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ ownerWriteToken: ownerToken }),
+          credentials: 'include',
         },
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setOwnerAccessRejected(true);
         throw new Error(data.message || data.error || 'Snapshot could not be recorded.');
       }
       const snapshot = data.snapshot || {};
@@ -8844,7 +8854,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     } catch (error) {
       setSnapshotAction({ loading: false, error: true, message: error.message });
     }
-  }, [propertyId, ownerToken, snapshotAction.loading, load]);
+  }, [propertyId, hasOwnerAccess, snapshotAction.loading, load]);
 
   const generateDigitalAssetPackage = useCallback(async snapshot => {
     if (!propertyId || !ownerToken || !snapshot?.id || packageAction.loading) return;
@@ -9140,20 +9150,21 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const lifecycleDateLabel = isGeneratedAiRoom(property) ? 'Target completion' : 'Target close';
 
   async function advanceLifecycleStage() {
-    if (!ownerToken || !nextLifecycleStage || !lifecycleGate.eligible || advancingStage) return;
+    if (!hasOwnerAccess || !nextLifecycleStage || !lifecycleGate.eligible || advancingStage) return;
     setAdvancingStage(true);
     setStageActionError('');
     try {
       const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
         method: 'POST',
         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        credentials: 'include',
         body: JSON.stringify({
           stage: nextLifecycleStage.key,
-          ownerWriteToken: ownerToken,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setOwnerAccessRejected(true);
         const details = [];
         if (Array.isArray(data?.unmet_fields) && data.unmet_fields.length > 0) {
           details.push(`Unconfirmed: ${data.unmet_fields.map(key => String(key).replace(/^(transaction|financial)\./, '').replace(/_/g, ' ')).join(', ')}`);
@@ -9400,7 +9411,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                   </p>
                 )}
               </div>
-              {ownerToken && lifecycleGate.eligible ? (
+              {hasOwnerAccess && lifecycleGate.eligible ? (
                 <button
                   type="button"
                   onClick={advanceLifecycleStage}
@@ -9459,7 +9470,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         verifiedAssetReadiness={verifiedAssetReadiness}
         isDemo={isDemo}
         digitalAssetEnabled={digitalAssetEnabled}
-        ownerToken={ownerToken}
+        ownerAccess={hasOwnerAccess}
         snapshotHistory={snapshotHistory}
         snapshotAction={snapshotAction}
         packageHistory={packageHistory}
