@@ -29,6 +29,31 @@ test("missing, participant, and stale room access do not enable owner actions", 
   );
 });
 
+test("lifecycle action distinguishes missing access from readiness blockers", async () => {
+  const { getLifecycleActionState } = await import(accessModuleUrl);
+
+  assert.deepEqual(
+    getLifecycleActionState({ hasOwnerAccess: false, lifecycleEligible: true }),
+    { showOwnerAccessWarning: true, showAdvanceControl: false },
+  );
+  assert.deepEqual(
+    getLifecycleActionState({ hasOwnerAccess: true, lifecycleEligible: false }),
+    { showOwnerAccessWarning: false, showAdvanceControl: false },
+  );
+  assert.deepEqual(
+    getLifecycleActionState({ hasOwnerAccess: true, lifecycleEligible: true }),
+    { showOwnerAccessWarning: false, showAdvanceControl: true },
+  );
+});
+
+test("lifecycle UI wires the authorization warning and advance control separately", () => {
+  const source = fs.readFileSync(dealRoomPagePath, "utf8");
+
+  assert.match(source, /getLifecycleActionState\(\{\s*hasOwnerAccess,\s*lifecycleEligible:\s*lifecycleGate\.eligible/s);
+  assert.match(source, /lifecycleActionState\.showAdvanceControl/);
+  assert.match(source, /lifecycleActionState\.showOwnerAccessWarning/);
+});
+
 test("snapshot and lifecycle actions use cookies rather than owner-token request bodies", () => {
   const source = fs.readFileSync(dealRoomPagePath, "utf8");
   const snapshotStart = source.indexOf("const recordReadinessSnapshot");

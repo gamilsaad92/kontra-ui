@@ -14,7 +14,10 @@ import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId, getEffectiveStages, getCapabilities, isInSettlementPhase } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
-import { hasServerConfirmedRoomOwnerAccess } from "../../lib/roomOwnerAccess.mjs";
+import {
+  getLifecycleActionState,
+  hasServerConfirmedRoomOwnerAccess,
+} from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
@@ -9007,6 +9010,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ),
     recordHydrated: recordHydrationStatus === 'ready' || Boolean(readiness?.transaction_record),
   });
+  const lifecycleActionState = getLifecycleActionState({
+    hasOwnerAccess,
+    lifecycleEligible: lifecycleGate.eligible,
+  });
   const readinessPct = canonicalRecordState?.requiredCount > 0
     ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
     : (readiness?.transaction_readiness?.overall_pct ?? null);
@@ -9411,7 +9418,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                   </p>
                 )}
               </div>
-              {hasOwnerAccess && lifecycleGate.eligible ? (
+              {lifecycleActionState.showAdvanceControl ? (
                 <button
                   type="button"
                   onClick={advanceLifecycleStage}
@@ -9421,11 +9428,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                 >
                   {advancingStage ? 'Advancing…' : `Advance to ${nextLifecycleStage.label} →`}
                 </button>
-              ) : (
+              ) : lifecycleActionState.showOwnerAccessWarning ? (
                 <p className="shrink-0 text-right text-[10px] font-semibold text-amber-700">
                   Open this room from My Deal Rooms to verify owner access.
                 </p>
-              )}
+              ) : null}
             </div>
           ) : effectiveStages.length > 0 ? (
             <p className="text-xs font-semibold text-emerald-700">
