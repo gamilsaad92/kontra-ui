@@ -20,6 +20,11 @@ import {
 } from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
+import {
+  getTransactionRecordEvidence,
+  getOriginalDocumentUrl,
+  verifyTransactionRecordField,
+} from "../../lib/transactionRecordReview.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
 import {
   getPackRecordSchema,
@@ -3828,6 +3833,7 @@ function WhatNeedsAttention({
 function DigitalAssetReadinessSection({
   propertyId,
   property,
+  analyses = [],
   recordFields,
   recordState = null,
   conflicts = [],
@@ -3852,6 +3858,7 @@ function DigitalAssetReadinessSection({
   const [mutationError, setMutationError] = useState('');
   const [focusedFieldKey, setFocusedFieldKey] = useState('');
   const [expandedLists, setExpandedLists] = useState({});
+  const [openingSourceId, setOpeningSourceId] = useState('');
 
   const toggleList = (categoryKey, listKey) => {
     const key = `${categoryKey}:${listKey}`;
@@ -4144,37 +4151,46 @@ function DigitalAssetReadinessSection({
   async function confirmRecordField(field) {
     const fieldId = field?.fieldId || field?.id;
     if (!fieldId || confirmingField) return;
-    let ownerWriteToken = '';
-    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-    if (!ownerWriteToken) return;
     setConfirmingField(fieldId);
     setMutationError('');
     try {
-      const response = await fetch(
-        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
-        {
-          method: 'POST',
-          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({
-            ownerWriteToken,
-            actorRole: field?.approveProvenance ? 'Workspace Owner' : 'coordinator',
-            approveProvenance: field?.approveProvenance === true,
-          }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.message || data.error || (
-          field?.approveProvenance
-            ? 'Manual provenance approval could not be recorded.'
-            : 'The Transaction Record field could not be confirmed.'
-        ));
-      }
+      await verifyTransactionRecordField({
+        apiBase: API_BASE,
+        propertyId,
+        fieldId,
+        approveProvenance: field?.approveProvenance === true,
+      });
       await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
       setConfirmingField('');
+    }
+  }
+
+  async function openSourceDocument(documentId) {
+    if (!documentId || openingSourceId) return;
+    const popup = window.open('about:blank', '_blank');
+    setOpeningSourceId(documentId);
+    setMutationError('');
+    try {
+      const result = await getOriginalDocumentUrl({
+        apiBase: API_BASE,
+        propertyId,
+        documentId,
+      });
+      if (!result.url) throw new Error('The original document is not available.');
+      if (popup) {
+        popup.opener = null;
+        popup.location.href = result.url;
+      } else {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      popup?.close();
+      setMutationError(error.message || 'The original document is not available.');
+    } finally {
+      setOpeningSourceId('');
     }
   }
 
@@ -4472,11 +4488,41 @@ function DigitalAssetReadinessSection({
                          <p className="text-xs text-gray-400 italic">No unconfirmed candidates.</p>
                        ) : (
                          <ul className="space-y-1">
-                            {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
+                              {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
+                                <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                  <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                  {(() => {
+                                    const evidence = getTransactionRecordEvidence(d.state?.field || d.state, analyses);
+                                    return (
+                                      <span className="w-full rounded-md bg-white/80 px-2 py-1.5 text-[10px] text-gray-500">
+                                        {evidence.available ? (
+                                          <>
+                                            <span className="block font-semibold text-gray-600">
+                                              {evidence.documentName || 'Source evidence'}
+                                              {evidence.page != null ? ` · page ${evidence.page}` : ''}
+                                            </span>
+                                            {evidence.excerpt && (
+                                              <span className="mt-0.5 block break-words italic">“{evidence.excerpt}”</span>
+                                            )}
+                                            {evidence.documentId && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openSourceDocument(evidence.documentId)}
+                                                disabled={openingSourceId === evidence.documentId}
+                                                className="mt-1 font-semibold text-[#800020] underline underline-offset-2 disabled:opacity-50"
+                                              >
+                                                {openingSourceId === evidence.documentId ? 'Opening original…' : 'Open original'}
+                                              </button>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <span>Source evidence unavailable.</span>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
                                   {(d.state?.fieldId || d.state?.field?.id) && d.state?.value && (
                                     <span className="flex max-w-full flex-wrap items-center gap-1">
                                       <button type="button" onClick={() => confirmRecordField(d.state)} disabled={!!confirmingField}
@@ -9453,12 +9499,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           {readinessPhase === 'complete' && (
             <TransactionSealSummaryCard propertyId={propertyId} />
           )}
-          {digitalAssetEnabled && <DigitalAssetReadinessSection
+          <DigitalAssetReadinessSection
             propertyId={propertyId}
-             property={property}
+            property={property}
+            analyses={analyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
-             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
+            conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             readiness={readiness}
              provenanceGaps={verifiedAssetReadiness?.reasons?.provenance_gaps || []}
              ownerToken={ownerToken}
@@ -9469,8 +9516,8 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             embedded
             onRecordUpdated={load}
             focusRequest={recordFocus}
-             onConflict={setSelectedConflict}
-          />}
+            onConflict={setSelectedConflict}
+          />
         </div>
       </section>
       <VerifiedAssetReadinessCard
