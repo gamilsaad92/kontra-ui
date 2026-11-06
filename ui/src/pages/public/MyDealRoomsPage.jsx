@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 import { getCoordinatorRoleKeys } from "../../lib/workflowRoles";
+import { clearInviteSession } from "../../lib/inviteUtils";
 
 const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
@@ -331,6 +332,9 @@ export default function MyDealRoomsPage() {
           if (!propertyId || !ownerToken) return;
           try { localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken); } catch {}
         });
+        for (const room of r || []) {
+          if (room?.property_id) clearInviteSession(room.property_id);
+        }
         const packIds = [...new Set((r || []).map(room => room.workflow_pack_id).filter(Boolean))];
         Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id))).finally(() => {
           setRooms(r); setEmail(e); setOwnerName(n || "");
@@ -378,6 +382,11 @@ export default function MyDealRoomsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
+      // My Deal Rooms is an intentional coordinator re-entry. Clear this tab's
+      // participant context before restoring coordinator access.
+      for (const room of data.rooms || []) {
+        if (room?.property_id) clearInviteSession(room.property_id);
+      }
       const n = data.rooms?.[0]?.owner_name || "";
       Object.entries(data.owner_tokens || {}).forEach(([propertyId, ownerToken]) => {
         if (!propertyId || !ownerToken) return;

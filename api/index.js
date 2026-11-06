@@ -4335,6 +4335,7 @@ async function scopeChecklistItemsForAccess(items, access, packId, propertyType)
 // Owners authenticate with the owner write token issued at checkout. Participants
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
+const { resolveExplicitParticipantAccess } = require('./lib/explicitParticipantAccess');
 async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
   // A browser can retain a same-room owner token after opening a participant
   // invitation. A valid participant session is the more specific credential
@@ -4354,29 +4355,17 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
     if (session?.invite_id) {
       const { data: invite } = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status')
+        .select('property_id, role_key, invited_email, status, expires_at')
         .eq('id', session.invite_id)
         .maybeSingle();
-      if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
-        return {
-          mode: 'participant',
-          role: invite.role_key,
-          actorId: session.invite_id,
-          email: invite.invited_email || null,
-          actorType: 'participant',
-          permissions: {
-            viewOverview: true,
-            viewAssignedDocuments: true,
-            uploadAssignedDocuments: true,
-            viewAllDocuments: false,
-            manageStages: false,
-            manageParticipants: false,
-            manageSettings: false,
-            updateOwnSubmission: true,
-          },
-        };
-      }
     }
+    const participantAccess = resolveExplicitParticipantAccess({
+      sessionToken,
+      session,
+      invite,
+      propertyId,
+    });
+    if (participantAccess) return participantAccess;
   }
 
   const ownerToken = (

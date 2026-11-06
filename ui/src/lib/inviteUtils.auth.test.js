@@ -15,6 +15,7 @@ const ownerKey = `kontra_owner_token_${propertyId}`;
 
 describe('room authorization header precedence', () => {
   beforeEach(() => {
+    clearInviteSession(propertyId);
     sessionStorage.clear();
     localStorage.clear();
   });
@@ -27,6 +28,22 @@ describe('room authorization header precedence', () => {
       Accept: 'application/json',
       'x-kontra-session': 'participant-session',
     });
+  });
+
+  it('keeps the participant session explicit when sessionStorage is unavailable', () => {
+    localStorage.setItem(ownerKey, 'owner-token');
+    Object.defineProperty(sessionStorage, 'setItem', {
+      configurable: true,
+      value: () => { throw new Error('storage unavailable'); },
+    });
+    try {
+      storeInviteSession(propertyId, 'in-memory-participant-session', '2999-01-01T00:00:00.000Z');
+      expect(getRoomAuthHeaders(propertyId)).toEqual({
+        'x-kontra-session': 'in-memory-participant-session',
+      });
+    } finally {
+      delete sessionStorage.setItem;
+    }
   });
 
   it('sends the owner token when no participant session exists', () => {

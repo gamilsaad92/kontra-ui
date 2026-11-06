@@ -20,6 +20,7 @@ import {
 } from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
+import { isCoordinatorRoomView, roomRoleFromAccess } from "../../lib/roomAccessPresentation.mjs";
 import {
   getTransactionRecordEvidence,
   getOriginalDocumentUrl,
@@ -10856,17 +10857,8 @@ export default function DealRoomPage() {
         // receives a resolved workflowPack on its first seed attempt.
         setPackReady(true);
         setApiProperty(data);
-        if (data?.access?.mode === 'participant' && data.access.role) {
-          setAccessRole(data.access.role);
-        }
-        // Owner: always grant coordinator access regardless of the checkout-selected role.
-        // The stored DB role may be 'buyer', 'lender', etc. when the owner chose a
-        // non-coordinator role during room creation. The API now returns safe.role =
-        // 'deal_coordinator' for owner-token requests, but setAccessRole here ensures
-        // isCoordinator resolves correctly even against a stale cached response.
-        if (data?.access?.mode === 'owner') {
-          setAccessRole('deal_coordinator');
-        }
+        const resolvedAccessRole = roomRoleFromAccess(data?.access);
+        if (resolvedAccessRole) setAccessRole(resolvedAccessRole);
         setLoadingApi(false);
       })
       .catch((error) => {
@@ -11122,15 +11114,13 @@ export default function DealRoomPage() {
   // fallback for legacy owner links and packs whose primary role is explicitly
   // non-invitable; a canManage flag alone must not turn an external participant
   // into the workspace owner.
-  const isOwnerAccess = property?.access?.mode === 'owner';
-  const isCoordinator = isDemo || isOwnerAccess
-    || (hasOwnerToken && role === 'owner')
-    || (
-      property?.access?.mode !== 'participant'
-      && hasOwnerToken
-      && roleConfig?.canManage === true
-      && roleConfig?.invitable !== true
-    );
+  const isCoordinator = isCoordinatorRoomView({
+    isDemo,
+    access: property?.access,
+    hasOwnerToken,
+    role,
+    roleConfig,
+  });
 
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels
