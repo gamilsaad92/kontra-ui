@@ -209,16 +209,14 @@ describe('room access and checklist scoping', () => {
     }
   });
 
-  it('falls back to owner access when the participant session is expired or revoked', async () => {
+  it('fails closed when an explicit participant session is expired or revoked', async () => {
     mockParticipantSessionAvailable = false;
     const response = await request(app)
       .get('/api/public/deal-room/room-1')
       .set('x-owner-write-token', mockOwnerToken)
       .set('x-kontra-session', mockParticipantToken);
 
-    expect(response.status).toBe(200);
-    expect(response.body.role).toBe('deal_coordinator');
-    expect(response.body.access).toEqual({ mode: 'owner' });
+    expect(response.status).toBe(403);
   });
 
   it('does not accept an owner token from a different room', async () => {

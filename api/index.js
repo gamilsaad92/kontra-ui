@@ -338,6 +338,13 @@ const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
 const crypto = require('crypto');
+const {
+  OWNER_ROLE_KEY,
+  SESSION_TTL_MS: OWNER_SESSION_TTL_MS,
+  createTrialOwnerExchange,
+  exchangeTrialOwnerCredential,
+  sha256: hashOwnerSessionToken,
+} = require('./lib/trialOwnerSessions');
 const { workflows, addWorkflow } = require('./workflowStore');
 const { runWorkflow } = require('./hyperautomation');
 const path = require('path');
@@ -3457,13 +3464,79 @@ app.post('/api/webhook/stripe',
 })();
 
 // ── Public deal room lookup — no auth required ────────────────────────────────
+app.post('/api/public/deal-room/:propertyId/owner-session/exchange', async (req, res) => {
+  const { propertyId } = req.params;
+  const exchangeToken = typeof req.body?.exchangeToken === 'string'
+    ? req.body.exchangeToken.trim()
+    : '';
+  try {
+    const exchanged = await exchangeTrialOwnerCredential(supabase, {
+      propertyId,
+      token: exchangeToken,
+    });
+    if (!exchanged.ok) {
+      return res.status(403).json({
+        error: 'OWNER_EXCHANGE_INVALID',
+        message: 'This owner link is invalid, expired, already used, or belongs to another workspace.',
+      });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Set-Cookie', [
+      `${OWNER_SESSION_COOKIE}=${encodeURIComponent(exchanged.sessionToken)}`,
+      'HttpOnly',
+      'Secure',
+      'SameSite=None',
+      `Path=${ownerSessionCookiePath(propertyId)}`,
+      `Max-Age=${Math.floor(OWNER_SESSION_TTL_MS / 1000)}`,
+    ].join('; '));
+    return res.json({ success: true, expires_at: exchanged.expiresAt });
+  } catch (error) {
+    console.error('[owner-session/exchange]', error.message);
+    return res.status(503).json({ error: 'OWNER_SESSION_UNAVAILABLE' });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/owner-session/logout', async (req, res) => {
+  const { propertyId } = req.params;
+  const token = readOwnerSessionCookie(req);
+  try {
+    if (token) {
+      const tokenHash = hashOwnerSessionToken(token);
+      const { data: session } = await supabase
+        .from('deal_room_access_sessions')
+        .select('invite_id')
+        .eq('session_token_hash', tokenHash)
+        .maybeSingle();
+      if (session?.invite_id) {
+        await supabase.from('deal_room_access_sessions')
+          .update({ revoked_at: new Date().toISOString() })
+          .eq('invite_id', session.invite_id)
+          .eq('session_token_hash', tokenHash);
+      }
+    }
+    res.setHeader('Set-Cookie', [
+      `${OWNER_SESSION_COOKIE}=`,
+      'HttpOnly',
+      'Secure',
+      'SameSite=None',
+      `Path=${ownerSessionCookiePath(propertyId)}`,
+      'Max-Age=0',
+    ].join('; '));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[owner-session/logout]', error.message);
+    return res.status(503).json({ error: 'OWNER_SESSION_LOGOUT_FAILED' });
+  }
+});
+
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
   try {
     const access = await getRoomAccessContext(req, propertyId);
-    // A stale participant session may coexist with a valid owner token after
-    // the owner returns through My Deal Rooms. getRoomAccessContext gives the
-    // owner precedence, so do not reject that resolved owner context here.
+    // An explicit participant session is authoritative for this request;
+    // invalid participant credentials fail closed even if an owner cookie exists.
     if (req.headers['x-kontra-session'] && !['participant', 'owner'].includes(access.mode)) {
       return accessDenied(res, 'This invitation session is invalid or has expired');
     }
@@ -3526,15 +3599,6 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 // In-memory OTP store: email → { code, expiresAt }
 const otpStore = new Map();
 
-function buildOwnerTokenMap(rooms) {
-  return (rooms || []).reduce((tokens, room) => {
-    if (room?.property_id && room?.owner_write_token) {
-      tokens[room.property_id] = room.owner_write_token;
-    }
-    return tokens;
-  }, {});
-}
-
 app.post('/api/public/my-rooms/request-otp', async (req, res) => {
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
@@ -3590,12 +3654,13 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at, owner_write_token')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    const ownerTokens = buildOwnerTokenMap(rooms);
-    if (!rooms || rooms.length === 0) return res.json({ rooms: [], email, owner_tokens: {} });
+    if (!rooms || rooms.length === 0) {
+      return res.json({ rooms: [], email, owner_exchange_tokens: {} });
+    }
     const ids = rooms.map(r => r.property_id);
     const [subsRes, invitesRes, analysesRes] = await Promise.all([
       supabase
@@ -3632,7 +3697,7 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
       if (!analysesMap[analysis.property_id]) analysesMap[analysis.property_id] = [];
       analysesMap[analysis.property_id].push(analysis);
     });
-    const enriched = rooms.map(({ owner_write_token: _ownerWriteToken, ...room }) => ({
+    const enriched = rooms.map(room => ({
       ...room,
       owner_name: room.owner_name || null,
       parties: buildRoomParticipants({
@@ -3647,11 +3712,17 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
         submissions: subMap[room.property_id] || [],
       }).length,
     }));
-    // The email OTP just verified ownership of every returned room. Rehydrate
-    // the same owner credential used by direct room links so a stale
-    // participant session cannot win when the owner opens a room from this
-    // dashboard. Keep the credential out of each persisted room row.
-    res.json({ rooms: enriched, email, owner_tokens: ownerTokens });
+    // The verified email can exchange a short-lived, one-use capability for
+    // each room's HttpOnly owner session. Raw owner-write tokens stay server-side.
+    const ownerExchangeTokens = {};
+    for (const room of rooms) {
+      ownerExchangeTokens[room.property_id] = await createTrialOwnerExchange(
+        supabase,
+        room.property_id,
+        email,
+      );
+    }
+    res.json({ rooms: enriched, email, owner_exchange_tokens: ownerExchangeTokens });
   } catch (err) {
     console.error('[verify-otp]', err.message);
     res.status(500).json({ error: 'Failed to load rooms' });
@@ -4335,7 +4406,26 @@ async function scopeChecklistItemsForAccess(items, access, packId, propertyType)
 // Owners authenticate with the owner write token issued at checkout. Participants
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
-const { resolveExplicitParticipantAccess } = require('./lib/explicitParticipantAccess');
+const {
+  resolveExplicitParticipantAccess,
+  resolveOwnerSessionAccess,
+} = require('./lib/explicitParticipantAccess');
+const OWNER_SESSION_COOKIE = 'kontra_owner_session';
+
+function ownerSessionCookiePath(propertyId) {
+  return `/api/public/deal-room/${encodeURIComponent(propertyId)}`;
+}
+
+function readOwnerSessionCookie(req) {
+  const cookieHeader = req.headers.cookie || '';
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== OWNER_SESSION_COOKIE) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return ''; }
+  }
+  return '';
+}
+
 async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
   // A browser can retain a same-room owner token after opening a participant
   // invitation. A valid participant session is the more specific credential
@@ -4352,12 +4442,14 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
       .gt('expires_at', new Date().toISOString())
       .is('revoked_at', null)
       .maybeSingle();
+    let invite = null;
     if (session?.invite_id) {
-      const { data: invite } = await supabase
+      const result = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status, expires_at')
+        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
         .eq('id', session.invite_id)
         .maybeSingle();
+      invite = result.data;
     }
     const participantAccess = resolveExplicitParticipantAccess({
       sessionToken,
@@ -4366,6 +4458,34 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
       propertyId,
     });
     if (participantAccess) return participantAccess;
+  }
+
+  const ownerCookieToken = readOwnerSessionCookie(req);
+  if (ownerCookieToken) {
+    const { data: session } = await supabase
+      .from('deal_room_access_sessions')
+      .select('invite_id, expires_at, revoked_at')
+      .eq('session_token_hash', hashOwnerSessionToken(ownerCookieToken))
+      .gt('expires_at', new Date().toISOString())
+      .is('revoked_at', null)
+      .maybeSingle();
+    let invite = null;
+    if (session?.invite_id) {
+      const result = await supabase
+        .from('deal_room_invites')
+        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
+        .eq('id', session.invite_id)
+        .maybeSingle();
+      invite = result.data;
+    }
+    const ownerAccess = resolveOwnerSessionAccess({
+      cookieToken: ownerCookieToken,
+      session,
+      invite,
+      propertyId,
+      ownerRoleKey: OWNER_ROLE_KEY,
+    });
+    if (ownerAccess) return ownerAccess;
   }
 
   const ownerToken = (

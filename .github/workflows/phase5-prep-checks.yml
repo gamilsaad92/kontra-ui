@@ -1,0 +1,51 @@
+name: Phase 5 preparation checks
+
+on:
+  pull_request:
+    branches:
+      - consolidation/prep-2026-11-06
+  push:
+    branches:
+      - consolidation/prep-2026-11-06
+
+permissions:
+  contents: read
+
+jobs:
+  phase5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            ui/package-lock.json
+      - run: npm ci --prefix api
+      - run: npm ci --prefix ui
+      - name: Focused authorization and record tests
+        run: |
+          node --test \
+            api/lib/explicitParticipantAccess.node-test.cjs \
+            api/lib/trialOwnerSessions.node-test.cjs \
+            ui/src/lib/apiRequestCredentials.node-test.cjs \
+            ui/src/lib/roomAccessPresentation.node-test.cjs \
+            ui/src/lib/roomOwnerAccess.node-test.cjs \
+            ui/src/lib/transactionRecordReview.node-test.cjs \
+            ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
+            ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
+          npm --prefix ui test -- --runInBand src/lib/inviteUtils.auth.test.js
+          npm --prefix api test -- --runInBand roomAccessChecklist.test.js
+      - name: Backend syntax check
+        run: node --check api/index.js
+      - name: Staging frontend build
+        env:
+          VITE_API_BASE_URL: https://api-staging.kontraplatform.com
+          VITE_API_URL: https://api-staging.kontraplatform.com
+          VITE_API_BASE: https://api-staging.kontraplatform.com
+          VITE_AUTO_LOGIN: 'false'
+        run: npm --prefix ui run build
+      - name: Scan built endpoint configuration
+        run: node scripts/check-staging-asset-endpoints.cjs ui/dist
