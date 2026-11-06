@@ -34,6 +34,9 @@ jobs:
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
-          npm --prefix api test -- --runInBand --forceExit roomAccessChecklist.test.js dashboardState.test.js
+      - name: API access and dashboard tests
+        env:
+          OPENAI_API_KEY: ci-test-key-not-valid
+        run: npm --prefix api test -- --runInBand --forceExit roomAccessChecklist.test.js dashboardState.test.js
       - name: Backend syntax check
         run: node --check api/index.js
