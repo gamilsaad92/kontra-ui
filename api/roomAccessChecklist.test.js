@@ -1,6 +1,7 @@
 const mockOwnerToken = 'owner-token';
 const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
+const mockCanonicalRpc = jest.fn(async () => ({ data: { status: 'committed' }, error: null }));
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
 let mockBrainAuthorizationTestsEnabled = false;
@@ -91,7 +92,7 @@ jest.mock('./db', () => {
       single: async () => ({ data: owner, error: null }),
       then: (resolve) => resolve({
         data: table === 'deal_rooms' && state.filters.customer_email
-          ? [owner]
+          ? [(({ owner_write_token, ...room }) => room)(owner)]
           : table === 'transaction_record_fields' ? [transactionField()] : [],
         error: null,
       }),
@@ -102,7 +103,7 @@ jest.mock('./db', () => {
   return {
     supabase: {
       from: builder,
-      rpc: async () => ({ data: { status: 'committed' }, error: null }),
+      rpc: (...args) => mockCanonicalRpc(...args),
     },
   };
 });
@@ -144,6 +145,7 @@ const request = require('supertest');
 describe('room access and checklist scoping', () => {
   beforeEach(() => {
     mockInsertedRows.length = 0;
+    mockCanonicalRpc.mockReset().mockResolvedValue({ data: { status: 'committed' }, error: null });
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
     mockBrainAuthorizationTestsEnabled = false;
@@ -299,22 +301,23 @@ describe('room access and checklist scoping', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.provenanceApproved).toBe(true);
-    const approval = mockInsertedRows.find(row => row.table === 'transaction_record_approvals');
-    const history = mockInsertedRows.find(row => row.table === 'transaction_record_history');
-    expect(approval.values).toEqual(expect.objectContaining({
+    const rpcCall = mockCanonicalRpc.mock.calls.find(([name]) => name === 'kontra_commit_canonical_change_set');
+    expect(rpcCall).toBeDefined();
+    const changeSet = rpcCall[1].p_change_set;
+    expect(changeSet.approval_rows).toEqual([expect.objectContaining({
       field_id: 'field-1',
       action: 'approved',
       is_manual: true,
       prior_value: '90000',
       new_value: '90000',
-    }));
-    expect(history.values).toEqual(expect.objectContaining({
+    })]);
+    expect(changeSet.history_rows).toEqual([expect.objectContaining({
       event_type: 'provenance_approved',
       prior_value: '90000',
       new_value: '90000',
       prior_status: 'verified',
       new_status: 'verified',
-    }));
+    })]);
   });
 
   it('rejects manual provenance approval when document provenance already exists', async () => {
