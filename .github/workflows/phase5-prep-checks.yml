@@ -37,7 +37,7 @@ jobs:
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
           npm --prefix ui test -- --runInBand src/lib/inviteUtils.auth.test.js
-          npm --prefix api test -- --runInBand roomAccessChecklist.test.js
+          npm --prefix api test -- --runInBand roomAccessChecklist.test.js dashboardState.test.js
       - name: Backend syntax check
         run: node --check api/index.js
       - name: Staging frontend build

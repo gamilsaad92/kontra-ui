@@ -30,7 +30,7 @@ function buildRoomParticipants({ invites = [], submissions = [], now = Date.now(
 
   for (const invite of invites) {
     const role = String(invite?.role_key || invite?.role || '').trim();
-    if (!role || !isActiveInvite(invite, now)) continue;
+    if (!role || role === '__room_owner__' || !isActiveInvite(invite, now)) continue;
     const normalizedRole = role.toLowerCase().replace(/\s+/g, '_');
     if (activeRoles.has(normalizedRole)) continue;
     activeRoles.add(normalizedRole);
@@ -47,7 +47,7 @@ function buildRoomParticipants({ invites = [], submissions = [], now = Date.now(
   // accepted invite for the same role.
   for (const submission of submissions) {
     const role = String(submission?.role || '').trim();
-    if (!role) continue;
+    if (!role || role === '__room_owner__') continue;
     const normalizedRole = role.toLowerCase().replace(/\s+/g, '_');
     if (activeRoles.has(normalizedRole)) continue;
     if (!submission.doc_count && !submission.submitted_at) continue;

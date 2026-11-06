@@ -30,6 +30,15 @@ describe('durable dashboard room state', () => {
     expect(participants).toEqual([]);
   });
 
+  it('does not expose the coordinator session as a deal-room participant', () => {
+    const participants = buildRoomParticipants({
+      invites: [{ role_key: '__room_owner__', status: 'accepted' }],
+      submissions: [{ role: '__room_owner__', doc_count: 1 }],
+    });
+
+    expect(participants).toEqual([]);
+  });
+
   it('derives waiting metrics from required document assignments, not section names', () => {
     const state = computeRoomDashboardState({
       room: { property_id: 'room-1' },
