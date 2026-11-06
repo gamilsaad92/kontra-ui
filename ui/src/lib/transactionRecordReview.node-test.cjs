@@ -117,3 +117,90 @@ test("Review record navigation still focuses and scrolls to the record category"
   assert.match(handler, /transaction-record-category-/);
   assert.match(handler, /scrollIntoView/);
 });
+
+test("both conflict choices use the same cookie-authenticated resolution request", async () => {
+  const { resolveTransactionRecordConflict } = await import(reviewModuleUrl);
+  const choices = ["December 18, 2026", "December 22, 2026"];
+  const requests = [];
+
+  for (const valueText of choices) {
+    await resolveTransactionRecordConflict({
+      apiBase: "https://api-staging.example/",
+      propertyId: "room 1",
+      conflictId: "conflict/1",
+      valueText,
+      fetchImpl: async (url, options) => {
+        requests.push({ url, options });
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      },
+    });
+  }
+
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(
+      request.url,
+      "https://api-staging.example/api/public/deal-room/room%201/transaction-record/conflicts/conflict%2F1/resolve",
+    );
+    assert.equal(request.options.method, "POST");
+    assert.equal(request.options.credentials, "include");
+    assert.equal(
+      Object.hasOwn(JSON.parse(request.options.body), "ownerWriteToken"),
+      false,
+    );
+  }
+  assert.deepEqual(
+    requests.map(request => JSON.parse(request.options.body)),
+    choices.map(value_text => ({ value_text })),
+  );
+});
+
+test("conflict resolution surfaces missing or unauthorized owner sessions", async () => {
+  const { resolveTransactionRecordConflict } = await import(reviewModuleUrl);
+  for (const status of [401, 403]) {
+    await assert.rejects(
+      resolveTransactionRecordConflict({
+        propertyId: "room-1",
+        conflictId: "conflict-1",
+        valueText: "December 18, 2026",
+        fetchImpl: async () => ({
+          ok: false,
+          status,
+          json: async () => ({ error: "Owner access required." }),
+        }),
+      }),
+      error => error.status === status && /owner access required/i.test(error.message),
+    );
+  }
+});
+
+test("conflict resolution surfaces API failures without closing the modal", async () => {
+  const { resolveTransactionRecordConflict } = await import(reviewModuleUrl);
+  await assert.rejects(
+    resolveTransactionRecordConflict({
+      propertyId: "room-1",
+      conflictId: "conflict-1",
+      valueText: "December 18, 2026",
+      fetchImpl: async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "Conflict changed during resolution." }),
+      }),
+    }),
+    error => error.status === 500 && error.message === "Conflict changed during resolution.",
+  );
+
+  const source = fs.readFileSync(dealRoomPagePath, "utf8");
+  const componentStart = source.indexOf("function TransactionConflictResolver");
+  const handlerStart = source.indexOf("const resolve = async valueText => {", componentStart);
+  const handlerEnd = source.indexOf("\n  const options =", handlerStart);
+  assert.notEqual(componentStart, -1);
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  const handler = source.slice(handlerStart, handlerEnd);
+  assert.doesNotMatch(handler, /localStorage|ownerWriteToken/);
+  assert.match(handler, /await resolveTransactionRecordConflict\(/);
+  assert.match(handler, /await onResolved\?\.\(\);\s*onClose\?\.\(\)/);
+  assert.match(handler, /catch \(resolveError\) \{\s*setError\(resolveError\.message/s);
+  assert.match(source, /onClick=\{\(\) => resolve\(option\.value\)\}/);
+});

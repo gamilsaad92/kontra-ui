@@ -23,6 +23,7 @@ import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
 import {
   getTransactionRecordEvidence,
   getOriginalDocumentUrl,
+  resolveTransactionRecordConflict,
   verifyTransactionRecordField,
 } from "../../lib/transactionRecordReview.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
@@ -6269,24 +6270,18 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
     };
   };
   const resolve = async valueText => {
-    let ownerWriteToken = '';
-    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-    if (!ownerWriteToken || saving) return;
+    if (saving || (legacyFieldOnly && !legacyFieldId)) return;
     setSaving(true);
     setError('');
     try {
-      const response = await fetch(
-        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/conflicts/${conflict.id}/resolve`,
-        {
-          method: 'POST',
-          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ ownerWriteToken, value_text: valueText }),
-        },
-      );
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || 'The conflict could not be resolved.');
-      }
+      await resolveTransactionRecordConflict({
+        apiBase: API_BASE,
+        propertyId,
+        conflictId: conflict.id,
+        legacyFieldOnly,
+        legacyFieldId,
+        valueText,
+      });
       await onResolved?.();
       onClose?.();
     } catch (resolveError) {

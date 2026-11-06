@@ -84,3 +84,41 @@ export async function getOriginalDocumentUrl({
   }
   return data;
 }
+
+export async function resolveTransactionRecordConflict({
+  apiBase = '',
+  propertyId,
+  conflictId,
+  legacyFieldOnly = false,
+  legacyFieldId,
+  valueText,
+  fetchImpl = globalThis.fetch,
+}) {
+  if (legacyFieldOnly && !legacyFieldId) {
+    throw new Error('The legacy conflict field could not be identified.');
+  }
+
+  const base = String(apiBase || '').replace(/\/+$/, '');
+  const endpoint = legacyFieldOnly
+    ? `${base}/api/public/deal-room/${encodeURIComponent(propertyId)}/transaction-record/fields/${encodeURIComponent(legacyFieldId)}/review-legacy-conflict`
+    : `${base}/api/public/deal-room/${encodeURIComponent(propertyId)}/transaction-record/conflicts/${encodeURIComponent(conflictId)}/resolve`;
+  const body = legacyFieldOnly
+    ? {
+      confirmCanonical: true,
+      note: 'Owner reviewed the current canonical value and source evidence.',
+    }
+    : { value_text: valueText };
+  const response = await fetchImpl(endpoint, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data?.error || data?.message || 'The conflict could not be resolved.');
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
