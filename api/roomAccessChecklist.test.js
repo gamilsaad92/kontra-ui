@@ -99,7 +99,12 @@ jest.mock('./db', () => {
     return chain;
   }
 
-  return { supabase: { from: builder } };
+  return {
+    supabase: {
+      from: builder,
+      rpc: async () => ({ data: { status: 'committed' }, error: null }),
+    },
+  };
 });
 
 jest.mock('./lib/transactionState', () => {
@@ -447,7 +452,7 @@ describe('room access and checklist scoping', () => {
     expect(response.body.items.map(item => item.section)).toEqual(['seller_financials']);
   });
 
-  it('rehydrates owner credentials for My Deal Rooms re-entry without exposing them in room rows', async () => {
+  it('returns one-use owner exchange capabilities without exposing owner-write tokens', async () => {
     app.setMyRoomsOtpForTest('owner@example.com', '123456');
 
     const response = await request(app)
@@ -455,7 +460,11 @@ describe('room access and checklist scoping', () => {
       .send({ email: 'owner@example.com', code: '123456' });
 
     expect(response.status).toBe(200);
-    expect(response.body.owner_tokens).toEqual({ 'room-1': mockOwnerToken });
+    expect(response.body.owner_exchange_tokens).toEqual({
+      'room-1': expect.any(String),
+    });
+    expect(response.body.owner_exchange_tokens['room-1']).not.toBe(mockOwnerToken);
+    expect(response.body).not.toHaveProperty('owner_tokens');
     expect(response.body.rooms[0]).not.toHaveProperty('owner_write_token');
   });
 
