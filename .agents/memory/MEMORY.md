@@ -20,3 +20,4 @@
 - [Canonical duplicate write boundary](canonical-duplicate-write-boundary.md) — all write paths must defer alias cleanup to hydration so provenance and semantic conflicts survive
 - [Deal-room category projection](deal-room-category-projection.md) — the UI category schema must canonicalize definitions and matched rows independently of server readiness state
 - [Deployed runtime drift](deployed-runtime-drift.md) — verify Replit preview, Vercel, Render, and root workspace revisions independently before diagnosing projections
+- [GitHub Actions UI installs](github-actions-ui-npm-install.md) — clean UI installs on Node 22/npm 10.9.9 repeatedly hit an npm internal exit error; local build checks passed
