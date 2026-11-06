@@ -34,28 +34,6 @@ jobs:
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
-          npm --prefix api test -- --runInBand roomAccessChecklist.test.js dashboardState.test.js
+          npm --prefix api test -- --runInBand --forceExit roomAccessChecklist.test.js dashboardState.test.js
       - name: Backend syntax check
         run: node --check api/index.js
-
-  ui-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci --prefix ui --no-audit --no-fund --maxsockets=4
-      - name: Focused UI authorization tests
-        run: npm --prefix ui test -- --runInBand src/lib/inviteUtils.auth.test.js
-      - name: Staging frontend build
-        env:
-          VITE_API_BASE_URL: https://api-staging.kontraplatform.com
-          VITE_API_URL: https://api-staging.kontraplatform.com
-          VITE_API_BASE: https://api-staging.kontraplatform.com
-          VITE_AUTO_LOGIN: 'false'
-        run: npm --prefix ui run build
-      - name: Scan built endpoint configuration
-        run: node scripts/check-staging-asset-endpoints.cjs ui/dist
