@@ -26,6 +26,10 @@ import {
   resolveTransactionRecordConflict,
   verifyTransactionRecordField,
 } from "../../lib/transactionRecordReview.mjs";
+import {
+  getVerifiedAssetReadinessDisplay,
+  isVerifiedAssetReadinessResponse,
+} from "../../lib/verifiedAssetReadinessDisplay.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
 import {
   getPackRecordSchema,
@@ -8478,6 +8482,7 @@ function DigitalAssetPackageModal({
 
 function VerifiedAssetReadinessCard({
   verifiedAssetReadiness,
+  verifiedAssetReadinessRequest,
   isDemo = false,
   ownerAccess,
   snapshotAction,
@@ -8491,39 +8496,14 @@ function VerifiedAssetReadinessCard({
   onGeneratePackage,
   onOpenProvenance,
 }) {
-  const isUnavailable = !verifiedAssetReadiness;
-  const summary = verifiedAssetReadiness?.summary || {};
-  const reasons = verifiedAssetReadiness?.reasons || {};
-  const eligibility = verifiedAssetReadiness?.eligibility || 'unavailable';
-  const readinessStatus = verifiedAssetReadiness?.status;
-  const incompleteFields = Array.isArray(reasons.incomplete_required_fields)
-    ? reasons.incomplete_required_fields
-    : [];
-  const unresolvedConflicts = Array.isArray(reasons.unresolved_conflicts)
-    ? reasons.unresolved_conflicts
-    : [];
-  const missingApprovals = Array.isArray(reasons.missing_approvals)
-    ? reasons.missing_approvals
-    : [];
-  const provenanceGaps = Array.isArray(reasons.provenance_gaps)
-    ? reasons.provenance_gaps
-    : [];
-  const blockerLabels = [
-    ...incompleteFields.map(item => item?.label || item?.field_key),
-    ...unresolvedConflicts.map(item => item?.label || item?.field_key),
-    ...missingApprovals.map(item => `${item?.label || item?.field_key} — approval required`),
-    ...provenanceGaps.map(item =>
-      `${item?.label || item?.field_key} — ${item?.source || item?.requirement || 'current provenance required'}`,
-    ),
-  ].filter(Boolean);
-  const statusLabel = isUnavailable
-    ? 'Loading or unavailable'
-    : (readinessStatus || eligibility || 'in progress').replace(/_/g, ' ');
-  const eligibilityLabel = eligibility === 'eligible'
-    ? 'Eligible'
-    : eligibility === 'unavailable'
-      ? 'Unavailable'
-      : 'In progress';
+  const display = getVerifiedAssetReadinessDisplay({
+    readiness: verifiedAssetReadiness,
+    requestStatus: verifiedAssetReadinessRequest?.status || 'loading',
+    requestError: verifiedAssetReadinessRequest?.error || '',
+    digitalAssetEnabled,
+  });
+  const summary = display.summary;
+  const blockerLabels = display.blockerLabels;
   const action = snapshotAction || { loading: false, message: '', error: false };
 
   return (
@@ -8533,29 +8513,25 @@ function VerifiedAssetReadinessCard({
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
             Verified Asset foundation
           </p>
-          <h2 className="mt-1 text-lg font-bold text-gray-900">
-            {digitalAssetEnabled ? 'Digital Asset Readiness' : 'Verified Asset Record'}
-          </h2>
+          <h2 className="mt-1 text-lg font-bold text-gray-900">{display.title}</h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
             {digitalAssetEnabled
               ? 'Provider-neutral preparation status derived from the canonical Transaction Record.'
               : 'Provider-neutral evidence and immutable record status derived from the canonical Transaction Record.'}
           </p>
-          {digitalAssetEnabled && (
-            <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
-              Status: {statusLabel}
-            </p>
-          )}
+          <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
+            Status: {display.status ? display.status.replace(/_/g, ' ') : display.eligibilityLabel}
+          </p>
         </div>
-        {digitalAssetEnabled && <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-          eligibility === 'eligible'
+        <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+          display.eligibilityLabel === 'Eligible'
             ? 'bg-emerald-100 text-emerald-800'
-            : eligibility === 'unavailable'
+            : display.eligibilityLabel === 'Unavailable' || display.eligibilityLabel === 'Loading'
               ? 'bg-gray-200 text-gray-700'
               : 'bg-amber-100 text-amber-800'
         }`}>
-          {eligibilityLabel}
-        </span>}
+          {display.eligibilityName}: {display.eligibilityLabel}
+        </span>
       </div>
       {isDemo && (
         <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3">
@@ -8572,28 +8548,34 @@ function VerifiedAssetReadinessCard({
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
           <p className="mt-1 text-base font-black text-gray-900">
-            {summary.confirmed_count || 0}
-            <span className="text-xs font-semibold text-gray-400"> / {summary.required_count || 0} confirmed</span>
+            {summary ? summary.confirmed_count : '—'}
+            <span className="text-xs font-semibold text-gray-400"> / {summary ? summary.required_count : '—'} confirmed</span>
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
           <p className={`mt-1 text-base font-black ${
-            (summary.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
+            !summary || summary.unresolved_exception_count > 0 ? 'text-amber-700' : 'text-emerald-700'
           }`}>
-            {summary.unresolved_exception_count || 0}
+            {summary ? summary.unresolved_exception_count : '—'}
             <span className="text-xs font-semibold text-gray-400"> blockers</span>
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
           <p className="mt-1 text-xs font-bold text-gray-700">
-            {summary.provenance_intact ? 'Provenance intact' : `${summary.provenance_gap_count || 0} provenance gaps`}
+            {summary
+              ? summary.provenance_intact
+                ? 'Provenance intact'
+                : `${summary.provenance_gap_count} provenance gaps`
+              : 'Unavailable'}
           </p>
           <p className="mt-1 text-[10px] text-gray-400">
-            {summary.approvals_satisfied
-              ? 'Approvals satisfied'
-              : `${summary.missing_approval_count || 0} approvals missing`}
+            {summary
+              ? summary.approvals_satisfied
+                ? 'Approvals satisfied'
+                : `${summary.missing_approval_count} approvals missing`
+              : 'Approval status unavailable'}
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
@@ -8609,22 +8591,27 @@ function VerifiedAssetReadinessCard({
         </div>
       </div>
 
-      {digitalAssetEnabled && isUnavailable ? (
+      {display.state === 'loading' ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-          Readiness details are loading or currently unavailable. This card stays visible while Kontra reconnects to the readiness service.
+          {display.message}
         </div>
-      ) : digitalAssetEnabled && blockerLabels.length > 0 ? (
+      ) : display.state === 'unavailable' ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+          {display.message}
+        </div>
+      ) : !display.clean ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-            Current blockers and exceptions
+            {display.eligibilityLabel === 'Ineligible' ? 'Readiness is ineligible' : 'Current blockers and exceptions'}
           </p>
           <p className="mt-1 text-xs text-amber-900">
-            {blockerLabels.slice(0, 3).join(' · ')}
-            {blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}
+            {blockerLabels.length > 0
+              ? `${blockerLabels.slice(0, 3).join(' · ')}${blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}`
+              : display.message}
           </p>
-          {provenanceGaps.length > 0 && (
+          {display.provenanceGaps.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {provenanceGaps.map(gap => (
+              {display.provenanceGaps.map(gap => (
                 <button
                   key={gap.field_key || gap.label}
                   type="button"
@@ -8640,7 +8627,7 @@ function VerifiedAssetReadinessCard({
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
-          No canonical blockers or unresolved exceptions are currently reported.
+          {display.message}
         </div>
       )}
 
@@ -8656,7 +8643,7 @@ function VerifiedAssetReadinessCard({
           <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
             {digitalAssetEnabled
               ? 'Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.'
-              : 'Recording preserves this exact verified record state, including its evidence and exception history.'}
+              : 'Recording preserves this exact Verified Asset state, including an ineligible status. It does not advance transaction lifecycle readiness.'}
           </p>
         </div>
         <button
@@ -8756,6 +8743,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [recordHydrationStatus, setRecordHydrationStatus] = useState('hydrating');
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
+  const [verifiedAssetReadinessRequest, setVerifiedAssetReadinessRequest] = useState({
+    status: 'loading',
+    error: '',
+  });
   const [snapshotHistory, setSnapshotHistory] = useState([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
@@ -8773,6 +8764,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
+  }, [propertyId]);
+  useEffect(() => {
+    setVerifiedAssetReadiness(null);
+    setVerifiedAssetReadinessRequest({ status: 'loading', error: '' });
   }, [propertyId]);
   useEffect(() => {
     setOwnerAccessRejected(false);
@@ -8836,8 +8831,36 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
       });
-    get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
-      .then(apply(setVerifiedAssetReadiness));
+    setVerifiedAssetReadinessRequest(previous => previous.status === 'ready'
+      ? previous
+      : { status: 'loading', error: '' });
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verified-asset/readiness`, { headers })
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Readiness request failed (HTTP ${response.status}).`);
+        }
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error('Readiness service returned invalid data.');
+        }
+        if (!isVerifiedAssetReadinessResponse(data)) {
+          throw new Error('Readiness service returned incomplete or malformed data.');
+        }
+        if (sequence === loadSequence.current) {
+          setVerifiedAssetReadiness(data);
+          setVerifiedAssetReadinessRequest({ status: 'ready', error: '' });
+        }
+      })
+      .catch(error => {
+        if (sequence !== loadSequence.current) return;
+        setVerifiedAssetReadiness(null);
+        setVerifiedAssetReadinessRequest({
+          status: 'unavailable',
+          error: error.message || 'Readiness details are unavailable.',
+        });
+      });
     get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
       .then(apply(
         setSnapshotHistory,
@@ -9517,6 +9540,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
       </section>
       <VerifiedAssetReadinessCard
         verifiedAssetReadiness={verifiedAssetReadiness}
+        verifiedAssetReadinessRequest={verifiedAssetReadinessRequest}
         isDemo={isDemo}
         digitalAssetEnabled={digitalAssetEnabled}
         ownerAccess={hasOwnerAccess}
