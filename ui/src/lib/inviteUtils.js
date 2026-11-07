@@ -17,9 +17,11 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 // ── Session storage ───────────────────────────────────────────────────────────
 
 const SESSION_KEY = (propertyId) => `kontra_session_${propertyId}`;
+const inviteSessionsInMemory = new Map();
 
 /** Persist a session token for the current tab lifetime. */
 export function storeInviteSession(propertyId, sessionToken, expiresAt) {
+  inviteSessionsInMemory.set(propertyId, { token: sessionToken, expires: expiresAt });
   try {
     sessionStorage.setItem(SESSION_KEY(propertyId), JSON.stringify({
       token: sessionToken,
@@ -30,6 +32,14 @@ export function storeInviteSession(propertyId, sessionToken, expiresAt) {
 
 /** Retrieve a stored session token. Returns null if absent or expired. */
 export function getInviteSession(propertyId) {
+  const inMemory = inviteSessionsInMemory.get(propertyId);
+  if (inMemory) {
+    if (inMemory.expires && new Date(inMemory.expires) < new Date()) {
+      inviteSessionsInMemory.delete(propertyId);
+    } else {
+      return inMemory.token;
+    }
+  }
   try {
     const raw = sessionStorage.getItem(SESSION_KEY(propertyId));
     if (!raw) return null;
@@ -38,6 +48,7 @@ export function getInviteSession(propertyId) {
       sessionStorage.removeItem(SESSION_KEY(propertyId));
       return null;
     }
+    inviteSessionsInMemory.set(propertyId, { token, expires });
     return token;
   } catch {
     return null;
@@ -61,6 +72,7 @@ export function getRoomAuthHeaders(propertyId, extra = {}) {
 
 /** Clear a stored session (e.g. after revocation). */
 export function clearInviteSession(propertyId) {
+  inviteSessionsInMemory.delete(propertyId);
   try { sessionStorage.removeItem(SESSION_KEY(propertyId)); } catch { /* ignore */ }
 }
 

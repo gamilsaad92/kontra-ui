@@ -20,6 +20,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const { extractFromDocument, classifyDocument } = require('../../lib/documentIntelligence');
 const { ADAPTERS, runAdapter, parseCSV }         = require('../../lib/legacyAdapters');
+const { rejectSpreadsheetParsing } = require('../../lib/spreadsheetUploadGuard');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20 MB max
@@ -152,7 +153,7 @@ router.get('/jobs/:id', (req, res) => {
 
 // ── POST /api/integration/classify ───────────────────────────────────────────
 
-router.post('/classify', upload.single('file'), async (req, res) => {
+router.post('/classify', upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   try {
     const text = req.file
       ? req.file.buffer.toString('utf8')
@@ -171,7 +172,7 @@ router.post('/classify', upload.single('file'), async (req, res) => {
 
 // ── POST /api/integration/extract ────────────────────────────────────────────
 
-router.post('/extract', upload.single('file'), async (req, res) => {
+router.post('/extract', upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   try {
     const { doc_type: bodyDocType } = req.body;
     const file = req.file;
@@ -314,7 +315,7 @@ router.post('/email-parse', async (req, res) => {
 
 // ── POST /api/integration/csv-preview ────────────────────────────────────────
 
-router.post('/csv-preview', upload.single('file'), async (req, res) => {
+router.post('/csv-preview', upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   try {
     const text = req.file ? req.file.buffer.toString('utf8') : (req.body.text || '');
     if (!text) return res.status(400).json({ error: 'No CSV content provided' });

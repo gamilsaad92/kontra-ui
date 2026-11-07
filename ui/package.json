@@ -8,6 +8,8 @@
     "start": "serve -s dist -l $PORT",
     "preview": "vite preview",
     "test": "jest",
+    "test:e2e": "playwright test",
+    "test:e2e:staging-session": "playwright test e2e/staging-room-session.spec.js --project=chromium",
     "wiring:gate": "node ./scripts/wiring-gate.mjs"
   },
   "dependencies": {
@@ -18,7 +20,7 @@
     "@sentry/react": "^9.24.0",
     "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-query": "^5.0.0",
-    "axios": "^1.7.7",
+    "axios": "^1.21.0",
     "chart.js": "^4.4.9",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.453.0",
@@ -38,6 +40,7 @@
     "@babel/preset-env": "^7.26.10",
     "@babel/preset-react": "^7.26.0",
     "@babel/preset-typescript": "^7.26.0",
+    "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@vitejs/plugin-react": "^4.2.1",
@@ -49,6 +52,12 @@
     "tailwindcss": "^3.4.1",
     "vite": "^5.0.0",
     "vite-plugin-pwa": "^0.16.4"
+  },
+  "overrides": {
+    "axios": "$axios",
+    "brace-expansion@^2.0.0": "2.1.7",
+    "fast-uri@^3.0.0": "3.1.9",
+    "follow-redirects@^1.16.0": "1.16.2"
   },
   "engines": {
     "node": "22.x"

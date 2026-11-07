@@ -1,26 +1,24 @@
-const configured =
-  import.meta.env.VITE_API_BASE_URL?.trim() ||
-  import.meta.env.VITE_API_URL?.trim() ||
-  "";
-function resolveFallbackBase() {
-  const origin =
-    (typeof globalThis !== "undefined" &&
-      globalThis.location &&
-      typeof globalThis.location.origin === "string"
-      ? globalThis.location.origin
-      : "") || "";
+import { resolveApiRequestCredentials } from "./apiRequestCredentials.mjs";
+import { resolveApiBase } from "./apiBaseRouting.mjs";
 
-  return origin.trim();
+const env = import.meta.env || {};
+const fallbackOrigin =
+  typeof globalThis !== "undefined" &&
+  typeof globalThis.location?.origin === "string"
+    ? globalThis.location.origin
+    : "";
+export const API_BASE = resolveApiBase(env, fallbackOrigin);
+
+if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !window.__kontraApiCredentialsFetch) {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const requestUrl = typeof input === 'string' ? input : input?.url;
+    const credentials = resolveApiRequestCredentials(
+      requestUrl,
+      API_BASE,
+      window.location.href,
+    );
+    return nativeFetch(input, credentials ? { ...init, credentials: init.credentials || credentials } : init);
+  };
+  window.__kontraApiCredentialsFetch = true;
 }
-
-const fallback = resolveFallbackBase();
-const isLocalOrigin = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(fallback);
-// Production previews must not silently target the Vercel origin. If a Vercel
-// project ignores its checked-in env block, same-origin /api requests can hit
-// the wrong project root and surface as a generic "Load failed" room error.
-const fallbackBase = isLocalOrigin ? fallback : "https://kontra-api.onrender.com";
-const normalized = (configured && configured.length ? configured : fallbackBase)
-  .replace(/\/+$/, "")
-  .replace(/\/api$/, "");
-
-export const API_BASE = normalized;

@@ -44,6 +44,7 @@ const Sentry = require('@sentry/node');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
+const { rejectSpreadsheetParsing } = require('./lib/spreadsheetUploadGuard');
 const { supabase, replica, isDatabaseConnected } = require('./db');
 const {
   activateDocumentVersion,
@@ -338,6 +339,13 @@ const cache = require('./cache');
 const { addJob } = require('./jobQueue');
 const fs = require('fs');
 const crypto = require('crypto');
+const {
+  OWNER_ROLE_KEY,
+  SESSION_TTL_MS: OWNER_SESSION_TTL_MS,
+  createTrialOwnerExchange,
+  exchangeTrialOwnerCredential,
+  sha256: hashOwnerSessionToken,
+} = require('./lib/trialOwnerSessions');
 const { workflows, addWorkflow } = require('./workflowStore');
 const { runWorkflow } = require('./hyperautomation');
 const path = require('path');
@@ -515,34 +523,18 @@ async function savedPackMatchesApproval(packId, approvalHash) {
   }
 });
 
-const normalizeOrigin = (origin = '') => origin.replace(/\/$/, '');
-const parseOrigins = (value = '') =>
-  value
-    .split(',')
-    .map((part) => normalizeOrigin(part.trim()))
-    .filter(Boolean);
+const {
+  createCorsOriginCallback,
+  createOwnerCookieOriginGuard,
+  createTrustedOriginSet,
+} = require('./lib/corsSecurity');
 
-const envOrigins = [
-  ...parseOrigins(process.env.CORS_ORIGINS || ''),
-  normalizeOrigin(process.env.FRONTEND_URL || ''),
-].filter(Boolean);
-
-const defaultAllowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'https://kontra.vercel.app',
-  'https://kontra-ui.vercel.app',
-  'https://kontraui.com',
-  'https://www.kontraui.com',
-  'https://kontraplatform.com',
-  'https://www.kontraplatform.com',
-];
-
-const allowedOrigins = Array.from(new Set([
-  ...defaultAllowedOrigins,
-  ...envOrigins,
-]));
+const allowedOrigins = createTrustedOriginSet({
+  corsOrigins: process.env.CORS_ORIGINS || '',
+  frontendUrl: process.env.FRONTEND_URL || '',
+  vercelUrl: process.env.VERCEL_URL || '',
+  replitDevDomain: process.env.REPLIT_DEV_DOMAIN || '',
+});
 
 // Canonical frontend base URL for building links in emails and notifications.
 // Set FRONTEND_URL on Render (or any host) to match your deployed domain.
@@ -550,35 +542,8 @@ const allowedOrigins = Array.from(new Set([
 // the env var is not yet configured.
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
 
-const allowedOriginMatchers = [
-  ...allowedOrigins,
-  /\.vercel\.app$/,
-  /\.replit\.dev(:\d+)?$/,
-  /\.repl\.co(:\d+)?$/,
-  /localhost(:\d+)?$/,
-  /127\.0\.0\.1(:\d+)?$/,
-];
-
 const corsOptions = {
-  origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    const normalizedOrigin = normalizeOrigin(origin);
-   const isAllowed = allowedOriginMatchers.some((matcher) => (
-      matcher instanceof RegExp
-        ? matcher.test(normalizedOrigin)
-        : matcher === normalizedOrigin
-    ));
-    
-   if (isAllowed) {
-      return callback(null, true);
-    }
-
-    console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
-   return callback(new Error(`CORS blocked: ${normalizedOrigin}`));
-  },
+  origin: createCorsOriginCallback(allowedOrigins),
   credentials: true,
   allowedHeaders: [
     'Authorization',
@@ -608,6 +573,7 @@ const corsOptions = {
 const app = express();
 
 app.use(helmet());
+app.use(createOwnerCookieOriginGuard({ trustedOrigins: allowedOrigins }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -3457,13 +3423,83 @@ app.post('/api/webhook/stripe',
 })();
 
 // ── Public deal room lookup — no auth required ────────────────────────────────
+app.post(
+  '/api/public/deal-room/:propertyId/owner-session/exchange',
+  createOwnerCookieOriginGuard({ trustedOrigins: allowedOrigins, requireOrigin: true }),
+  async (req, res) => {
+    const { propertyId } = req.params;
+    const exchangeToken = typeof req.body?.exchangeToken === 'string'
+      ? req.body.exchangeToken.trim()
+      : '';
+    try {
+      const exchanged = await exchangeTrialOwnerCredential(supabase, {
+        propertyId,
+        token: exchangeToken,
+      });
+      if (!exchanged.ok) {
+        return res.status(403).json({
+          error: 'OWNER_EXCHANGE_INVALID',
+          message: 'This owner link is invalid, expired, already used, or belongs to another workspace.',
+        });
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('Set-Cookie', [
+        `${OWNER_SESSION_COOKIE}=${encodeURIComponent(exchanged.sessionToken)}`,
+        'HttpOnly',
+        'Secure',
+        'SameSite=Lax',
+        `Path=${ownerSessionCookiePath(propertyId)}`,
+        `Max-Age=${Math.floor(OWNER_SESSION_TTL_MS / 1000)}`,
+      ].join('; '));
+      return res.json({ success: true, expires_at: exchanged.expiresAt });
+    } catch (error) {
+      console.error('[owner-session/exchange]', error.message);
+      return res.status(503).json({ error: 'OWNER_SESSION_UNAVAILABLE' });
+    }
+  }
+);
+
+app.post('/api/public/deal-room/:propertyId/owner-session/logout', async (req, res) => {
+  const { propertyId } = req.params;
+  const token = readOwnerSessionCookie(req);
+  try {
+    if (token) {
+      const tokenHash = hashOwnerSessionToken(token);
+      const { data: session } = await supabase
+        .from('deal_room_access_sessions')
+        .select('invite_id')
+        .eq('session_token_hash', tokenHash)
+        .maybeSingle();
+      if (session?.invite_id) {
+        await supabase.from('deal_room_access_sessions')
+          .update({ revoked_at: new Date().toISOString() })
+          .eq('invite_id', session.invite_id)
+          .eq('session_token_hash', tokenHash);
+      }
+    }
+    res.setHeader('Set-Cookie', [
+      `${OWNER_SESSION_COOKIE}=`,
+      'HttpOnly',
+      'Secure',
+      'SameSite=Lax',
+      `Path=${ownerSessionCookiePath(propertyId)}`,
+      'Max-Age=0',
+    ].join('; '));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[owner-session/logout]', error.message);
+    return res.status(503).json({ error: 'OWNER_SESSION_LOGOUT_FAILED' });
+  }
+});
+
 app.get('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
   try {
     const access = await getRoomAccessContext(req, propertyId);
-    // A stale participant session may coexist with a valid owner token after
-    // the owner returns through My Deal Rooms. getRoomAccessContext gives the
-    // owner precedence, so do not reject that resolved owner context here.
+    // An explicit participant session is authoritative for this request;
+    // invalid participant credentials fail closed even if an owner cookie exists.
     if (req.headers['x-kontra-session'] && !['participant', 'owner'].includes(access.mode)) {
       return accessDenied(res, 'This invitation session is invalid or has expired');
     }
@@ -3526,15 +3562,6 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 // In-memory OTP store: email → { code, expiresAt }
 const otpStore = new Map();
 
-function buildOwnerTokenMap(rooms) {
-  return (rooms || []).reduce((tokens, room) => {
-    if (room?.property_id && room?.owner_write_token) {
-      tokens[room.property_id] = room.owner_write_token;
-    }
-    return tokens;
-  }, {});
-}
-
 app.post('/api/public/my-rooms/request-otp', async (req, res) => {
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
@@ -3590,12 +3617,13 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   try {
     const { data: rooms, error } = await supabase
       .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at, owner_write_token')
+      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, workflow_pack_id, created_at, activated_at')
       .ilike('customer_email', email)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    const ownerTokens = buildOwnerTokenMap(rooms);
-    if (!rooms || rooms.length === 0) return res.json({ rooms: [], email, owner_tokens: {} });
+    if (!rooms || rooms.length === 0) {
+      return res.json({ rooms: [], email, owner_exchange_tokens: {} });
+    }
     const ids = rooms.map(r => r.property_id);
     const [subsRes, invitesRes, analysesRes] = await Promise.all([
       supabase
@@ -3632,7 +3660,7 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
       if (!analysesMap[analysis.property_id]) analysesMap[analysis.property_id] = [];
       analysesMap[analysis.property_id].push(analysis);
     });
-    const enriched = rooms.map(({ owner_write_token: _ownerWriteToken, ...room }) => ({
+    const enriched = rooms.map(room => ({
       ...room,
       owner_name: room.owner_name || null,
       parties: buildRoomParticipants({
@@ -3647,11 +3675,17 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
         submissions: subMap[room.property_id] || [],
       }).length,
     }));
-    // The email OTP just verified ownership of every returned room. Rehydrate
-    // the same owner credential used by direct room links so a stale
-    // participant session cannot win when the owner opens a room from this
-    // dashboard. Keep the credential out of each persisted room row.
-    res.json({ rooms: enriched, email, owner_tokens: ownerTokens });
+    // The verified email can exchange a short-lived, one-use capability for
+    // each room's HttpOnly owner session. Raw owner-write tokens stay server-side.
+    const ownerExchangeTokens = {};
+    for (const room of rooms) {
+      ownerExchangeTokens[room.property_id] = await createTrialOwnerExchange(
+        supabase,
+        room.property_id,
+        email,
+      );
+    }
+    res.json({ rooms: enriched, email, owner_exchange_tokens: ownerExchangeTokens });
   } catch (err) {
     console.error('[verify-otp]', err.message);
     res.status(500).json({ error: 'Failed to load rooms' });
@@ -4335,6 +4369,26 @@ async function scopeChecklistItemsForAccess(items, access, packId, propertyType)
 // Owners authenticate with the owner write token issued at checkout. Participants
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
+const {
+  resolveExplicitParticipantAccess,
+  resolveOwnerSessionAccess,
+} = require('./lib/explicitParticipantAccess');
+const OWNER_SESSION_COOKIE = 'kontra_owner_session';
+
+function ownerSessionCookiePath(propertyId) {
+  return `/api/public/deal-room/${encodeURIComponent(propertyId)}`;
+}
+
+function readOwnerSessionCookie(req) {
+  const cookieHeader = req.headers.cookie || '';
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== OWNER_SESSION_COOKIE) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return ''; }
+  }
+  return '';
+}
+
 async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
   // A browser can retain a same-room owner token after opening a participant
   // invitation. A valid participant session is the more specific credential
@@ -4351,32 +4405,50 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
       .gt('expires_at', new Date().toISOString())
       .is('revoked_at', null)
       .maybeSingle();
+    let invite = null;
     if (session?.invite_id) {
-      const { data: invite } = await supabase
+      const result = await supabase
         .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status')
+        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
         .eq('id', session.invite_id)
         .maybeSingle();
-      if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
-        return {
-          mode: 'participant',
-          role: invite.role_key,
-          actorId: session.invite_id,
-          email: invite.invited_email || null,
-          actorType: 'participant',
-          permissions: {
-            viewOverview: true,
-            viewAssignedDocuments: true,
-            uploadAssignedDocuments: true,
-            viewAllDocuments: false,
-            manageStages: false,
-            manageParticipants: false,
-            manageSettings: false,
-            updateOwnSubmission: true,
-          },
-        };
-      }
+      invite = result.data;
     }
+    const participantAccess = resolveExplicitParticipantAccess({
+      sessionToken,
+      session,
+      invite,
+      propertyId,
+    });
+    if (participantAccess) return participantAccess;
+  }
+
+  const ownerCookieToken = readOwnerSessionCookie(req);
+  if (ownerCookieToken) {
+    const { data: session } = await supabase
+      .from('deal_room_access_sessions')
+      .select('invite_id, expires_at, revoked_at')
+      .eq('session_token_hash', hashOwnerSessionToken(ownerCookieToken))
+      .gt('expires_at', new Date().toISOString())
+      .is('revoked_at', null)
+      .maybeSingle();
+    let invite = null;
+    if (session?.invite_id) {
+      const result = await supabase
+        .from('deal_room_invites')
+        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
+        .eq('id', session.invite_id)
+        .maybeSingle();
+      invite = result.data;
+    }
+    const ownerAccess = resolveOwnerSessionAccess({
+      cookieToken: ownerCookieToken,
+      session,
+      invite,
+      propertyId,
+      ownerRoleKey: OWNER_ROLE_KEY,
+    });
+    if (ownerAccess) return ownerAccess;
   }
 
   const ownerToken = (
@@ -5789,7 +5861,7 @@ async function documentImpact(propertyId, correlationId, beforeState = null, con
   }
 }
 
-app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
+app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   const { propertyId } = req.params;
   const { section, role } = req.body || {};
   if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
@@ -6068,17 +6140,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             } catch {}
           } else if (mime === 'text/csv' || ext === 'csv') {
             text = buf.toString('utf8').slice(0, 12000);
-          } else if (['xlsx','xls'].includes(ext) || (mime || '').includes('spreadsheet') || (mime || '').includes('excel')) {
-            try {
-              const XLSX = require('xlsx');
-              const wb = XLSX.read(buf, { type: 'buffer' });
-              const rows = [];
-              for (const name of wb.SheetNames.slice(0, 6)) {
-                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
-                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 10) rows.push(`[${name}]\n${csv}`);
-              }
-              text = rows.join('\n\n').slice(0, 12000);
-            } catch {}
           } else if (isDocx) {
             text = extractDocxText(buf).slice(0, 12000);
           } else {
@@ -6213,15 +6274,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx';
             if (isDocx) {
               text = extractDocxText(buf).slice(0, 15000);
-            } else if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
-              const XLSX = require('xlsx');
-              const wb = XLSX.read(buf, { type: 'buffer' });
-              const rows = [];
-              for (const name of wb.SheetNames.slice(0, 8)) {
-                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
-                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) rows.push(`[Sheet: ${name}]\n${csv}`);
-              }
-              text = rows.join('\n\n').slice(0, 15000);
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
             } else if (isPdf) {

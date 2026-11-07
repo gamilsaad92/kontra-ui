@@ -1,0 +1,18 @@
+{
+  "installCommand": "npm install --package-lock=false --ignore-scripts --no-audit --no-fund",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-staging.kontraplatform.com/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/"
+    }
+  ],
+  "env": {
+    "VITE_API_ROUTING_MODE": "same-origin"
+  }
+}

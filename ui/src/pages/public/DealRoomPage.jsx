@@ -14,8 +14,23 @@ import NotificationsLog from "./NotificationsLog";
 import LegalReviewPanel from "./LegalReviewPanel";
 import { DEFAULT_PACK_ID, getWorkflowPack, ensureWorkflowPackLoaded, resolvePackId, getEffectiveStages, getCapabilities, isInSettlementPhase } from "../../lib/workflowPacks";
 import { API_BASE as RESOLVED_API_BASE } from "../../lib/apiBase";
+import {
+  getLifecycleActionState,
+  hasServerConfirmedRoomOwnerAccess,
+} from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
+import { isCoordinatorRoomView, roomRoleFromAccess } from "../../lib/roomAccessPresentation.mjs";
+import {
+  getTransactionRecordEvidence,
+  getOriginalDocumentUrl,
+  resolveTransactionRecordConflict,
+  verifyTransactionRecordField,
+} from "../../lib/transactionRecordReview.mjs";
+import {
+  getVerifiedAssetReadinessDisplay,
+  isVerifiedAssetReadinessResponse,
+} from "../../lib/verifiedAssetReadinessDisplay.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
 import {
   getPackRecordSchema,
@@ -3824,6 +3839,7 @@ function WhatNeedsAttention({
 function DigitalAssetReadinessSection({
   propertyId,
   property,
+  analyses = [],
   recordFields,
   recordState = null,
   conflicts = [],
@@ -3848,6 +3864,7 @@ function DigitalAssetReadinessSection({
   const [mutationError, setMutationError] = useState('');
   const [focusedFieldKey, setFocusedFieldKey] = useState('');
   const [expandedLists, setExpandedLists] = useState({});
+  const [openingSourceId, setOpeningSourceId] = useState('');
 
   const toggleList = (categoryKey, listKey) => {
     const key = `${categoryKey}:${listKey}`;
@@ -4140,37 +4157,46 @@ function DigitalAssetReadinessSection({
   async function confirmRecordField(field) {
     const fieldId = field?.fieldId || field?.id;
     if (!fieldId || confirmingField) return;
-    let ownerWriteToken = '';
-    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-    if (!ownerWriteToken) return;
     setConfirmingField(fieldId);
     setMutationError('');
     try {
-      const response = await fetch(
-        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/fields/${fieldId}/verify`,
-        {
-          method: 'POST',
-          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({
-            ownerWriteToken,
-            actorRole: field?.approveProvenance ? 'Workspace Owner' : 'coordinator',
-            approveProvenance: field?.approveProvenance === true,
-          }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.message || data.error || (
-          field?.approveProvenance
-            ? 'Manual provenance approval could not be recorded.'
-            : 'The Transaction Record field could not be confirmed.'
-        ));
-      }
+      await verifyTransactionRecordField({
+        apiBase: API_BASE,
+        propertyId,
+        fieldId,
+        approveProvenance: field?.approveProvenance === true,
+      });
       await onRecordUpdated?.();
     } catch (error) {
       setMutationError(error.message || 'The Transaction Record field could not be confirmed.');
     } finally {
       setConfirmingField('');
+    }
+  }
+
+  async function openSourceDocument(documentId) {
+    if (!documentId || openingSourceId) return;
+    const popup = window.open('about:blank', '_blank');
+    setOpeningSourceId(documentId);
+    setMutationError('');
+    try {
+      const result = await getOriginalDocumentUrl({
+        apiBase: API_BASE,
+        propertyId,
+        documentId,
+      });
+      if (!result.url) throw new Error('The original document is not available.');
+      if (popup) {
+        popup.opener = null;
+        popup.location.href = result.url;
+      } else {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      popup?.close();
+      setMutationError(error.message || 'The original document is not available.');
+    } finally {
+      setOpeningSourceId('');
     }
   }
 
@@ -4468,11 +4494,41 @@ function DigitalAssetReadinessSection({
                          <p className="text-xs text-gray-400 italic">No unconfirmed candidates.</p>
                        ) : (
                          <ul className="space-y-1">
-                            {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
-                              <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
+                              {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
+                                <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                  <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                  {(() => {
+                                    const evidence = getTransactionRecordEvidence(d.state?.field || d.state, analyses);
+                                    return (
+                                      <span className="w-full rounded-md bg-white/80 px-2 py-1.5 text-[10px] text-gray-500">
+                                        {evidence.available ? (
+                                          <>
+                                            <span className="block font-semibold text-gray-600">
+                                              {evidence.documentName || 'Source evidence'}
+                                              {evidence.page != null ? ` · page ${evidence.page}` : ''}
+                                            </span>
+                                            {evidence.excerpt && (
+                                              <span className="mt-0.5 block break-words italic">“{evidence.excerpt}”</span>
+                                            )}
+                                            {evidence.documentId && (
+                                              <button
+                                                type="button"
+                                                onClick={() => openSourceDocument(evidence.documentId)}
+                                                disabled={openingSourceId === evidence.documentId}
+                                                className="mt-1 font-semibold text-[#800020] underline underline-offset-2 disabled:opacity-50"
+                                              >
+                                                {openingSourceId === evidence.documentId ? 'Opening original…' : 'Open original'}
+                                              </button>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <span>Source evidence unavailable.</span>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
                                   {(d.state?.fieldId || d.state?.field?.id) && d.state?.value && (
                                     <span className="flex max-w-full flex-wrap items-center gap-1">
                                       <button type="button" onClick={() => confirmRecordField(d.state)} disabled={!!confirmingField}
@@ -6219,24 +6275,18 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
     };
   };
   const resolve = async valueText => {
-    let ownerWriteToken = '';
-    try { ownerWriteToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''; } catch {}
-    if (!ownerWriteToken || saving) return;
+    if (saving || (legacyFieldOnly && !legacyFieldId)) return;
     setSaving(true);
     setError('');
     try {
-      const response = await fetch(
-        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/conflicts/${conflict.id}/resolve`,
-        {
-          method: 'POST',
-          headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ ownerWriteToken, value_text: valueText }),
-        },
-      );
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || 'The conflict could not be resolved.');
-      }
+      await resolveTransactionRecordConflict({
+        apiBase: API_BASE,
+        propertyId,
+        conflictId: conflict.id,
+        legacyFieldOnly,
+        legacyFieldId,
+        valueText,
+      });
       await onResolved?.();
       onClose?.();
     } catch (resolveError) {
@@ -8433,8 +8483,9 @@ function DigitalAssetPackageModal({
 
 function VerifiedAssetReadinessCard({
   verifiedAssetReadiness,
+  verifiedAssetReadinessRequest,
   isDemo = false,
-  ownerToken,
+  ownerAccess,
   snapshotAction,
   snapshotHistory = [],
   packageHistory = [],
@@ -8446,39 +8497,14 @@ function VerifiedAssetReadinessCard({
   onGeneratePackage,
   onOpenProvenance,
 }) {
-  const isUnavailable = !verifiedAssetReadiness;
-  const summary = verifiedAssetReadiness?.summary || {};
-  const reasons = verifiedAssetReadiness?.reasons || {};
-  const eligibility = verifiedAssetReadiness?.eligibility || 'unavailable';
-  const readinessStatus = verifiedAssetReadiness?.status;
-  const incompleteFields = Array.isArray(reasons.incomplete_required_fields)
-    ? reasons.incomplete_required_fields
-    : [];
-  const unresolvedConflicts = Array.isArray(reasons.unresolved_conflicts)
-    ? reasons.unresolved_conflicts
-    : [];
-  const missingApprovals = Array.isArray(reasons.missing_approvals)
-    ? reasons.missing_approvals
-    : [];
-  const provenanceGaps = Array.isArray(reasons.provenance_gaps)
-    ? reasons.provenance_gaps
-    : [];
-  const blockerLabels = [
-    ...incompleteFields.map(item => item?.label || item?.field_key),
-    ...unresolvedConflicts.map(item => item?.label || item?.field_key),
-    ...missingApprovals.map(item => `${item?.label || item?.field_key} — approval required`),
-    ...provenanceGaps.map(item =>
-      `${item?.label || item?.field_key} — ${item?.source || item?.requirement || 'current provenance required'}`,
-    ),
-  ].filter(Boolean);
-  const statusLabel = isUnavailable
-    ? 'Loading or unavailable'
-    : (readinessStatus || eligibility || 'in progress').replace(/_/g, ' ');
-  const eligibilityLabel = eligibility === 'eligible'
-    ? 'Eligible'
-    : eligibility === 'unavailable'
-      ? 'Unavailable'
-      : 'In progress';
+  const display = getVerifiedAssetReadinessDisplay({
+    readiness: verifiedAssetReadiness,
+    requestStatus: verifiedAssetReadinessRequest?.status || 'loading',
+    requestError: verifiedAssetReadinessRequest?.error || '',
+    digitalAssetEnabled,
+  });
+  const summary = display.summary;
+  const blockerLabels = display.blockerLabels;
   const action = snapshotAction || { loading: false, message: '', error: false };
 
   return (
@@ -8488,29 +8514,25 @@ function VerifiedAssetReadinessCard({
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#800020]">
             Verified Asset foundation
           </p>
-          <h2 className="mt-1 text-lg font-bold text-gray-900">
-            {digitalAssetEnabled ? 'Digital Asset Readiness' : 'Verified Asset Record'}
-          </h2>
+          <h2 className="mt-1 text-lg font-bold text-gray-900">{display.title}</h2>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-gray-500">
             {digitalAssetEnabled
               ? 'Provider-neutral preparation status derived from the canonical Transaction Record.'
               : 'Provider-neutral evidence and immutable record status derived from the canonical Transaction Record.'}
           </p>
-          {digitalAssetEnabled && (
-            <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
-              Status: {statusLabel}
-            </p>
-          )}
+          <p className="mt-2 text-[11px] font-semibold capitalize text-gray-700">
+            Status: {display.status ? display.status.replace(/_/g, ' ') : display.eligibilityLabel}
+          </p>
         </div>
-        {digitalAssetEnabled && <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-          eligibility === 'eligible'
+        <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+          display.eligibilityLabel === 'Eligible'
             ? 'bg-emerald-100 text-emerald-800'
-            : eligibility === 'unavailable'
+            : display.eligibilityLabel === 'Unavailable' || display.eligibilityLabel === 'Loading'
               ? 'bg-gray-200 text-gray-700'
               : 'bg-amber-100 text-amber-800'
         }`}>
-          {eligibilityLabel}
-        </span>}
+          {display.eligibilityName}: {display.eligibilityLabel}
+        </span>
       </div>
       {isDemo && (
         <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3">
@@ -8527,28 +8549,34 @@ function VerifiedAssetReadinessCard({
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Canonical fields</p>
           <p className="mt-1 text-base font-black text-gray-900">
-            {summary.confirmed_count || 0}
-            <span className="text-xs font-semibold text-gray-400"> / {summary.required_count || 0} confirmed</span>
+            {summary ? summary.confirmed_count : '—'}
+            <span className="text-xs font-semibold text-gray-400"> / {summary ? summary.required_count : '—'} confirmed</span>
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Open exceptions</p>
           <p className={`mt-1 text-base font-black ${
-            (summary.unresolved_exception_count || 0) > 0 ? 'text-amber-700' : 'text-emerald-700'
+            !summary || summary.unresolved_exception_count > 0 ? 'text-amber-700' : 'text-emerald-700'
           }`}>
-            {summary.unresolved_exception_count || 0}
+            {summary ? summary.unresolved_exception_count : '—'}
             <span className="text-xs font-semibold text-gray-400"> blockers</span>
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Evidence readiness</p>
           <p className="mt-1 text-xs font-bold text-gray-700">
-            {summary.provenance_intact ? 'Provenance intact' : `${summary.provenance_gap_count || 0} provenance gaps`}
+            {summary
+              ? summary.provenance_intact
+                ? 'Provenance intact'
+                : `${summary.provenance_gap_count} provenance gaps`
+              : 'Unavailable'}
           </p>
           <p className="mt-1 text-[10px] text-gray-400">
-            {summary.approvals_satisfied
-              ? 'Approvals satisfied'
-              : `${summary.missing_approval_count || 0} approvals missing`}
+            {summary
+              ? summary.approvals_satisfied
+                ? 'Approvals satisfied'
+                : `${summary.missing_approval_count} approvals missing`
+              : 'Approval status unavailable'}
           </p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
@@ -8564,22 +8592,27 @@ function VerifiedAssetReadinessCard({
         </div>
       </div>
 
-      {digitalAssetEnabled && isUnavailable ? (
+      {display.state === 'loading' ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-          Readiness details are loading or currently unavailable. This card stays visible while Kontra reconnects to the readiness service.
+          {display.message}
         </div>
-      ) : digitalAssetEnabled && blockerLabels.length > 0 ? (
+      ) : display.state === 'unavailable' ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+          {display.message}
+        </div>
+      ) : !display.clean ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
-            Current blockers and exceptions
+            {display.eligibilityLabel === 'Ineligible' ? 'Readiness is ineligible' : 'Current blockers and exceptions'}
           </p>
           <p className="mt-1 text-xs text-amber-900">
-            {blockerLabels.slice(0, 3).join(' · ')}
-            {blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}
+            {blockerLabels.length > 0
+              ? `${blockerLabels.slice(0, 3).join(' · ')}${blockerLabels.length > 3 ? ` · +${blockerLabels.length - 3} more` : ''}`
+              : display.message}
           </p>
-          {provenanceGaps.length > 0 && (
+          {display.provenanceGaps.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {provenanceGaps.map(gap => (
+              {display.provenanceGaps.map(gap => (
                 <button
                   key={gap.field_key || gap.label}
                   type="button"
@@ -8595,7 +8628,7 @@ function VerifiedAssetReadinessCard({
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-800">
-          No canonical blockers or unresolved exceptions are currently reported.
+          {display.message}
         </div>
       )}
 
@@ -8604,20 +8637,20 @@ function VerifiedAssetReadinessCard({
           <p className="text-xs text-gray-500">
             {isDemo
               ? 'Public demo exhibit — no room changes are available.'
-              : ownerToken
+              : ownerAccess
                 ? 'Owner session active — snapshots can be recorded.'
                 : 'Owner session not available — sign in through My Deal Rooms to record a snapshot.'}
           </p>
           <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
             {digitalAssetEnabled
               ? 'Recording preserves this exact readiness state, including any ineligible status. It does not generate a preparation package or bypass blockers.'
-              : 'Recording preserves this exact verified record state, including its evidence and exception history.'}
+              : 'Recording preserves this exact Verified Asset state, including an ineligible status. It does not advance transaction lifecycle readiness.'}
           </p>
         </div>
         <button
           type="button"
           onClick={onRecordSnapshot}
-           disabled={isDemo || !ownerToken || action.loading}
+            disabled={isDemo || !ownerAccess || action.loading}
           className="rounded-lg border border-[#800020] px-3 py-2 text-xs font-bold text-[#800020] transition hover:bg-[#800020] hover:text-white disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent disabled:hover:text-gray-400"
         >
            {action.loading ? 'Recording…' : isDemo ? 'Demo snapshot is read-only' : 'Record readiness snapshot'}
@@ -8711,6 +8744,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [recordHydrationStatus, setRecordHydrationStatus] = useState('hydrating');
   const [readiness, setReadiness]       = useState(null);
   const [verifiedAssetReadiness, setVerifiedAssetReadiness] = useState(null);
+  const [verifiedAssetReadinessRequest, setVerifiedAssetReadinessRequest] = useState({
+    status: 'loading',
+    error: '',
+  });
   const [snapshotHistory, setSnapshotHistory] = useState([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState(null);
   const [snapshotAction, setSnapshotAction] = useState({ loading: false, message: '', error: false });
@@ -8719,6 +8756,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const [packageAction, setPackageAction] = useState({ loading: false, message: '', error: false });
   const [loading, setLoading]           = useState(true);
   const [ownerToken, setOwnerToken]     = useState('');
+  const [ownerAccessRejected, setOwnerAccessRejected] = useState(false);
   const [advancingStage, setAdvancingStage] = useState(false);
   const [stageActionError, setStageActionError] = useState('');
   const [selectedConflict, setSelectedConflict] = useState(null);
@@ -8728,6 +8766,17 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   useEffect(() => {
     try { setOwnerToken(localStorage.getItem(`kontra_owner_token_${propertyId}`) || ''); } catch {}
   }, [propertyId]);
+  useEffect(() => {
+    setVerifiedAssetReadiness(null);
+    setVerifiedAssetReadinessRequest({ status: 'loading', error: '' });
+  }, [propertyId]);
+  useEffect(() => {
+    setOwnerAccessRejected(false);
+  }, [propertyId, property?.access?.mode]);
+
+  const hasOwnerAccess = !isDemo
+    && hasServerConfirmedRoomOwnerAccess(property)
+    && !ownerAccessRejected;
 
   const load = useCallback(async () => {
     if (!propertyId) return;
@@ -8783,8 +8832,36 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         if (sequence !== loadSequence.current) return;
         setReadiness(data);
       });
-    get(`/api/public/deal-room/${propertyId}/verified-asset/readiness`, null)
-      .then(apply(setVerifiedAssetReadiness));
+    setVerifiedAssetReadinessRequest(previous => previous.status === 'ready'
+      ? previous
+      : { status: 'loading', error: '' });
+    fetch(`${API_BASE}/api/public/deal-room/${propertyId}/verified-asset/readiness`, { headers })
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Readiness request failed (HTTP ${response.status}).`);
+        }
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error('Readiness service returned invalid data.');
+        }
+        if (!isVerifiedAssetReadinessResponse(data)) {
+          throw new Error('Readiness service returned incomplete or malformed data.');
+        }
+        if (sequence === loadSequence.current) {
+          setVerifiedAssetReadiness(data);
+          setVerifiedAssetReadinessRequest({ status: 'ready', error: '' });
+        }
+      })
+      .catch(error => {
+        if (sequence !== loadSequence.current) return;
+        setVerifiedAssetReadiness(null);
+        setVerifiedAssetReadinessRequest({
+          status: 'unavailable',
+          error: error.message || 'Readiness details are unavailable.',
+        });
+      });
     get(`/api/public/deal-room/${propertyId}/verified-asset/snapshots`, { snapshots: [] })
       .then(apply(
         setSnapshotHistory,
@@ -8814,7 +8891,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   }, [load]);
 
   const recordReadinessSnapshot = useCallback(async () => {
-    if (!propertyId || !ownerToken || snapshotAction.loading) return;
+    if (!propertyId || !hasOwnerAccess || snapshotAction.loading) return;
     setSnapshotAction({ loading: true, message: '', error: false });
     try {
       const response = await fetch(
@@ -8822,11 +8899,12 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
         {
           method: 'POST',
           headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ ownerWriteToken: ownerToken }),
+          credentials: 'include',
         },
       );
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setOwnerAccessRejected(true);
         throw new Error(data.message || data.error || 'Snapshot could not be recorded.');
       }
       const snapshot = data.snapshot || {};
@@ -8844,7 +8922,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     } catch (error) {
       setSnapshotAction({ loading: false, error: true, message: error.message });
     }
-  }, [propertyId, ownerToken, snapshotAction.loading, load]);
+  }, [propertyId, hasOwnerAccess, snapshotAction.loading, load]);
 
   const generateDigitalAssetPackage = useCallback(async snapshot => {
     if (!propertyId || !ownerToken || !snapshot?.id || packageAction.loading) return;
@@ -8997,6 +9075,10 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
     ),
     recordHydrated: recordHydrationStatus === 'ready' || Boolean(readiness?.transaction_record),
   });
+  const lifecycleActionState = getLifecycleActionState({
+    hasOwnerAccess,
+    lifecycleEligible: lifecycleGate.eligible,
+  });
   const readinessPct = canonicalRecordState?.requiredCount > 0
     ? Math.round((canonicalRecordState.confirmedCount / canonicalRecordState.requiredCount) * 100)
     : (readiness?.transaction_readiness?.overall_pct ?? null);
@@ -9140,20 +9222,21 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
   const lifecycleDateLabel = isGeneratedAiRoom(property) ? 'Target completion' : 'Target close';
 
   async function advanceLifecycleStage() {
-    if (!ownerToken || !nextLifecycleStage || !lifecycleGate.eligible || advancingStage) return;
+    if (!hasOwnerAccess || !nextLifecycleStage || !lifecycleGate.eligible || advancingStage) return;
     setAdvancingStage(true);
     setStageActionError('');
     try {
       const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/advance`, {
         method: 'POST',
         headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        credentials: 'include',
         body: JSON.stringify({
           stage: nextLifecycleStage.key,
-          ownerWriteToken: ownerToken,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setOwnerAccessRejected(true);
         const details = [];
         if (Array.isArray(data?.unmet_fields) && data.unmet_fields.length > 0) {
           details.push(`Unconfirmed: ${data.unmet_fields.map(key => String(key).replace(/^(transaction|financial)\./, '').replace(/_/g, ' ')).join(', ')}`);
@@ -9400,7 +9483,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                   </p>
                 )}
               </div>
-              {ownerToken && lifecycleGate.eligible ? (
+              {lifecycleActionState.showAdvanceControl ? (
                 <button
                   type="button"
                   onClick={advanceLifecycleStage}
@@ -9410,11 +9493,11 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
                 >
                   {advancingStage ? 'Advancing…' : `Advance to ${nextLifecycleStage.label} →`}
                 </button>
-              ) : (
+              ) : lifecycleActionState.showOwnerAccessWarning ? (
                 <p className="shrink-0 text-right text-[10px] font-semibold text-amber-700">
                   Open this room from My Deal Rooms to verify owner access.
                 </p>
-              )}
+              ) : null}
             </div>
           ) : effectiveStages.length > 0 ? (
             <p className="text-xs font-semibold text-emerald-700">
@@ -9435,12 +9518,13 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
           {readinessPhase === 'complete' && (
             <TransactionSealSummaryCard propertyId={propertyId} />
           )}
-          {digitalAssetEnabled && <DigitalAssetReadinessSection
+          <DigitalAssetReadinessSection
             propertyId={propertyId}
-             property={property}
+            property={property}
+            analyses={analyses}
             recordFields={recordFields}
             recordState={canonicalRecordState}
-             conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
+            conflicts={readiness?.conflicts || canonicalRecordState?.unresolvedConflicts || []}
             readiness={readiness}
              provenanceGaps={verifiedAssetReadiness?.reasons?.provenance_gaps || []}
              ownerToken={ownerToken}
@@ -9451,15 +9535,16 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             embedded
             onRecordUpdated={load}
             focusRequest={recordFocus}
-             onConflict={setSelectedConflict}
-          />}
+            onConflict={setSelectedConflict}
+          />
         </div>
       </section>
       <VerifiedAssetReadinessCard
         verifiedAssetReadiness={verifiedAssetReadiness}
+        verifiedAssetReadinessRequest={verifiedAssetReadinessRequest}
         isDemo={isDemo}
         digitalAssetEnabled={digitalAssetEnabled}
-        ownerToken={ownerToken}
+        ownerAccess={hasOwnerAccess}
         snapshotHistory={snapshotHistory}
         snapshotAction={snapshotAction}
         packageHistory={packageHistory}
@@ -10772,17 +10857,8 @@ export default function DealRoomPage() {
         // receives a resolved workflowPack on its first seed attempt.
         setPackReady(true);
         setApiProperty(data);
-        if (data?.access?.mode === 'participant' && data.access.role) {
-          setAccessRole(data.access.role);
-        }
-        // Owner: always grant coordinator access regardless of the checkout-selected role.
-        // The stored DB role may be 'buyer', 'lender', etc. when the owner chose a
-        // non-coordinator role during room creation. The API now returns safe.role =
-        // 'deal_coordinator' for owner-token requests, but setAccessRole here ensures
-        // isCoordinator resolves correctly even against a stale cached response.
-        if (data?.access?.mode === 'owner') {
-          setAccessRole('deal_coordinator');
-        }
+        const resolvedAccessRole = roomRoleFromAccess(data?.access);
+        if (resolvedAccessRole) setAccessRole(resolvedAccessRole);
         setLoadingApi(false);
       })
       .catch((error) => {
@@ -11038,15 +11114,13 @@ export default function DealRoomPage() {
   // fallback for legacy owner links and packs whose primary role is explicitly
   // non-invitable; a canManage flag alone must not turn an external participant
   // into the workspace owner.
-  const isOwnerAccess = property?.access?.mode === 'owner';
-  const isCoordinator = isDemo || isOwnerAccess
-    || (hasOwnerToken && role === 'owner')
-    || (
-      property?.access?.mode !== 'participant'
-      && hasOwnerToken
-      && roleConfig?.canManage === true
-      && roleConfig?.invitable !== true
-    );
+  const isCoordinator = isCoordinatorRoomView({
+    isDemo,
+    access: property?.access,
+    hasOwnerToken,
+    role,
+    roleConfig,
+  });
 
   // The "Outstanding Items" grid (risk/compliance/property panels) still
   // hardcodes CRE concepts (NOI, DSCR, occupancy) inside the panels

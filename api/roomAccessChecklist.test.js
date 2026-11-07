@@ -1,6 +1,7 @@
 const mockOwnerToken = 'owner-token';
 const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
+const mockCanonicalRpc = jest.fn(async () => ({ data: { status: 'committed' }, error: null }));
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
 let mockBrainAuthorizationTestsEnabled = false;
@@ -91,7 +92,7 @@ jest.mock('./db', () => {
       single: async () => ({ data: owner, error: null }),
       then: (resolve) => resolve({
         data: table === 'deal_rooms' && state.filters.customer_email
-          ? [owner]
+          ? [(({ owner_write_token, ...room }) => room)(owner)]
           : table === 'transaction_record_fields' ? [transactionField()] : [],
         error: null,
       }),
@@ -99,7 +100,12 @@ jest.mock('./db', () => {
     return chain;
   }
 
-  return { supabase: { from: builder } };
+  return {
+    supabase: {
+      from: builder,
+      rpc: (...args) => mockCanonicalRpc(...args),
+    },
+  };
 });
 
 jest.mock('./lib/transactionState', () => {
@@ -139,6 +145,7 @@ const request = require('supertest');
 describe('room access and checklist scoping', () => {
   beforeEach(() => {
     mockInsertedRows.length = 0;
+    mockCanonicalRpc.mockReset().mockResolvedValue({ data: { status: 'committed' }, error: null });
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
     mockBrainAuthorizationTestsEnabled = false;
@@ -209,16 +216,14 @@ describe('room access and checklist scoping', () => {
     }
   });
 
-  it('falls back to owner access when the participant session is expired or revoked', async () => {
+  it('fails closed when an explicit participant session is expired or revoked', async () => {
     mockParticipantSessionAvailable = false;
     const response = await request(app)
       .get('/api/public/deal-room/room-1')
       .set('x-owner-write-token', mockOwnerToken)
       .set('x-kontra-session', mockParticipantToken);
 
-    expect(response.status).toBe(200);
-    expect(response.body.role).toBe('deal_coordinator');
-    expect(response.body.access).toEqual({ mode: 'owner' });
+    expect(response.status).toBe(403);
   });
 
   it('does not accept an owner token from a different room', async () => {
@@ -296,22 +301,23 @@ describe('room access and checklist scoping', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.provenanceApproved).toBe(true);
-    const approval = mockInsertedRows.find(row => row.table === 'transaction_record_approvals');
-    const history = mockInsertedRows.find(row => row.table === 'transaction_record_history');
-    expect(approval.values).toEqual(expect.objectContaining({
+    const rpcCall = mockCanonicalRpc.mock.calls.find(([name]) => name === 'kontra_commit_canonical_change_set');
+    expect(rpcCall).toBeDefined();
+    const changeSet = rpcCall[1].p_change_set;
+    expect(changeSet.approval_rows).toEqual([expect.objectContaining({
       field_id: 'field-1',
       action: 'approved',
       is_manual: true,
       prior_value: '90000',
       new_value: '90000',
-    }));
-    expect(history.values).toEqual(expect.objectContaining({
+    })]);
+    expect(changeSet.history_rows).toEqual([expect.objectContaining({
       event_type: 'provenance_approved',
       prior_value: '90000',
       new_value: '90000',
       prior_status: 'verified',
       new_status: 'verified',
-    }));
+    })]);
   });
 
   it('rejects manual provenance approval when document provenance already exists', async () => {
@@ -449,7 +455,7 @@ describe('room access and checklist scoping', () => {
     expect(response.body.items.map(item => item.section)).toEqual(['seller_financials']);
   });
 
-  it('rehydrates owner credentials for My Deal Rooms re-entry without exposing them in room rows', async () => {
+  it('returns one-use owner exchange capabilities without exposing owner-write tokens', async () => {
     app.setMyRoomsOtpForTest('owner@example.com', '123456');
 
     const response = await request(app)
@@ -457,7 +463,11 @@ describe('room access and checklist scoping', () => {
       .send({ email: 'owner@example.com', code: '123456' });
 
     expect(response.status).toBe(200);
-    expect(response.body.owner_tokens).toEqual({ 'room-1': mockOwnerToken });
+    expect(response.body.owner_exchange_tokens).toEqual({
+      'room-1': expect.any(String),
+    });
+    expect(response.body.owner_exchange_tokens['room-1']).not.toBe(mockOwnerToken);
+    expect(response.body).not.toHaveProperty('owner_tokens');
     expect(response.body.rooms[0]).not.toHaveProperty('owner_write_token');
   });
 

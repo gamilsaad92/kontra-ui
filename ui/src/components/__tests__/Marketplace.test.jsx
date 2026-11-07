@@ -1,10 +1,16 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
+import { api } from '../../lib/apiClient';
 import Marketplace from '../trades/Marketplace';
+
+jest.mock('../../lib/apiClient', () => ({
+  api: { post: jest.fn() },
+}));
 
 describe('Marketplace component', () => {
   beforeEach(() => {
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true }));
+    api.post.mockResolvedValue({ data: {} });
   });
   afterEach(() => jest.resetAllMocks());
 
@@ -20,12 +26,9 @@ describe('Marketplace component', () => {
     fireEvent.change(screen.getByPlaceholderText('Expected APY (%)'), { target: { value: '8.5' } });
     fireEvent.change(screen.getByPlaceholderText('Investor Wallet (Base)'), { target: { value: '0xabc' } });
     fireEvent.click(screen.getByRole('button', { name: /post order/i }));
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/marketplace',
-      expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/marketplace',
+      {
           type: 'ask',
           symbol: 'AAA',
           quantity: 5,
@@ -37,9 +40,8 @@ describe('Marketplace component', () => {
           expectedApy: 8.5,
           payoutFrequency: 'monthly',
           walletAddress: '0xabc',
-        }),
-      })
-    );
+      },
+    ));
     expect(onSubmitted).toHaveBeenCalled();
   });
 });

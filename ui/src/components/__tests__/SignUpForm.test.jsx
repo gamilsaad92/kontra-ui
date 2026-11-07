@@ -13,9 +13,11 @@ function renderForm() {
   );
 }
 
-test('magic link option hides password fields', () => {
+test('signup role selection keeps the required password fields', () => {
   renderForm();
-  fireEvent.click(screen.getByLabelText(/Email Magic Link/i));
-  expect(screen.queryByPlaceholderText('Password')).not.toBeInTheDocument();
-  expect(screen.queryByPlaceholderText('Confirm Password')).not.toBeInTheDocument();
+  expect(document.querySelectorAll('input[type="password"]')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'Create Borrower Account' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Investor/ }));
+  expect(screen.getByRole('button', { name: 'Create Investor Account' })).toBeInTheDocument();
+  expect(document.querySelectorAll('input[type="password"]')).toHaveLength(2);
 });

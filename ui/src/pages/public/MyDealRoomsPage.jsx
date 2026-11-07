@@ -2,8 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 import { getCoordinatorRoleKeys } from "../../lib/workflowRoles";
+import { clearInviteSession } from "../../lib/inviteUtils";
+import {
+  exchangeMyDealRoomsOwnerSessions,
+  logoutMyDealRoomsOwnerSessions,
+} from "../../lib/myDealRoomsOwnerSessions.mjs";
+import { API_BASE } from "../../lib/apiBase";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
 
 const TYPE_ICONS = {
@@ -331,6 +336,9 @@ export default function MyDealRoomsPage() {
           if (!propertyId || !ownerToken) return;
           try { localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken); } catch {}
         });
+        for (const room of r || []) {
+          if (room?.property_id) clearInviteSession(room.property_id);
+        }
         const packIds = [...new Set((r || []).map(room => room.workflow_pack_id).filter(Boolean))];
         Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id))).finally(() => {
           setRooms(r); setEmail(e); setOwnerName(n || "");
@@ -378,13 +386,17 @@ export default function MyDealRoomsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code — please try again");
-      const n = data.rooms?.[0]?.owner_name || "";
-      Object.entries(data.owner_tokens || {}).forEach(([propertyId, ownerToken]) => {
-        if (!propertyId || !ownerToken) return;
-        try {
-          localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken);
-        } catch {}
+      // My Deal Rooms is an intentional coordinator re-entry. Clear this tab's
+      // participant context before restoring coordinator access.
+      for (const room of data.rooms || []) {
+        if (room?.property_id) clearInviteSession(room.property_id);
+      }
+      await exchangeMyDealRoomsOwnerSessions({
+        rooms: data.rooms || [],
+        exchangeTokens: data.owner_exchange_tokens || {},
+        apiBase: API_BASE,
       });
+      const n = data.rooms?.[0]?.owner_name || "";
       const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
       await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
       setRooms(data.rooms || []); setOwnerName(n);
@@ -392,16 +404,26 @@ export default function MyDealRoomsPage() {
          rooms: data.rooms || [],
          email: data.email || email,
          ownerName: n,
-         owner_tokens: data.owner_tokens || {},
        }));
       setStep("dashboard");
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
 
-  function signOut() {
-    sessionStorage.removeItem(SESSION_KEY);
-    setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError("");
+  async function signOut() {
+    const currentRooms = rooms;
+    try {
+      await logoutMyDealRoomsOwnerSessions({ rooms: currentRooms, apiBase: API_BASE });
+    } catch {
+      // Local sign-out still completes when the API is temporarily unavailable.
+    } finally {
+      for (const room of currentRooms) {
+        if (!room?.property_id) continue;
+        try { localStorage.removeItem(`kontra_owner_token_${room.property_id}`); } catch {}
+      }
+      sessionStorage.removeItem(SESSION_KEY);
+      setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError("");
+    }
   }
 
   async function manageBilling() {

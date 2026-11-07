@@ -1,5 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+jest.mock('../../../lib/featureFlags', () => ({
+  isFeatureEnabled: () => true,
+}));
 import KycCheck from '../KycCheck';
 
 describe('KycCheck', () => {

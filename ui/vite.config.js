@@ -3,13 +3,20 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath, URL } from "node:url";
+import { resolveApiBase } from "./src/lib/apiBaseRouting.mjs";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const enablePwa = env.VITE_ENABLE_PWA === "true";
+  const apiBase = resolveApiBase(env);
 
   return {
     base: "/",
+    define: {
+      "import.meta.env.VITE_API_BASE": JSON.stringify(apiBase),
+      "import.meta.env.VITE_API_BASE_URL": JSON.stringify(apiBase),
+      "import.meta.env.VITE_API_URL": JSON.stringify(apiBase),
+    },
     plugins: [
       react(),
       enablePwa

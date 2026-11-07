@@ -27,6 +27,11 @@ const {
 const { clearBriefingCache } = require('../lib/operationsManager');
 const { extractDocxText } = require('../lib/docxText');
 const {
+  isExcelWorkbookUpload,
+  rejectSpreadsheetParsing,
+  SPREADSHEET_PARSING_DISABLED_MESSAGE,
+} = require('../lib/spreadsheetUploadGuard');
+const {
   syncParticipantSubmissionFromDocument,
 } = require('../lib/participantSubmissionState');
 
@@ -385,6 +390,12 @@ async function extractPdfViaVision(buffer) {
 }
 
 async function extractTextFromFile(buffer, mimetype = '', filename = '') {
+  if (isExcelWorkbookUpload({ buffer, mimetype, originalname: filename })) {
+    const error = new Error(SPREADSHEET_PARSING_DISABLED_MESSAGE);
+    error.code = 'SPREADSHEET_PARSING_TEMPORARILY_DISABLED';
+    error.status = 415;
+    throw error;
+  }
   const ext = ((filename || '').split('.').pop() || '').toLowerCase();
   // PDF — vision pipeline (text + scanned)
   if (mimetype === 'application/pdf' || ext === 'pdf' || buffer.slice(0,4).toString() === '%PDF') {
@@ -394,22 +405,6 @@ async function extractTextFromFile(buffer, mimetype = '', filename = '') {
       throw new Error('ENCRYPTED_PDF');
     }
     return extractPdfViaVision(buffer);
-  }
-  // Excel — .xlsx, .xls, .xlsm, .xlsb
-  if (mimetype.includes('spreadsheet') || mimetype.includes('excel') ||
-      mimetype.includes('macroEnabled') || mimetype.includes('ms-excel') ||
-      ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
-    const XLSX = require('xlsx');
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    const rows = [];
-    for (const name of wb.SheetNames.slice(0, 8)) {
-      const sheet = wb.Sheets[name];
-      const csv = XLSX.utils.sheet_to_csv(sheet);
-      if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) {
-        rows.push(`[Sheet: ${name}]\n${csv}`);
-      }
-    }
-    return rows.join('\n\n').slice(0, 15000);
   }
   // CSV / plain text
   if (mimetype === 'text/csv' || mimetype === 'text/plain' || ext === 'csv') {
@@ -438,7 +433,7 @@ function safeExtractionExcerpt(text) {
     .slice(0, 180);
 }
 
-router.post('/analyze-inspection', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/analyze-inspection', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const uploadAccess = await authorizeDocumentUpload(req, res, 'inspection');
   if (!uploadAccess) return;
@@ -596,7 +591,7 @@ ${submissionsBlock}`;
   }
 });
 
-router.post('/review-insurance', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/review-insurance', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const uploadAccess = await authorizeDocumentUpload(req, res, 'insurance');
   if (!uploadAccess) return;
@@ -644,7 +639,7 @@ Policy text:\n${text}` }
   }
 });
 
-router.post('/review-financials', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/review-financials', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const uploadAccess = await authorizeDocumentUpload(req, res, 'financials');
   if (!uploadAccess) return;
@@ -692,7 +687,7 @@ Financial document:\n${text}` }
   }
 });
 
-router.post('/review-legal', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/review-legal', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const uploadAccess = await authorizeDocumentUpload(req, res, 'legal');
   if (!uploadAccess) return;
@@ -739,7 +734,7 @@ Legal document:\n${text}` }
   }
 });
 
-router.post('/review-brand-standards', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/review-brand-standards', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const uploadAccess = await authorizeDocumentUpload(req, res, 'brand-standards');
   if (!uploadAccess) return;
@@ -794,7 +789,7 @@ Document:\n${text}` }
 // zero new backend code per pack. CRE Acquisition keeps its dedicated
 // endpoints (richer, hand-tuned prompts); newer/simpler packs (e.g. Business
 // Acquisition) use this one.
-router.post('/analyze-document', aiRateLimit, upload.single('file'), async (req, res) => {
+router.post('/analyze-document', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const { property_id, section } = req.body;
   const uploadAccess = await authorizeDocumentUpload(req, res, section);

@@ -1,0 +1,91 @@
+name: Phase 5 preparation checks
+
+on:
+  pull_request:
+    branches:
+      - consolidation/prep-2026-11-06
+  push:
+    branches:
+      - consolidation/prep-2026-11-06
+
+permissions:
+  contents: read
+
+jobs:
+  phase5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.4
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            ui/package-lock.json
+      - name: Pin npm
+        run: |
+          npm install --global npm@11.19.1
+          test "$(npm --version)" = "11.19.1"
+      - run: npm ci --prefix api
+      - run: npm ci --prefix ui
+      - name: Focused authorization and record tests
+        run: |
+          node --test \
+            ui/src/lib/apiBaseRouting.node-test.cjs \
+            api/lib/corsSecurity.node-test.cjs \
+            api/lib/spreadsheetUploadGuard.node-test.cjs \
+            api/src/routes/integrationHub.node-test.cjs \
+            api/lib/explicitParticipantAccess.node-test.cjs \
+            api/lib/trialOwnerSessions.node-test.cjs \
+            ui/src/lib/apiRequestCredentials.node-test.cjs \
+            ui/src/lib/roomAccessPresentation.node-test.cjs \
+            ui/src/lib/roomOwnerAccess.node-test.cjs \
+            ui/src/lib/transactionRecordReview.node-test.cjs \
+            ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
+            ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
+      - name: Complete API test suite
+        env:
+          OPENAI_API_KEY: ci-test-key-not-valid
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+        run: npm --prefix api test -- --runInBand --forceExit
+      - name: Check out preparation-base API for comparison
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .baseline
+      - name: Install preparation-base API dependencies
+        if: always() && github.event_name == 'pull_request'
+        run: npm ci --prefix .baseline/api
+      - name: Complete preparation-base API test suite
+        if: always() && github.event_name == 'pull_request'
+        env:
+          OPENAI_API_KEY: ci-test-key-not-valid
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+        run: npm --prefix .baseline/api test -- --runInBand --forceExit
+      - name: Frontend Jest tests
+        if: always()
+        run: npm --prefix ui test -- --runInBand --watchAll=false
+      - name: Staging frontend build
+        if: always()
+        env:
+          VITE_API_ROUTING_MODE: same-origin
+        run: npm --prefix ui run build -- --outDir dist-staging
+      - name: Scan staging asset endpoint configuration
+        if: always()
+        run: node scripts/check-staging-asset-endpoints.cjs ui/dist-staging ui/vercel.staging.json
+      - name: Production frontend build
+        if: always()
+        env:
+          VITE_API_ROUTING_MODE: same-origin
+        run: npm --prefix ui run build -- --outDir dist-production
+      - name: Scan production asset endpoint configuration
+        if: always()
+        run: node scripts/check-staging-asset-endpoints.cjs ui/dist-production ui/vercel.json
+      - name: Backend syntax check
+        if: always()
+        run: node --check api/index.js
+      - name: Migration 036 dependency check
+        if: always()
+        run: node scripts/check-migration-036-dependencies.cjs
