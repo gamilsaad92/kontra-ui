@@ -46,6 +46,7 @@ jobs:
       - name: Complete API test suite
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: npm --prefix api test -- --runInBand --forceExit
       - name: Check out preparation-base API for comparison
         if: always() && github.event_name == 'pull_request'
@@ -60,6 +61,7 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: npm --prefix .baseline/api test -- --runInBand --forceExit
       - name: Frontend Jest tests
         if: always()
