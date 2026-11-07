@@ -16,13 +16,19 @@ function normalizePath(file) {
   return index >= 0 ? file.slice(index + marker.length) : file;
 }
 
+function normalizeTitle(title) {
+  return title.replace(/(?:\/[^/\s]+)*\/(?:\.baseline\/)?api\//g, 'api/');
+}
+
 function failingCases(results) {
   const failures = new Set();
   for (const suite of results.testResults || []) {
     const file = normalizePath(suite.testFilePath || 'unknown-suite');
     const failed = (suite.assertionResults || []).filter(test => test.status === 'failed');
     for (const test of failed) {
-      const title = [...(test.ancestorTitles || []), test.title].filter(Boolean).join(' › ');
+      const title = normalizeTitle(
+        [...(test.ancestorTitles || []), test.title].filter(Boolean).join(' › ')
+      );
       failures.add(`${file} :: ${title || '(unnamed failing test)'}`);
     }
     if (suite.status === 'failed' && failed.length === 0) {
