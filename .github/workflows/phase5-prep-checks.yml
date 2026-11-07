@@ -35,6 +35,7 @@ jobs:
             ui/src/lib/apiBaseRouting.node-test.cjs \
             api/lib/corsSecurity.node-test.cjs \
             api/lib/spreadsheetUploadGuard.node-test.cjs \
+            api/src/routes/integrationHub.node-test.cjs \
             api/lib/explicitParticipantAccess.node-test.cjs \
             api/lib/trialOwnerSessions.node-test.cjs \
             ui/src/lib/apiRequestCredentials.node-test.cjs \
