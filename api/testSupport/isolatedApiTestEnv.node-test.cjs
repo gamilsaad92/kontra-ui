@@ -6,20 +6,48 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 test('database and staging secrets are removed before tests load', () => {
-  for (const name of [
-    'DATABASE_URL',
-    'APP_DATABASE_URL',
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'SUPABASE_DB_URL',
-    'STAGING_DATABASE_URL',
-    'STAGING_SUPABASE_SERVICE_ROLE_KEY',
-    'PGPASSWORD',
-    'POSTGRES_URL',
-  ]) {
-    assert.equal(process.env[name], undefined, `${name} must be cleared`);
-  }
-  assert.equal(process.env.OPENAI_API_KEY, 'ci-test-key-not-valid');
+  const preload = path.join(__dirname, 'isolatedApiTestEnv.cjs');
+  const result = spawnSync(process.execPath, ['-e', `
+    process.stdout.write(JSON.stringify({
+      databaseUrl: process.env.DATABASE_URL ?? null,
+      databaseHost: process.env.DB_HOST ?? null,
+      postgresUrl: process.env.POSTGRES_URL ?? null,
+      pgPassword: process.env.PGPASSWORD ?? null,
+      supabaseUrl: process.env.SUPABASE_URL ?? null,
+      supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? null,
+      stagingKey: process.env.STAGING_SUPABASE_SERVICE_ROLE_KEY ?? null,
+      stagingOpenAi: process.env.STAGING_OPENAI_API_KEY ?? null,
+      openAi: process.env.OPENAI_API_KEY
+    }));
+  `], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH,
+      NODE_ENV: 'test',
+      NODE_OPTIONS: `--require=${preload}`,
+      DATABASE_URL: 'postgres://synthetic.invalid/test',
+      DB_HOST: 'synthetic.invalid',
+      POSTGRES_URL: 'postgres://synthetic.invalid/test',
+      PGPASSWORD: 'synthetic-password',
+      SUPABASE_URL: 'https://synthetic.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'synthetic-role-key',
+      STAGING_SUPABASE_SERVICE_ROLE_KEY: 'synthetic-staging-key',
+      STAGING_OPENAI_API_KEY: 'synthetic-openai-key',
+      OPENAI_API_KEY: 'production-looking-key',
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    databaseUrl: null,
+    databaseHost: null,
+    postgresUrl: null,
+    pgPassword: null,
+    supabaseUrl: null,
+    supabaseKey: null,
+    stagingKey: null,
+    stagingOpenAi: null,
+    openAi: 'ci-test-key-not-valid',
+  });
 });
 
 test('live PostgreSQL and outbound network attempts fail closed', async () => {
