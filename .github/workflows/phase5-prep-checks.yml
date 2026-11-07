@@ -32,6 +32,7 @@ jobs:
       - name: Focused authorization and record tests
         run: |
           node --test \
+            ui/src/lib/apiBaseRouting.node-test.cjs \
             api/lib/explicitParticipantAccess.node-test.cjs \
             api/lib/trialOwnerSessions.node-test.cjs \
             ui/src/lib/apiRequestCredentials.node-test.cjs \
@@ -40,20 +41,31 @@ jobs:
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
-      - name: API access and dashboard tests
+      - name: Complete API test suite
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
-        run: npm --prefix api test -- --runInBand --forceExit roomAccessChecklist.test.js dashboardState.test.js
+        run: npm --prefix api test -- --runInBand --forceExit
       - name: Frontend Jest tests
         run: npm --prefix ui test -- --runInBand --watchAll=false
       - name: Staging frontend build
         if: always()
         env:
-          VITE_API_BASE_URL: https://api-staging.kontraplatform.com
-        run: npm --prefix ui run build
-      - name: Scan built endpoint configuration
+          VITE_API_ROUTING_MODE: same-origin
+        run: npm --prefix ui run build -- --outDir dist-staging
+      - name: Scan staging asset endpoint configuration
         if: always()
-        run: node scripts/check-staging-asset-endpoints.cjs ui/dist
+        run: node scripts/check-staging-asset-endpoints.cjs ui/dist-staging ui/vercel.staging.json
+      - name: Production frontend build
+        if: always()
+        env:
+          VITE_API_ROUTING_MODE: same-origin
+        run: npm --prefix ui run build -- --outDir dist-production
+      - name: Scan production asset endpoint configuration
+        if: always()
+        run: node scripts/check-staging-asset-endpoints.cjs ui/dist-production ui/vercel.json
       - name: Backend syntax check
         if: always()
         run: node --check api/index.js
+      - name: Migration 036 dependency check
+        if: always()
+        run: node scripts/check-migration-036-dependencies.cjs

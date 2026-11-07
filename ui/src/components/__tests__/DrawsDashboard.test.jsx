@@ -69,7 +69,7 @@ describe('DrawsDashboard', () => {
     const file = new File(['test'], 'test.pdf', { type: 'application/pdf' });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    fireEvent.click(screen.getByText(/Submit/i));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
 

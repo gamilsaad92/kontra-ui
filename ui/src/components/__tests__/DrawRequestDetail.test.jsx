@@ -42,7 +42,8 @@ describe('DrawRequestDetail', () => {
       <DrawRequestDetail drawId={123} onClose={() => {}} />
     );
 
-    expect(await screen.findByText(/Draw #123/)).toBeInTheDocument();
+    const drawHeadings = await screen.findAllByRole('heading', { name: /Draw #\s*123/ });
+    expect(drawHeadings.length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByPlaceholderText(/Contractor Name/i), {
       target: { value: 'ACME' }
@@ -55,9 +56,13 @@ describe('DrawRequestDetail', () => {
     const file = new File(['waiver'], 'waiver.pdf', {
       type: 'application/pdf'
     });
-    fireEvent.change(fileInput, { target: { files: [file] } });
+    Object.defineProperty(fileInput, 'files', {
+      configurable: true,
+      value: [file],
+    });
+    fireEvent.change(fileInput);
 
-    fireEvent.click(screen.getByText(/Upload Waiver/i));
+    fireEvent.submit(screen.getByRole('button', { name: /Upload Waiver/i }).closest('form'));
 
     await waitFor(() => {
       const call = fetch.mock.calls.find(([url]) =>

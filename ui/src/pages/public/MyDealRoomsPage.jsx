@@ -7,8 +7,8 @@ import {
   exchangeMyDealRoomsOwnerSessions,
   logoutMyDealRoomsOwnerSessions,
 } from "../../lib/myDealRoomsOwnerSessions.mjs";
+import { API_BASE } from "../../lib/apiBase";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 const SESSION_KEY = "kontra_my_rooms_session";
 
 const TYPE_ICONS = {

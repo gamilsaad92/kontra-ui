@@ -6,7 +6,11 @@ import DashboardPage from '../DashboardPage.jsx';
 jest.mock('react-grid-layout', () => {
   const React = require('react');
   return {
-    Responsive: ({ children }) => <div data-testid="grid">{children}</div>,
+    Responsive: ({ children, onLayoutChange }) => (
+      <div data-testid="grid" onClick={() => onLayoutChange([{ i: 'riskScore', x: 1, y: 0, w: 4, h: 8 }])}>
+        {children}
+      </div>
+    ),
     WidthProvider: (C) => C,
   };
 });
@@ -46,23 +50,17 @@ test('fetches dashboard layout and renders cards', async () => {
   });
 
   // Cards render from DEFAULT_LAYOUT even if server returns []
-  expect(await screen.findByText(/Risk Score/i)).toBeInTheDocument();
-  expect(screen.getByText(/Delinquency/i)).toBeInTheDocument();
-  expect(screen.getByText(/Recent Activity/i)).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: /Risk Score/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Delinquency Forecast/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Recent Activity/i })).toBeInTheDocument();
 });
 
 test('debounces and POSTs updated layout after change', async () => {
-  render(<DashboardPage orgId="org_123" />);
-
-  // Wait for initial render
-  await screen.findByText(/Risk Score/i);
-
-  // Fast-forward the debounce timer used in onLayoutChange (500ms)
   jest.useFakeTimers();
-
-  // Simulate a layout change by dispatching the event the component uses internally.
-  // Easiest path: trigger the debounced save by advancing timers (component calls save on mount or on first change).
-  jest.advanceTimersByTime(600);
+  render(<DashboardPage orgId="org_123" />);
+  await waitFor(() => expect(screen.getByRole('heading', { name: /Risk Score/i })).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId('grid'));
+  jest.advanceTimersByTime(500);
 
   await waitFor(() => {
     expect(

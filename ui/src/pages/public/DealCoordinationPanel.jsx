@@ -5,6 +5,12 @@ import {
   isHistoricalLifecycle,
   resolveLifecycleStages,
 } from '../../lib/roomLifecycleProjection';
+import {
+  getChecklistItemsForRole,
+  getEffectiveChecklistItems,
+} from './dealCoordinationChecklist.mjs';
+
+export { getChecklistItemsForRole, getEffectiveChecklistItems };
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -447,11 +453,12 @@ export default function DealCoordinationPanel({
 
   // Context-aware Signal Ready subtext: does this role have assigned documents?
   const documentSchema = workflowPack.getDocumentSchema?.(propertyType) || [];
-  const myAssignedDocs = documentSchema.filter(d => (d.assignedTo || []).includes(role));
+  const effectiveDocumentSchema = getEffectiveChecklistItems(documentSchema, documentSchema);
+  const myAssignedDocs = getChecklistItemsForRole(effectiveDocumentSchema, role, documentSchema);
 
   // Per-party upload progress — "X/Y docs" in each party card
   const assignedCountByRole = {};
-  for (const doc of documentSchema) {
+  for (const doc of effectiveDocumentSchema) {
     for (const r of (doc.assignedTo || [])) {
       assignedCountByRole[r] = (assignedCountByRole[r] || 0) + 1;
     }

@@ -15,7 +15,7 @@ function renderForm() {
 
 test('renders password input for Supabase password login', () => {
   renderForm();
-  expect(screen.getByPlaceholderText(/Password/i)).toBeInTheDocument();
+  expect(document.querySelector('input[type="password"]')).toBeInTheDocument();
 });
 
 test('shows auth provider errors for password login', async () => {
@@ -25,13 +25,13 @@ test('shows auth provider errors for password login', async () => {
   });
 
   renderForm();
-  fireEvent.change(screen.getByPlaceholderText(/Email/i), {
+  fireEvent.change(screen.getByPlaceholderText('you@example.com'), {
     target: { value: 'test@example.com' },
   });
-  fireEvent.change(screen.getByPlaceholderText(/Password/i), {
+  fireEvent.change(document.querySelector('input[type="password"]'), {
     target: { value: 'secret123' },
   });
-  fireEvent.click(screen.getByRole('button', { name: /Log In/i }));
+  fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
 
   expect(await screen.findByText(/Invalid login credentials/i)).toBeInTheDocument();
   });
