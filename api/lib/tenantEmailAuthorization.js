@@ -9,6 +9,7 @@ async function isAuthenticatedTenantMember(supabase, req) {
     .select('user_id')
     .eq('user_id', userId)
     .eq('organization_id', organizationId)
+    .eq('status', 'active')
     .maybeSingle();
   return !error && Boolean(data?.user_id);
 }
