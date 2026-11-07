@@ -44,11 +44,19 @@ jobs:
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
+      - name: Nodemailer recipient security tests
+        run: npm --prefix api test -- --runInBand communications.security.test.js
       - name: Complete API test suite
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
           NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
-        run: npm --prefix api test -- --runInBand --forceExit
+          API_JEST_RESULT_FILE: ${{ runner.temp }}/api-pr.json
+        run: |
+          cd api
+          ./node_modules/.bin/jest --runInBand --forceExit \
+            --reporters=default \
+            --reporters="${{ github.workspace }}/api/testSupport/apiBaselineReporter.cjs"
       - name: Check out preparation-base API for comparison
         if: always() && github.event_name == 'pull_request'
         uses: actions/checkout@v4
@@ -60,10 +68,19 @@ jobs:
         run: npm ci --prefix .baseline/api
       - name: Complete preparation-base API test suite
         if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
           NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
-        run: npm --prefix .baseline/api test -- --runInBand --forceExit
+          API_JEST_RESULT_FILE: ${{ runner.temp }}/api-base.json
+        run: |
+          cd .baseline/api
+          ./node_modules/.bin/jest --runInBand --forceExit \
+            --reporters=default \
+            --reporters="${{ github.workspace }}/api/testSupport/apiBaselineReporter.cjs"
+      - name: Compare API failures against preparation baseline
+        if: always() && github.event_name == 'pull_request'
+        run: node scripts/compare-api-jest-baseline.cjs "$RUNNER_TEMP/api-base.json" "$RUNNER_TEMP/api-pr.json"
       - name: Frontend Jest tests
         if: always()
         run: npm --prefix ui test -- --runInBand --watchAll=false

@@ -2,7 +2,8 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const { sendEmail } = require('../communications');
+const { sendEmail, normalizeEmailRecipient } = require('../communications');
+const { getReportOrganizationColumn } = require('../lib/scheduledReportScope');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -30,7 +31,22 @@ async function run() {
     if (job.schedule === 'weekly') interval = 7 * dayMs;
     if (job.schedule === 'monthly') interval = 30 * dayMs;
     if (diff >= interval) {
-      let q = supabase.from(job.table).select(job.fields).limit(1000);
+      const organizationColumn = getReportOrganizationColumn(job.table);
+      if (!organizationColumn || !job.organizationId || job.organizationColumn !== organizationColumn) {
+        console.warn('Skipping a scheduled report without a valid tenant scope');
+        continue;
+      }
+      let recipient;
+      try {
+        recipient = normalizeEmailRecipient(job.email);
+      } catch {
+        console.warn('Skipping a scheduled report with an invalid recipient');
+        continue;
+      }
+      let q = supabase.from(job.table)
+        .select(job.fields)
+        .eq(organizationColumn, job.organizationId)
+        .limit(1000);
       for (const [k,v] of Object.entries(job.filters || {})) {
         if (Array.isArray(v)) q = q.in(k, v);
         else q = q.eq(k, v);
@@ -40,7 +56,7 @@ async function run() {
       const buffers = [];
       doc.on('data', b => buffers.push(b));
       doc.on('end', async () => {
-        await sendEmail(job.email, 'Scheduled Report', 'See attached report', [
+        await sendEmail(recipient, 'Scheduled Report', 'See attached report', [
           { filename: 'report.pdf', content: Buffer.concat(buffers) }
         ]);
       });

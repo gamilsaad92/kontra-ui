@@ -1,5 +1,8 @@
 const express = require('express');
 const { dispatchPortfolioCampaign } = require('../communications');
+const { supabase } = require('../db');
+const authenticate = require('../middlewares/authenticate');
+const { isAuthenticatedTenantMember } = require('../lib/tenantEmailAuthorization');
 
 const router = express.Router();
 const logs = {};
@@ -42,13 +45,29 @@ router.post('/loans/:loanId/communications', (req, res) => {
 });
 
 // Trigger a communication campaign from a portfolio event
-router.post('/send-communication', async (req, res) => {
-  const { loanId, borrower = {}, event = {}, channels } = req.body || {};
-  if (!borrower.email && !borrower.phone && !borrower.user_id && !borrower.pushToken) {
-    return res.status(400).json({ message: 'A borrower email, phone, push token, or user id is required' });
-  }
+router.post('/send-communication', authenticate, async (req, res) => {
+  const { loanId, event = {}, channels } = req.body || {};
+  if (!req.orgId || !loanId) return res.status(400).json({ message: 'Organization and loan are required' });
 
   try {
+    if (!await isAuthenticatedTenantMember(supabase, req)) {
+      return res.status(403).json({ message: 'Organization access denied' });
+    }
+    const { data: loan, error } = await supabase.from('loans')
+      .select('id, borrower_name, borrower_email, borrower_phone')
+      .eq('id', loanId)
+      .eq('organization_id', req.orgId)
+      .maybeSingle();
+    if (error) return res.status(500).json({ message: 'Unable to verify loan ownership' });
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    const borrower = {
+      name: loan.borrower_name,
+      email: loan.borrower_email,
+      phone: loan.borrower_phone,
+    };
+    if (!borrower.email && !borrower.phone) {
+      return res.status(400).json({ message: 'This loan has no verified contact method' });
+    }
     const campaign = await dispatchPortfolioCampaign({ loanId, borrower, event, channels });
     const preview = campaign.emailText || campaign.smsText || 'Campaign sent';
     const entry = addLog({

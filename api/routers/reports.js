@@ -3,7 +3,10 @@ const PDFDocument = require('pdfkit');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { sendEmail } = require('../communications');
+const { sendEmail, normalizeEmailRecipient } = require('../communications');
+const authenticate = require('../middlewares/authenticate');
+const { isAuthenticatedTenantMember } = require('../lib/tenantEmailAuthorization');
+const { getReportOrganizationColumn } = require('../lib/scheduledReportScope');
 const { handleMissingSchemaError, isMissingSchemaError } = require('../lib/schemaErrors');
 const { logAuditEntry } = require('../auditLogger');
 const {
@@ -454,11 +457,35 @@ router.get('/fields', async (req, res) => {
   }
 });
 
-router.post('/schedule', (req, res) => {
+router.post('/schedule', authenticate, async (req, res) => {
   const { email, schedule = 'daily', table, fields = '*', filters = {} } = req.body || {};
   if (!email || !table) return res.status(400).json({ message: 'Missing email or table' });
+  const organizationColumn = getReportOrganizationColumn(table);
+  if (!organizationColumn) return res.status(400).json({ message: 'Unsupported report table' });
+  if (!await isAuthenticatedTenantMember(supabase, req)) {
+    return res.status(403).json({ message: 'Organization access denied' });
+  }
+  let recipient;
+  try {
+    recipient = normalizeEmailRecipient(email);
+  } catch {
+    return res.status(400).json({ message: 'Invalid recipient email' });
+  }
+  if (!req.user?.email || recipient.toLowerCase() !== req.user.email.trim().toLowerCase()) {
+    return res.status(403).json({ message: 'Scheduled reports can only be sent to your verified account email' });
+  }
   const jobs = loadJobs();
-  jobs.push({ id: Date.now(), email, schedule, table, fields, filters, last_sent: null });
+  jobs.push({
+    id: Date.now(),
+    email: recipient,
+    schedule,
+    table,
+    organizationId: req.orgId,
+    organizationColumn,
+    fields,
+    filters,
+    last_sent: null,
+  });
   saveJobs(jobs);
   res.status(201).json({ message: 'Scheduled' });
 });
