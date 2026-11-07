@@ -5,7 +5,6 @@ import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { AuthProvider } from "./lib/authContext";
 import { QueryClientProvider } from "./lib/queryClient";
-import { Web3Provider } from "./providers/Web3Provider";
 import "./index.css";
 
 // Dismiss the inline splash screen from index.html once React has mounted
@@ -42,12 +41,10 @@ function FatalStartup({ error }: { error: unknown }) {
       <BrowserRouter>
         <ErrorBoundary>
           <QueryClientProvider>
-            <Web3Provider>
-              <AuthProvider>
-                <SplashDismisser />
-                <App />
-              </AuthProvider>
-            </Web3Provider>
+            <AuthProvider>
+              <SplashDismisser />
+              <App />
+            </AuthProvider>
           </QueryClientProvider>
         </ErrorBoundary>
       </BrowserRouter>
