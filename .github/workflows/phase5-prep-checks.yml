@@ -45,6 +45,20 @@ jobs:
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
         run: npm --prefix api test -- --runInBand --forceExit
+      - name: Check out preparation-base API for comparison
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .baseline
+      - name: Install preparation-base API dependencies
+        if: always() && github.event_name == 'pull_request'
+        run: npm ci --prefix .baseline/api
+      - name: Complete preparation-base API test suite
+        if: always() && github.event_name == 'pull_request'
+        env:
+          OPENAI_API_KEY: ci-test-key-not-valid
+        run: npm --prefix .baseline/api test -- --runInBand --forceExit
       - name: Frontend Jest tests
         if: always()
         run: npm --prefix ui test -- --runInBand --watchAll=false
