@@ -51,7 +51,6 @@ const express = require('express');
       `
     }).then(() => null).catch(() => null);
   }
-  bootstrap();
 
   // ── GET /api/lifecycle/stages ────────────────────────────────────────────────
   router.get('/stages', (req, res) => {

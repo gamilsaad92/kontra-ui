@@ -68,6 +68,18 @@ test('only exact configured frontend origins are trusted', () => {
   assert.equal(isTrustedOrigin('https://evil.repl.co', trustedOrigins), false);
 });
 
+test('staging isolation excludes production and user-configured origins', () => {
+  const stagingOrigins = createTrustedOriginSet({
+    stagingIsolation: true,
+    corsOrigins: 'https://kontraplatform.com,https://attacker.example',
+    frontendUrl: 'https://kontraplatform.com',
+  });
+  assert.equal(stagingOrigins.size, 1);
+  assert.equal(isTrustedOrigin('https://staging.kontraplatform.com', stagingOrigins), true);
+  assert.equal(isTrustedOrigin('https://kontraplatform.com', stagingOrigins), false);
+  assert.equal(isTrustedOrigin('https://attacker.example', stagingOrigins), false);
+});
+
 test('malformed and opaque origins never normalize into trusted origins', () => {
   for (const origin of ['null', '', 'https://kontraplatform.com/', 'https://kontraplatform.com/path', 'https://good.test,https://evil.test', 'javascript:alert(1)']) {
     assert.equal(normalizeOrigin(origin), null);

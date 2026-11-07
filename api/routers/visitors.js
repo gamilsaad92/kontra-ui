@@ -19,25 +19,6 @@ function getPg() {
     try {
       const { Pool } = require('pg');
       _pg = new Pool({ connectionString: process.env.DATABASE_URL });
-      _pg.query(`
-        CREATE TABLE IF NOT EXISTS visitor_logs (
-          id          SERIAL PRIMARY KEY,
-          ip          TEXT,
-          company     TEXT,
-          city        TEXT,
-          country     TEXT,
-          region      TEXT,
-          org         TEXT,
-          device      TEXT,
-          browser     TEXT,
-          os          TEXT,
-          page        TEXT,
-          portal      TEXT,
-          referrer    TEXT,
-          visited_at  TIMESTAMPTZ DEFAULT NOW()
-        )
-      `).then(() => console.log('[visitors] table ready'))
-        .catch(e => console.warn('[visitors] table init:', e.message));
     } catch (e) {
       console.warn('[visitors] pg unavailable:', e.message);
     }

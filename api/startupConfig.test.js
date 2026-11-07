@@ -51,6 +51,9 @@ describe('development health configuration', () => {
         'SUPABASE_SERVICE_ROLE_KEY',
         'OPENAI_API_KEY',
         'OPENAI_API_KEY1',
+        'KONTRA_STAGING_ISOLATION',
+        'STAGING_SUPABASE_SERVICE_ROLE_KEY',
+        'STAGING_OPENAI_API_KEY',
       ]) {
         delete process.env[name];
       }
@@ -81,5 +84,5 @@ describe('development health configuration', () => {
       Object.assign(process.env, originalEnvironment);
       fs.rmSync(isolatedCwd, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });

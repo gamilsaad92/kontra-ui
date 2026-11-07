@@ -12,6 +12,9 @@ const DEFAULT_TRUSTED_ORIGINS = Object.freeze([
   'https://www.kontraplatform.com',
   'https://staging.kontraplatform.com',
 ]);
+const STAGING_TRUSTED_ORIGINS = Object.freeze([
+  'https://staging.kontraplatform.com',
+]);
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -48,7 +51,9 @@ function createTrustedOriginSet({
   frontendUrl = '',
   vercelUrl = '',
   replitDevDomain = '',
+  stagingIsolation = false,
 } = {}) {
+  if (stagingIsolation) return new Set(STAGING_TRUSTED_ORIGINS);
   const configured = [
     ...String(corsOrigins).split(','),
     frontendUrl,
@@ -107,6 +112,7 @@ function createOwnerCookieOriginGuard({
 
 module.exports = {
   DEFAULT_TRUSTED_ORIGINS,
+  STAGING_TRUSTED_ORIGINS,
   createTrustedOriginSet,
   createOwnerCookieOriginGuard,
   createCorsOriginCallback,
