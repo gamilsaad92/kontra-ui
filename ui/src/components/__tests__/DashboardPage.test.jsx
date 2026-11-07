@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DashboardPage from '../DashboardPage.jsx';
 
 // Mock RGL so layout math doesn't break JSDOM
