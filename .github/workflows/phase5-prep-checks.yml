@@ -51,8 +51,9 @@ jobs:
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
           NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
-          API_JEST_JSON: ${{ runner.temp }}/api-pr.json
-        run: npm --prefix api test -- --runInBand --forceExit --json --outputFile="$API_JEST_JSON"
+        run: |
+          cd api
+          ./node_modules/.bin/jest --runInBand --forceExit --json > "$RUNNER_TEMP/api-pr.json"
       - name: Check out preparation-base API for comparison
         if: always() && github.event_name == 'pull_request'
         uses: actions/checkout@v4
@@ -68,8 +69,9 @@ jobs:
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
           NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
-          API_JEST_JSON: ${{ runner.temp }}/api-base.json
-        run: npm --prefix .baseline/api test -- --runInBand --forceExit --json --outputFile="$API_JEST_JSON"
+        run: |
+          cd .baseline/api
+          ./node_modules/.bin/jest --runInBand --forceExit --json > "$RUNNER_TEMP/api-base.json"
       - name: Compare API failures against preparation baseline
         if: always() && github.event_name == 'pull_request'
         run: node scripts/compare-api-jest-baseline.cjs "$RUNNER_TEMP/api-base.json" "$RUNNER_TEMP/api-pr.json"
