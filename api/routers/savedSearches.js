@@ -38,7 +38,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
    if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Create saved search error:', err);
     res.status(500).json({ error: 'Failed to save search' });

@@ -1,6 +1,6 @@
 # Temporary Excel workbook parsing restriction
 
-Automated parsing of Excel workbooks (`.xls`, `.xlsx`, `.xlsm`, and `.xlsb`) is temporarily disabled because the current SheetJS `xlsx@0.18.5` package has unresolved high-severity advisories and no fixed npm release.
+Automated parsing of Excel workbooks (`.xls`, `.xlsx`, `.xlsm`, and `.xlsb`) remains disabled. The vulnerable SheetJS package has been removed from the API dependencies, and no replacement parser has been approved.
 
 The API rejects these workbooks before they reach document parsing or persistence. Detection checks the filename extension and MIME type, plus OLE and ZIP workbook signatures so a renamed workbook or misleading MIME type does not bypass the restriction. The existing upload-size limit is not treated as the mitigation.
 

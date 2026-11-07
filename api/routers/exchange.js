@@ -10,6 +10,7 @@ const { sendEmail, sendSms } = require('../communications');
 const { isFeatureEnabled } = require('../featureFlags');
 const collabServer = require('../collabServer');
 const { triggerWebhooks } = require('../webhooks');
+const { listingSchema, listingUpdateSchema, tradeSchema, tradeUpdateSchema } = require('./exchangeInputSchemas');
 
 const router = express.Router();
 
@@ -370,56 +371,12 @@ router.post('/tokenize', requireRole('lender_trader'), async (req, res) => {
     res.status(201).json({ token: { id: tokenId, asset, supply } });
   } catch (err) {
     if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Tokenize error:', err);
     res.status(500).json({ error: 'Failed to tokenize asset' });
   }
 });
-
-// Listing schemas
-const borrowerKpiSchema = z.object({
-  name: z.string(),
-  value: z.union([z.number(), z.string()]).optional(),
-  unit: z.string().optional(),
-  target: z.union([z.number(), z.string()]).optional(),
-  trend: z.string().optional(),
-  delta_bps: z.number().optional()
-});
-const dscrTrendPointSchema = z.object({ period: z.string(), dscr: z.number() });
-const jsonRecordSchema = z.record(z.any());
-
-const listingSchema = z.object({
-  asset_type: z.string(),
-  title: z.string().min(3),
-  description: z.string().optional(),
-  par_amount: z.number().positive(),
-  min_piece: z.number().optional(),
-  currency: z.string().default('USD'),
-  rate_type: z.enum(['fixed', 'floating']),
-  index_rate: z.string().optional(),
-  spread_bps: z.number().int().optional(),
-  coupon_bps: z.number().int().optional(),
-  maturity_date: z.string().optional(),
-  borrower_name: z.string().optional(),
-  sector: z.string().optional(),
-  geography: z.string().optional(),
-  risk_rating: z.string().optional(),
-  ltv: z.number().optional(),
-  dscr: z.number().optional(),
-    loan_id: z.string().optional(),
-  asset_id: z.string().optional(),
-  occupancy_rate: z.number().min(0).max(100).optional(),
-  cashflow_summary: jsonRecordSchema.optional(),
-  borrower_kpis: z.array(borrowerKpiSchema).optional(),
-  marketplace_metrics: jsonRecordSchema.optional(),
-  dscr_trend: z.array(dscrTrendPointSchema).optional(),
-  payment_history_summary: jsonRecordSchema.optional(),
-  visibility: z.enum(['network', 'private', 'invite_only']).default('network'),
-  invitee_org_ids: z.array(z.string()).optional(),
-  compliance_hold: z.boolean().default(true)
-});
-const listingUpdateSchema = listingSchema.omit({ compliance_hold: true }).partial();
 
 async function notifySavedSearches(listing) {
   const { data: searches } = await supabase
@@ -553,7 +510,7 @@ router.post('/listings', requireRole('lender_trader'), async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
     if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Create listing error:', err);
     res.status(500).json({ error: 'Failed to create listing' });
@@ -713,7 +670,7 @@ router.patch('/listings/:id', requireRole('lender_trader'), async (req, res) => 
     res.json(data);
   } catch (err) {
     if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Update listing error:', err);
     res.status(500).json({ error: 'Failed to update listing' });
@@ -771,7 +728,7 @@ router.post('/offers', requireRole('lender_trader'), async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
    if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Create offer error:', err);
     res.status(500).json({ error: 'Failed to create offer' });
@@ -806,7 +763,7 @@ router.patch('/offers/:id', requireRole('lender_trader'), async (req, res) => {
     res.json(data);
   } catch (err) {
      if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Update offer error:', err);
     res.status(500).json({ error: 'Failed to update offer' });
@@ -823,17 +780,6 @@ router.post('/offers/:id/clear_hold', requireRole('compliance_officer'), async (
     .single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
-});
-
-// Trade schemas
-const tradeSchema = z.object({
-  offer_id: z.number()
-});
-const tradeUpdateSchema = z.object({
-  settlement_date: z.string().optional(),
-  documents: z.array(z.string()).optional(),
-  status: z.string().optional(),
-  docs_folder_id: z.string().optional()
 });
 
 // Create trade
@@ -861,7 +807,7 @@ router.post('/trades', requireRole('lender_trader'), async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
        if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Create trade error:', err);
     res.status(500).json({ error: 'Failed to create trade' });
@@ -894,7 +840,7 @@ router.patch('/trades/:id', requireRole('lender_trader'), async (req, res) => {
     res.json(data);
   } catch (err) {
   if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Update trade error:', err);
     res.status(500).json({ error: 'Failed to update trade' });
@@ -932,7 +878,7 @@ router.post('/trades/:id/documents', requireRole('lender_trader'), async (req, r
     res.json({ path, url });
   } catch (err) {
    if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Doc generation error:', err);
     res.status(500).json({ error: 'Failed to generate document' });
@@ -957,7 +903,7 @@ router.post('/trades/:id/sign', requireRole('lender_trader'), async (req, res) =
      res.json({ signedPath, url });
   } catch (err) {
       if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Sign error:', err);
     res.status(500).json({ error: 'Failed to sign document' });
@@ -1003,7 +949,7 @@ router.post('/messages', async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
     if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Create message error:', err);
     res.status(500).json({ error: 'Failed to post message' });
@@ -1057,7 +1003,7 @@ router.put('/me/preferences', async (req, res) => {
     res.json({ preferences: data.preferences });
   } catch (err) {
    if (err instanceof ZodError) {
-      return res.status(400).json({ error: err.errors.map(e => e.message).join(', ') });
+      return res.status(400).json({ error: err.issues.map(e => e.message).join(', ') });
     }
     console.error('Save preferences error:', err);
     res.status(500).json({ error: 'Failed to save preferences' });
