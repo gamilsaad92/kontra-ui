@@ -54,7 +54,10 @@
     "vite-plugin-pwa": "^0.16.4"
   },
   "overrides": {
-    "axios": "$axios"
+    "axios": "$axios",
+    "brace-expansion@^2.0.0": "2.1.7",
+    "fast-uri@^3.0.0": "3.1.9",
+    "follow-redirects@^1.16.0": "1.16.2"
   },
   "engines": {
     "node": "22.x"
