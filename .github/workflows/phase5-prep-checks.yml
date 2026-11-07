@@ -55,4 +55,5 @@ jobs:
         if: always()
         run: node scripts/check-staging-asset-endpoints.cjs ui/dist
       - name: Backend syntax check
+        if: always()
         run: node --check api/index.js
