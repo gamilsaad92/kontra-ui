@@ -51,6 +51,7 @@ describe('development health configuration', () => {
         'SUPABASE_SERVICE_ROLE_KEY',
         'OPENAI_API_KEY',
         'OPENAI_API_KEY1',
+        'AI_INTEGRATIONS_OPENAI_API_KEY',
         'KONTRA_STAGING_ISOLATION',
         'STAGING_SUPABASE_SERVICE_ROLE_KEY',
         'STAGING_OPENAI_API_KEY',
@@ -60,9 +61,13 @@ describe('development health configuration', () => {
       process.env.NODE_ENV = 'development';
 
       let app;
+      jest.doMock('openai', () => jest.fn(() => ({
+        chat: { completions: { create: jest.fn().mockResolvedValue({ choices: [] }) } },
+      })));
       jest.isolateModules(() => {
         app = require('./index');
       });
+      jest.dontMock('openai');
 
       const response = await request(app).get('/health');
       expect(response.status).toBe(503);

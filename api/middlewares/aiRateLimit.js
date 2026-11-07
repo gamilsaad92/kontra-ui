@@ -6,13 +6,15 @@ const buckets = new Map();
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_REQUESTS = 15;
 
-// Evict stale buckets every 10 minutes to prevent memory leak
-setInterval(() => {
+// Evict stale buckets every 10 minutes to prevent memory leak. This timer
+// should not keep one-off imports (for example, Jest) alive after work ends.
+const evictionTimer = setInterval(() => {
   const cutoff = Date.now() - WINDOW_MS;
   for (const [ip, bucket] of buckets) {
     if (bucket.start < cutoff) buckets.delete(ip);
   }
 }, 10 * 60 * 1000);
+evictionTimer.unref?.();
 
 module.exports = function aiRateLimit(req, res, next) {
   const ip =

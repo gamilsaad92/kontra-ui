@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - consolidation/prep-2026-11-06
+      - staging/unified-prep-2026-11-07
   push:
     branches:
       - consolidation/prep-2026-11-06
+      - staging/unified-prep-2026-11-07
 
 permissions:
   contents: read
@@ -30,8 +32,12 @@ jobs:
       - run: npm ci --prefix api
       - run: npm ci --prefix ui
       - name: Focused authorization and record tests
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: |
           node --test \
+            api/testSupport/isolatedApiTestEnv.node-test.cjs \
             ui/src/lib/apiBaseRouting.node-test.cjs \
             api/lib/corsSecurity.node-test.cjs \
             api/lib/spreadsheetUploadGuard.node-test.cjs \
@@ -45,12 +51,21 @@ jobs:
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
       - name: Nodemailer recipient security tests
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: npm --prefix api test -- --runInBand communications.security.test.js
+      - name: Startup configuration tests without forced exit
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+        run: npm --prefix api test -- --runInBand --detectOpenHandles startupConfig.test.js
       - name: Complete API test suite
         continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
-          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
           API_JEST_RESULT_FILE: ${{ runner.temp }}/api-pr.json
         run: |
           cd api
@@ -71,7 +86,8 @@ jobs:
         continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
-          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
           API_JEST_RESULT_FILE: ${{ runner.temp }}/api-base.json
         run: |
           cd .baseline/api
