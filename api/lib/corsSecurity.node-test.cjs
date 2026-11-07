@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const express = require('express');
+const cors = require('cors');
+const request = require('supertest');
 const {
   createTrustedOriginSet,
   createOwnerCookieOriginGuard,
@@ -13,6 +16,30 @@ const {
 const trustedOrigins = createTrustedOriginSet({
   corsOrigins: 'https://review.kontraplatform.com,https://custom.example.test',
 });
+
+function createTestApp() {
+  let mutations = 0;
+  const app = express();
+  app.use(createOwnerCookieOriginGuard({ trustedOrigins }));
+  app.use(cors({
+    origin: createCorsOriginCallback(trustedOrigins),
+    credentials: true,
+  }));
+  app.get('/owner-only', (req, res) => {
+    if (!String(req.headers.cookie || '').includes('kontra_owner_session=')) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    return res.json({ room: 'private' });
+  });
+  app.post('/owner-only', (req, res) => {
+    if (!String(req.headers.cookie || '').includes('kontra_owner_session=')) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    mutations += 1;
+    return res.json({ mutations });
+  });
+  return { app, getMutations: () => mutations };
+}
 
 function runGuard(guard, { method = 'GET', origin, cookie } = {}) {
   const req = { method, headers: { ...(origin ? { origin } : {}), ...(cookie ? { cookie } : {}) } };
@@ -110,4 +137,39 @@ test('owner-session exchange requires a trusted Origin even before a cookie exis
     method: 'POST',
     origin: 'https://kontraplatform.com',
   }).nextCalled, true);
+});
+
+test('untrusted origins cannot read credentialed owner-only responses', async () => {
+  const { app } = createTestApp();
+  const response = await request(app)
+    .get('/owner-only')
+    .set('Origin', 'https://attacker.vercel.app')
+    .set('Cookie', 'kontra_owner_session=opaque');
+  assert.equal(response.status, 403);
+  assert.equal(response.headers['access-control-allow-origin'], undefined);
+});
+
+test('trusted origins can use the room-scoped owner cookie through same-origin routing', async () => {
+  const { app } = createTestApp();
+  const response = await request(app)
+    .get('/owner-only')
+    .set('Origin', 'https://kontraplatform.com')
+    .set('Cookie', 'kontra_owner_session=opaque');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['access-control-allow-origin'], 'https://kontraplatform.com');
+  assert.equal(response.headers['access-control-allow-credentials'], 'true');
+});
+
+test('untrusted or missing origins cannot perform owner-cookie state changes', async () => {
+  const { app, getMutations } = createTestApp();
+  const untrusted = await request(app)
+    .post('/owner-only')
+    .set('Origin', 'https://attacker.replit.dev')
+    .set('Cookie', 'kontra_owner_session=opaque');
+  const missing = await request(app)
+    .post('/owner-only')
+    .set('Cookie', 'kontra_owner_session=opaque');
+  assert.equal(untrusted.status, 403);
+  assert.equal(missing.status, 403);
+  assert.equal(getMutations(), 0);
 });
