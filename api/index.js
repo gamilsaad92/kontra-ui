@@ -44,6 +44,7 @@ const Sentry = require('@sentry/node');
 const cors = require('cors');
 const helmet = require('helmet');
 const multer = require('multer');
+const { rejectSpreadsheetParsing } = require('./lib/spreadsheetUploadGuard');
 const { supabase, replica, isDatabaseConnected } = require('./db');
 const {
   activateDocumentVersion,
@@ -5860,7 +5861,7 @@ async function documentImpact(propertyId, correlationId, beforeState = null, con
   }
 }
 
-app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), async (req, res) => {
+app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   const { propertyId } = req.params;
   const { section, role } = req.body || {};
   if (!propertyId || !section) return res.status(400).json({ error: 'propertyId and section required' });
@@ -6139,17 +6140,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             } catch {}
           } else if (mime === 'text/csv' || ext === 'csv') {
             text = buf.toString('utf8').slice(0, 12000);
-          } else if (['xlsx','xls'].includes(ext) || (mime || '').includes('spreadsheet') || (mime || '').includes('excel')) {
-            try {
-              const XLSX = require('xlsx');
-              const wb = XLSX.read(buf, { type: 'buffer' });
-              const rows = [];
-              for (const name of wb.SheetNames.slice(0, 6)) {
-                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
-                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 10) rows.push(`[${name}]\n${csv}`);
-              }
-              text = rows.join('\n\n').slice(0, 12000);
-            } catch {}
           } else if (isDocx) {
             text = extractDocxText(buf).slice(0, 12000);
           } else {
@@ -6284,15 +6274,6 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             isDocx = mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx';
             if (isDocx) {
               text = extractDocxText(buf).slice(0, 15000);
-            } else if (mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel') || ['xlsx','xls','xlsm','xlsb'].includes(ext)) {
-              const XLSX = require('xlsx');
-              const wb = XLSX.read(buf, { type: 'buffer' });
-              const rows = [];
-              for (const name of wb.SheetNames.slice(0, 8)) {
-                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
-                if (csv.replace(/,/g,'').replace(/\n/g,'').trim().length > 20) rows.push(`[Sheet: ${name}]\n${csv}`);
-              }
-              text = rows.join('\n\n').slice(0, 15000);
             } else if (mime === 'text/csv' || ext === 'csv') {
               text = buf.toString('utf8').slice(0, 15000);
             } else if (isPdf) {
