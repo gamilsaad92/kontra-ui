@@ -1,8 +1,16 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { z } = require('../../lib/zod');
 const aiReviews = require('./ai/reviews');
 const servicingReviews = require('./servicing/aiReviews');
 const exchangeSchemas = require('../../routers/exchangeInputSchemas');
+
+test('Zod validation failures expose issue details for route error responses', () => {
+  const result = z.string().safeParse(42);
+  assert.equal(result.success, false);
+  assert.equal(Array.isArray(result.error.issues), true);
+  assert.equal(result.error.errors, undefined);
+});
 
 test('AI review reason arrays reject oversized content and accept bounded content', () => {
   const reasons = Array.from({ length: 100 }, () => ({
