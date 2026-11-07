@@ -8,6 +8,8 @@
     "start": "serve -s dist -l $PORT",
     "preview": "vite preview",
     "test": "jest",
+    "test:e2e": "playwright test",
+    "test:e2e:staging-session": "playwright test e2e/staging-room-session.spec.js --project=chromium",
     "wiring:gate": "node ./scripts/wiring-gate.mjs"
   },
   "dependencies": {
@@ -38,6 +40,7 @@
     "@babel/preset-env": "^7.26.10",
     "@babel/preset-react": "^7.26.0",
     "@babel/preset-typescript": "^7.26.0",
+    "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@vitejs/plugin-react": "^4.2.1",
