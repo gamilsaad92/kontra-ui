@@ -33,9 +33,9 @@ const AiReviewSchema = z.object({
   confidence: z.number(),
   title: z.string(),
   summary: z.string(),
-  reasons: z.array(AiReasonSchema),
-  evidence: z.array(AiEvidenceSchema),
-  recommended_actions: z.array(AiActionSchema),
+  reasons: z.array(AiReasonSchema).max(100),
+  evidence: z.array(AiEvidenceSchema).max(100),
+  recommended_actions: z.array(AiActionSchema).max(50),
   proposed_updates: z.record(z.unknown()),
   created_by: z.string(),
   created_at: z.string(),
@@ -43,7 +43,7 @@ const AiReviewSchema = z.object({
 });
 
 const AiReviewsListResponseSchema = z.object({
-  items: z.array(AiReviewSchema),
+  items: z.array(AiReviewSchema).max(100),
   total: z.number().int().nonnegative(),
 });
 

@@ -39,7 +39,7 @@ const createEntitySchema = z.object({
 const patchEntitySchema = createEntitySchema.partial();
 
 const listResponseSchema = z.object({
-  items: z.array(entitySchema),
+  items: z.array(entitySchema).max(100),
   total: z.number().int().nonnegative(),
 });
 

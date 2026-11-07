@@ -35,9 +35,9 @@ const AiReviewSchema = z.object({
   confidence: z.number().min(0).max(1),
   title: z.string(),
   summary: z.string(),
-  reasons: z.array(ReviewReasonSchema).default([]),
-  evidence: z.array(ReviewEvidenceSchema).default([]),
-  recommended_actions: z.array(ReviewActionSchema).default([]),
+  reasons: z.array(ReviewReasonSchema).max(100).default([]),
+  evidence: z.array(ReviewEvidenceSchema).max(100).default([]),
+  recommended_actions: z.array(ReviewActionSchema).max(50).default([]),
   proposed_updates: z
     .object({
       proposed_allocation: ProposedAllocationSchema.optional(),
@@ -55,7 +55,7 @@ const PaymentReviewRequestSchema = z.object({
   sourceId: z.string().optional(),
   loanId: z.string().optional(),
   projectId: z.string().optional(),
-  attachments: z.array(z.record(z.unknown())).optional(),
+  attachments: z.array(z.record(z.unknown())).max(20).optional(),
   context: z
     .object({
       expected_amount: z.number().optional(),
@@ -80,7 +80,7 @@ const ReviewInspectionRequestSchema = z.object({
   sourceId: z.string().optional(),
   loanId: z.string().optional(),
   projectId: z.string().optional(),
-  attachments: z.array(z.record(z.unknown())).optional(),
+  attachments: z.array(z.record(z.unknown())).max(20).optional(),
   context: z.record(z.unknown()).optional(),
 });
 
@@ -102,7 +102,7 @@ const ApproveActionRequestSchema = z.object({
 });
 
 const ReviewResponseSchema = z.object({ review: AiReviewSchema });
-const ReviewsListResponseSchema = z.object({ reviews: z.array(AiReviewSchema) });
+const ReviewsListResponseSchema = z.object({ reviews: z.array(AiReviewSchema).max(100) });
 const ApproveActionResponseSchema = z.object({
   approval: z.record(z.unknown()),
   executionEnabled: z.boolean(),
