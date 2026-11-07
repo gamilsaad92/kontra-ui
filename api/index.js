@@ -544,6 +544,7 @@ const defaultAllowedOrigins = [
   'https://www.kontraui.com',
   'https://kontraplatform.com',
   'https://www.kontraplatform.com',
+  'https://staging.kontraplatform.com',
 ];
 
 const allowedOrigins = Array.from(new Set([

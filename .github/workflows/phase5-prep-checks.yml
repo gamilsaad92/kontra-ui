@@ -46,6 +46,7 @@ jobs:
           OPENAI_API_KEY: ci-test-key-not-valid
         run: npm --prefix api test -- --runInBand --forceExit
       - name: Frontend Jest tests
+        if: always()
         run: npm --prefix ui test -- --runInBand --watchAll=false
       - name: Staging frontend build
         if: always()
