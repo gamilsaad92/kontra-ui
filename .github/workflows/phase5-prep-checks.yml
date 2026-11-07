@@ -47,10 +47,12 @@ jobs:
       - name: Frontend Jest tests
         run: npm --prefix ui test -- --runInBand --watchAll=false
       - name: Staging frontend build
+        if: always()
         env:
           VITE_API_BASE_URL: https://api-staging.kontraplatform.com
         run: npm --prefix ui run build
       - name: Scan built endpoint configuration
+        if: always()
         run: node scripts/check-staging-asset-endpoints.cjs ui/dist
       - name: Backend syntax check
         run: node --check api/index.js
