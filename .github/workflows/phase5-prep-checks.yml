@@ -33,6 +33,7 @@ jobs:
         run: |
           node --test \
             ui/src/lib/apiBaseRouting.node-test.cjs \
+            api/lib/corsSecurity.node-test.cjs \
             api/lib/explicitParticipantAccess.node-test.cjs \
             api/lib/trialOwnerSessions.node-test.cjs \
             ui/src/lib/apiRequestCredentials.node-test.cjs \

@@ -522,35 +522,18 @@ async function savedPackMatchesApproval(packId, approvalHash) {
   }
 });
 
-const normalizeOrigin = (origin = '') => origin.replace(/\/$/, '');
-const parseOrigins = (value = '') =>
-  value
-    .split(',')
-    .map((part) => normalizeOrigin(part.trim()))
-    .filter(Boolean);
+const {
+  createCorsOriginCallback,
+  createOwnerCookieOriginGuard,
+  createTrustedOriginSet,
+} = require('./lib/corsSecurity');
 
-const envOrigins = [
-  ...parseOrigins(process.env.CORS_ORIGINS || ''),
-  normalizeOrigin(process.env.FRONTEND_URL || ''),
-].filter(Boolean);
-
-const defaultAllowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:5173',
-  'https://kontra.vercel.app',
-  'https://kontra-ui.vercel.app',
-  'https://kontraui.com',
-  'https://www.kontraui.com',
-  'https://kontraplatform.com',
-  'https://www.kontraplatform.com',
-  'https://staging.kontraplatform.com',
-];
-
-const allowedOrigins = Array.from(new Set([
-  ...defaultAllowedOrigins,
-  ...envOrigins,
-]));
+const allowedOrigins = createTrustedOriginSet({
+  corsOrigins: process.env.CORS_ORIGINS || '',
+  frontendUrl: process.env.FRONTEND_URL || '',
+  vercelUrl: process.env.VERCEL_URL || '',
+  replitDevDomain: process.env.REPLIT_DEV_DOMAIN || '',
+});
 
 // Canonical frontend base URL for building links in emails and notifications.
 // Set FRONTEND_URL on Render (or any host) to match your deployed domain.
@@ -558,35 +541,8 @@ const allowedOrigins = Array.from(new Set([
 // the env var is not yet configured.
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kontraplatform.com').replace(/\/$/, '');
 
-const allowedOriginMatchers = [
-  ...allowedOrigins,
-  /\.vercel\.app$/,
-  /\.replit\.dev(:\d+)?$/,
-  /\.repl\.co(:\d+)?$/,
-  /localhost(:\d+)?$/,
-  /127\.0\.0\.1(:\d+)?$/,
-];
-
 const corsOptions = {
-  origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    const normalizedOrigin = normalizeOrigin(origin);
-   const isAllowed = allowedOriginMatchers.some((matcher) => (
-      matcher instanceof RegExp
-        ? matcher.test(normalizedOrigin)
-        : matcher === normalizedOrigin
-    ));
-    
-   if (isAllowed) {
-      return callback(null, true);
-    }
-
-    console.warn(`[CORS] Origin "${normalizedOrigin}" rejected`);
-   return callback(new Error(`CORS blocked: ${normalizedOrigin}`));
-  },
+  origin: createCorsOriginCallback(allowedOrigins),
   credentials: true,
   allowedHeaders: [
     'Authorization',
@@ -616,6 +572,7 @@ const corsOptions = {
 const app = express();
 
 app.use(helmet());
+app.use(createOwnerCookieOriginGuard({ trustedOrigins: allowedOrigins }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
@@ -3465,38 +3422,42 @@ app.post('/api/webhook/stripe',
 })();
 
 // ── Public deal room lookup — no auth required ────────────────────────────────
-app.post('/api/public/deal-room/:propertyId/owner-session/exchange', async (req, res) => {
-  const { propertyId } = req.params;
-  const exchangeToken = typeof req.body?.exchangeToken === 'string'
-    ? req.body.exchangeToken.trim()
-    : '';
-  try {
-    const exchanged = await exchangeTrialOwnerCredential(supabase, {
-      propertyId,
-      token: exchangeToken,
-    });
-    if (!exchanged.ok) {
-      return res.status(403).json({
-        error: 'OWNER_EXCHANGE_INVALID',
-        message: 'This owner link is invalid, expired, already used, or belongs to another workspace.',
+app.post(
+  '/api/public/deal-room/:propertyId/owner-session/exchange',
+  createOwnerCookieOriginGuard({ trustedOrigins: allowedOrigins, requireOrigin: true }),
+  async (req, res) => {
+    const { propertyId } = req.params;
+    const exchangeToken = typeof req.body?.exchangeToken === 'string'
+      ? req.body.exchangeToken.trim()
+      : '';
+    try {
+      const exchanged = await exchangeTrialOwnerCredential(supabase, {
+        propertyId,
+        token: exchangeToken,
       });
+      if (!exchanged.ok) {
+        return res.status(403).json({
+          error: 'OWNER_EXCHANGE_INVALID',
+          message: 'This owner link is invalid, expired, already used, or belongs to another workspace.',
+        });
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('Set-Cookie', [
+        `${OWNER_SESSION_COOKIE}=${encodeURIComponent(exchanged.sessionToken)}`,
+        'HttpOnly',
+        'Secure',
+        'SameSite=Lax',
+        `Path=${ownerSessionCookiePath(propertyId)}`,
+        `Max-Age=${Math.floor(OWNER_SESSION_TTL_MS / 1000)}`,
+      ].join('; '));
+      return res.json({ success: true, expires_at: exchanged.expiresAt });
+    } catch (error) {
+      console.error('[owner-session/exchange]', error.message);
+      return res.status(503).json({ error: 'OWNER_SESSION_UNAVAILABLE' });
     }
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Set-Cookie', [
-      `${OWNER_SESSION_COOKIE}=${encodeURIComponent(exchanged.sessionToken)}`,
-      'HttpOnly',
-      'Secure',
-      'SameSite=None',
-      `Path=${ownerSessionCookiePath(propertyId)}`,
-      `Max-Age=${Math.floor(OWNER_SESSION_TTL_MS / 1000)}`,
-    ].join('; '));
-    return res.json({ success: true, expires_at: exchanged.expiresAt });
-  } catch (error) {
-    console.error('[owner-session/exchange]', error.message);
-    return res.status(503).json({ error: 'OWNER_SESSION_UNAVAILABLE' });
   }
-});
+);
 
 app.post('/api/public/deal-room/:propertyId/owner-session/logout', async (req, res) => {
   const { propertyId } = req.params;
@@ -3520,7 +3481,7 @@ app.post('/api/public/deal-room/:propertyId/owner-session/logout', async (req, r
       `${OWNER_SESSION_COOKIE}=`,
       'HttpOnly',
       'Secure',
-      'SameSite=None',
+      'SameSite=Lax',
       `Path=${ownerSessionCookiePath(propertyId)}`,
       'Max-Age=0',
     ].join('; '));
