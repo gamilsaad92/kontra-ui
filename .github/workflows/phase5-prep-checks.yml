@@ -44,6 +44,8 @@ jobs:
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
+      - name: Nodemailer recipient security tests
+        run: npm --prefix api test -- --runInBand communications.security.test.js
       - name: Complete API test suite
         env:
           OPENAI_API_KEY: ci-test-key-not-valid

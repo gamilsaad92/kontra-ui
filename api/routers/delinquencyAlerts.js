@@ -1,7 +1,9 @@
 const express = require('express');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../communications');
+const { supabase } = require('../db');
+const authenticate = require('../middlewares/authenticate');
+const { isAuthenticatedTenantMember } = require('../lib/tenantEmailAuthorization');
 const { triggerWebhooks } = require('../webhooks');
-const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
 let twilioClient;
 try {
   twilioClient = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
@@ -10,36 +12,32 @@ try {
 }
 
 const router = express.Router();
-let transporter = null;
-try {
-  transporter = nodemailer.createTransport({ sendmail: true });
-} catch {
-  transporter = null;
-}
 
-router.post('/loans/:loanId/alerts/delinquency', async (req, res) => {
+router.post('/loans/:loanId/alerts/delinquency', authenticate, async (req, res) => {
   const { loanId } = req.params;
-  const { email, phone, message } = req.body || {};
-  if (!email && !phone) {
-    return res.status(400).json({ message: 'Missing email or phone' });
+  const { message } = req.body || {};
+  if (!req.orgId) return res.status(403).json({ message: 'Organization context required' });
+  if (!await isAuthenticatedTenantMember(supabase, req)) {
+    return res.status(403).json({ message: 'Organization access denied' });
   }
+  const { data: loan, error } = await supabase.from('loans')
+    .select('id, borrower_email, borrower_phone')
+    .eq('id', loanId)
+    .eq('organization_id', req.orgId)
+    .maybeSingle();
+  if (error) return res.status(500).json({ message: 'Unable to verify loan ownership' });
+  if (!loan) return res.status(404).json({ message: 'Loan not found' });
+  const email = loan.borrower_email;
+  const phone = loan.borrower_phone;
+  if (!email && !phone) return res.status(400).json({ message: 'Loan has no contact information' });
   const text = message || `Loan ${loanId} is delinquent. Please make a payment.`;
   const result = { email: false, sms: false };
   if (email) {
-    if (transporter) {
-      try {
-        await transporter.sendMail({
-          to: email,
-          from: TRANSACTION_NOTIFICATION_FROM,
-          subject: 'Delinquency Alert',
-          text,
-        });
-        result.email = true;
-      } catch (err) {
-        console.error('Email error:', err);
-      }
-    } else {
-      result.email = true; // assume sent in test environments
+    try {
+      await sendEmail(email, 'Delinquency Alert', text, [], { sendmail: true });
+      result.email = true;
+    } catch (err) {
+      console.error('Email error:', err);
     }
   }
   if (phone) {

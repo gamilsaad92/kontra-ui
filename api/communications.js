@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
 const { createClient } = require('@supabase/supabase-js');
+const { domainToASCII } = require('node:url');
 const { supabase: fallbackSupabase } = require('./db');
 require('dotenv').config();
 
@@ -63,25 +64,72 @@ SMS: ...`;
   return { subject: subjectLine.trim(), emailText, smsText };
 }
 
-async function sendEmail(to, subject, text, attachments = []) {
-  if (!process.env.SMTP_HOST) {
-    console.log('Email to', to, subject, text);
+function normalizeEmailRecipient(value) {
+  if (typeof value !== 'string') throw new TypeError('A single email address is required');
+  const email = value.trim();
+  if (email.length > 254 || /[\r\n\0,;<>]/.test(email)) throw new TypeError('Invalid email address');
+  const at = email.lastIndexOf('@');
+  if (at < 1 || at !== email.indexOf('@')) throw new TypeError('Invalid email address');
+  const local = email.slice(0, at);
+  const domain = domainToASCII(email.slice(at + 1).toLowerCase());
+  if (local.length > 64
+    || !/^[A-Z0-9!#$%&'*+/=?^_`{|}~.-]+$/i.test(local)
+    || local.startsWith('.') || local.endsWith('.') || local.includes('..')
+    || !domain || domain.length > 253
+    || !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain)) {
+    throw new TypeError('Invalid email address');
+  }
+  return `${local}@${domain}`;
+}
+
+function validateEmailMessage(to, subject, attachments = []) {
+  const recipient = normalizeEmailRecipient(to);
+  if (typeof subject !== 'string' || subject.length > 200 || /[\r\n\0]/.test(subject)) {
+    throw new TypeError('Invalid email subject');
+  }
+  if (!Array.isArray(attachments) || attachments.length > 10) {
+    throw new TypeError('Invalid email attachments');
+  }
+  let totalBytes = 0;
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== 'object'
+      || typeof attachment.filename !== 'string'
+      || /[\r\n\0/\\\\]/.test(attachment.filename)
+      || !(Buffer.isBuffer(attachment.content) || typeof attachment.content === 'string')
+      || 'path' in attachment || 'href' in attachment || 'raw' in attachment) {
+      throw new TypeError('Invalid email attachment');
+    }
+    totalBytes += Buffer.isBuffer(attachment.content)
+      ? attachment.content.length
+      : Buffer.byteLength(attachment.content);
+  }
+  if (totalBytes > 25 * 1024 * 1024) throw new TypeError('Email attachments exceed the size limit');
+  return { recipient, attachments };
+}
+
+async function sendEmail(to, subject, text, attachments = [], { sendmail = false } = {}) {
+  const validated = validateEmailMessage(to, subject, attachments);
+  if (!sendmail && !process.env.SMTP_HOST) {
+    console.warn('SMTP is not configured; email delivery skipped');
     return;
   }
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
-   await transporter.sendMail({
+  const transporter = nodemailer.createTransport(sendmail
+    ? { sendmail: true, disableFileAccess: true, disableUrlAccess: true }
+    : {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    });
+  await transporter.sendMail({
     from: process.env.SMTP_FROM,
-    to,
+    to: validated.recipient,
     subject,
     text,
-    attachments
+    attachments: validated.attachments,
+    disableFileAccess: true,
+    disableUrlAccess: true,
   });
 }
 
@@ -159,6 +207,8 @@ async function dispatchPortfolioCampaign({ borrower = {}, loanId, event = {}, ch
 module.exports = {
   generateReminder,
   sendEmail,
+  normalizeEmailRecipient,
+  validateEmailMessage,
   sendSms,
   sendPush,
   notifyInApp,

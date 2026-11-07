@@ -4,6 +4,8 @@ const { randomBytes } = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
 const { sendEmail } = require('../communications');
+const authenticate = require('../middlewares/authenticate');
+const { isAuthenticatedTenantMember } = require('../lib/tenantEmailAuthorization');
 const { recordFeedback, retrainModel } = require('../feedback');
 const { triggerWebhooks } = require('../webhooks');
 const { poolFactory, whitelistRegistry, describeDeployment } = require('../services/tokenizationContracts');
@@ -373,13 +375,18 @@ router.get('/waiver-checklist/:drawId', async (req, res) => {
 });
 
 // Generate summary PDF for a draw
-router.get('/draw-requests/:id/summary', async (req, res) => {
+router.get('/draw-requests/:id/summary', authenticate, async (req, res) => {
   const { id } = req.params;
   const { email } = req.query;
+  if (!req.orgId) return res.status(403).json({ message: 'Organization context required' });
+  if (!await isAuthenticatedTenantMember(supabase, req)) {
+    return res.status(403).json({ message: 'Organization access denied' });
+  }
   const { data: draw, error: drawErr } = await supabase
     .from('draw_requests')
     .select('*')
     .eq('id', id)
+    .eq('org_id', req.orgId)
     .single();
   if (drawErr || !draw) return res.status(404).json({ message: 'Draw not found' });
   const { data: history } = await supabase
