@@ -107,8 +107,11 @@ function validateEmailMessage(to, subject, attachments = []) {
   return { recipient, attachments };
 }
 
-async function sendEmail(to, subject, text, attachments = [], { sendmail = false } = {}) {
+async function sendEmail(to, subject, text, attachments = [], { sendmail = false, from } = {}) {
   const validated = validateEmailMessage(to, subject, attachments);
+  if (from !== undefined && (typeof from !== 'string' || /[\r\n\0]/.test(from))) {
+    throw new TypeError('Invalid sender header');
+  }
   if (!sendmail && !process.env.SMTP_HOST) {
     console.warn('SMTP is not configured; email delivery skipped');
     return;
@@ -123,7 +126,7 @@ async function sendEmail(to, subject, text, attachments = [], { sendmail = false
       disableUrlAccess: true,
     });
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: from || process.env.SMTP_FROM,
     to: validated.recipient,
     subject,
     text,

@@ -154,7 +154,7 @@ describe('Nodemailer input and delivery boundaries', () => {
       'Delinquency Alert',
       'Payment due',
       [],
-      { sendmail: true },
+      { sendmail: true, from: 'Kontra <notifications@kontraplatform.com>' },
     );
   });
 

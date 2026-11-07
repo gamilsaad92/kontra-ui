@@ -4,6 +4,7 @@ const { supabase } = require('../db');
 const authenticate = require('../middlewares/authenticate');
 const { isAuthenticatedTenantMember } = require('../lib/tenantEmailAuthorization');
 const { triggerWebhooks } = require('../webhooks');
+const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
 let twilioClient;
 try {
   twilioClient = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
@@ -34,7 +35,10 @@ router.post('/loans/:loanId/alerts/delinquency', authenticate, async (req, res) 
   const result = { email: false, sms: false };
   if (email) {
     try {
-      await sendEmail(email, 'Delinquency Alert', text, [], { sendmail: true });
+      await sendEmail(email, 'Delinquency Alert', text, [], {
+        sendmail: true,
+        from: TRANSACTION_NOTIFICATION_FROM,
+      });
       result.email = true;
     } catch (err) {
       console.error('Email error:', err);
