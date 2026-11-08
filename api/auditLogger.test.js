@@ -18,15 +18,29 @@ function decrypt(line) {
 }
 
 describe('audit logger', () => {
-  afterEach(() => {
-    if (fs.existsSync(AUDIT_PATH)) fs.unlinkSync(AUDIT_PATH);
+  let previousAuditLog;
+
+  beforeEach(() => {
+    previousAuditLog = fs.existsSync(AUDIT_PATH)
+      ? fs.readFileSync(AUDIT_PATH)
+      : null;
+    if (previousAuditLog) fs.unlinkSync(AUDIT_PATH);
   });
 
-  it('writes encrypted log lines', () => {
+  afterEach(() => {
+    if (previousAuditLog) fs.writeFileSync(AUDIT_PATH, previousAuditLog);
+    else if (fs.existsSync(AUDIT_PATH)) fs.unlinkSync(AUDIT_PATH);
+  });
+
   it('writes encrypted log lines', async () => {
-    const content = fs.readFileSync(AUDIT_PATH, 'utf8').trim();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-     const line = content.split('\n')[0];
+    logAuditEntry({ method: 'POST', url: '/test', data: { a: 1 } });
+    let content = '';
+    for (let attempt = 0; attempt < 50 && !content; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (fs.existsSync(AUDIT_PATH)) content = fs.readFileSync(AUDIT_PATH, 'utf8').trim();
+    }
+    expect(content).not.toBe('');
+    const line = content.split('\n')[0];
     expect(line).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
     const decoded = decrypt(line);
     expect(decoded.method).toBe('POST');
