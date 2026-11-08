@@ -61,7 +61,7 @@ jobs:
         env:
           NODE_ENV: test
           NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
-        run: npm --prefix api test -- --runInBand --detectOpenHandles startupConfig.test.js
+        run: npm --prefix api test -- startupConfig.test.js --runInBand --detectOpenHandles --setupFilesAfterEnv="${{ github.workspace }}/api/testSupport/closeTestServers.cjs"
       - name: Complete API test suite
         continue-on-error: true
         env:
