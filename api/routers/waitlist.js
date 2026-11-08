@@ -7,17 +7,6 @@ function getPg() {
     try {
       const { Pool } = require('pg');
       _pg = new Pool({ connectionString: process.env.DATABASE_URL });
-      _pg.query(`
-        CREATE TABLE IF NOT EXISTS waitlist (
-          id         SERIAL PRIMARY KEY,
-          name       TEXT NOT NULL,
-          email      TEXT NOT NULL UNIQUE,
-          company    TEXT,
-          role       TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `).then(() => console.log('[waitlist] table ready'))
-        .catch(e => console.warn('[waitlist] table init:', e.message));
     } catch (e) {
       console.warn('[waitlist] pg unavailable:', e.message);
     }
@@ -65,5 +54,4 @@ router.get('/waitlist', async (req, res) => {
   return res.json({ entries: memList });
 });
 
-getPg();
 module.exports = { router };

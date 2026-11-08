@@ -1,32 +1,11 @@
 import { supabase, isSupabaseConfigured } from "./supabaseClient.js";
+import { resolveApiBase } from "./apiBaseRouting.mjs";
 
 type EnvRecord = Record<string, string | undefined>;
 
-function normalizeApiBase(value?: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
-  return withoutTrailingSlash.endsWith("/api")
-    ? withoutTrailingSlash
-    : `${withoutTrailingSlash}/api`;
-}
-
 function resolveBaseUrl(): string {
-  const env = (import.meta.env ?? {}) as EnvRecord & { VITE_API_URL?: string };
-  const configured = normalizeApiBase(env.VITE_API_BASE_URL ?? env.VITE_API_URL);
-
-  if (configured) {
-    return configured;
-  }
-
-  return "/api";
+  const apiBase = resolveApiBase(import.meta.env ?? {});
+  return apiBase ? `${apiBase}/api` : "/api";
 }
 
 const BASE_URL = resolveBaseUrl();

@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - consolidation/prep-2026-11-06
+      - staging/unified-prep-2026-11-07
   push:
     branches:
       - consolidation/prep-2026-11-06
+      - staging/unified-prep-2026-11-07
 
 permissions:
   contents: read
@@ -16,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.4
@@ -30,8 +34,12 @@ jobs:
       - run: npm ci --prefix api
       - run: npm ci --prefix ui
       - name: Focused authorization and record tests
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: |
           node --test \
+            api/testSupport/isolatedApiTestEnv.node-test.cjs \
             ui/src/lib/apiBaseRouting.node-test.cjs \
             api/lib/corsSecurity.node-test.cjs \
             api/lib/spreadsheetUploadGuard.node-test.cjs \
@@ -45,16 +53,31 @@ jobs:
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
             ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
       - name: Nodemailer recipient security tests
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
         run: npm --prefix api test -- --runInBand communications.security.test.js
+      - name: Startup configuration tests without forced exit
+        env:
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+        run: npm --prefix api test -- startupConfig.test.js --runInBand --detectOpenHandles --setupFilesAfterEnv="${{ github.workspace }}/api/testSupport/closeTestServers.cjs"
       - name: Complete API test suite
         continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
-          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
           API_JEST_RESULT_FILE: ${{ runner.temp }}/api-pr.json
+          API_JEST_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          API_JEST_BASE_COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
+          API_JEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          API_JEST_COMMAND: jest --runInBand --silent --detectOpenHandles --setupFilesAfterEnv=closeTestServers.cjs
+          API_JEST_NPM_VERSION: 11.19.1
         run: |
           cd api
-          ./node_modules/.bin/jest --runInBand --forceExit \
+          ./node_modules/.bin/jest --runInBand --silent --detectOpenHandles \
+            --setupFilesAfterEnv="${{ github.workspace }}/api/testSupport/closeTestServers.cjs" \
             --reporters=default \
             --reporters="${{ github.workspace }}/api/testSupport/apiBaselineReporter.cjs"
       - name: Check out preparation-base API for comparison
@@ -71,15 +94,26 @@ jobs:
         continue-on-error: true
         env:
           OPENAI_API_KEY: ci-test-key-not-valid
-          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
+          NODE_ENV: test
+          NODE_OPTIONS: --require=${{ github.workspace }}/api/testSupport/isolatedApiTestEnv.cjs --require=${{ github.workspace }}/api/testSupport/redirectAuditLogForTests.cjs
           API_JEST_RESULT_FILE: ${{ runner.temp }}/api-base.json
+          API_JEST_SOURCE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          API_JEST_BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          API_JEST_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          API_JEST_COMMAND: jest --runInBand --silent --detectOpenHandles --setupFilesAfterEnv=closeTestServers.cjs
+          API_JEST_NPM_VERSION: 11.19.1
         run: |
           cd .baseline/api
-          ./node_modules/.bin/jest --runInBand --forceExit \
+          ./node_modules/.bin/jest --runInBand --silent --detectOpenHandles \
+            --setupFilesAfterEnv="${{ github.workspace }}/api/testSupport/closeTestServers.cjs" \
             --reporters=default \
             --reporters="${{ github.workspace }}/api/testSupport/apiBaselineReporter.cjs"
       - name: Compare API failures against preparation baseline
         if: always() && github.event_name == 'pull_request'
+        env:
+          API_JEST_EXPECTED_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          API_JEST_EXPECTED_BASE_COMMIT: ${{ github.event.pull_request.base.sha }}
+          API_JEST_EXPECTED_PR_COMMIT: ${{ github.event.pull_request.head.sha }}
         run: node scripts/compare-api-jest-baseline.cjs "$RUNNER_TEMP/api-base.json" "$RUNNER_TEMP/api-pr.json"
       - name: Frontend Jest tests
         if: always()

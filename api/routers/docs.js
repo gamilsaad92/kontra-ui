@@ -37,7 +37,6 @@ const express = require('express');
       `
     }).catch(() => null); // rpc may not exist — swallow and let first insert reveal issue
   }
-  bootstrap().catch(err => console.warn('[docs] bootstrap warn:', err.message));
 
   // ── POST /api/docs/upload ───────────────────────────────────────────────────
   router.post('/upload', upload.single('file'), async (req, res) => {

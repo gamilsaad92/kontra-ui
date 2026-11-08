@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "prebuild": "node ../scripts/check-vercel-api-routing.cjs",
     "build": "vite build",
     "start": "serve -s dist -l $PORT",
     "preview": "vite preview",

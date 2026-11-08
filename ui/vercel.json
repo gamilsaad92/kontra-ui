@@ -5,7 +5,32 @@
   "rewrites": [
     {
       "source": "/api/:path*",
+      "has": [{ "type": "host", "value": "kontraplatform.com" }],
       "destination": "https://kontra-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "has": [{ "type": "host", "value": "kontraui.com" }],
+      "destination": "https://kontra-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "has": [{ "type": "host", "value": "www.kontraui.com" }],
+      "destination": "https://kontra-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "has": [{ "type": "host", "value": "kontra-ui.vercel.app" }],
+      "destination": "https://kontra-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "has": [{ "type": "host", "value": "staging.kontraplatform.com" }],
+      "destination": "https://api-staging.kontraplatform.com/api/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://api-staging.kontraplatform.com/api/:path*"
     },
     {
       "source": "/:path*",

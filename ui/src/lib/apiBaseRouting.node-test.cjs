@@ -8,25 +8,49 @@ test("same-origin routing ignores configured API origins", () => {
     resolveApiBase({
       VITE_API_ROUTING_MODE: "same-origin",
       VITE_API_BASE_URL: "https://kontra-api.onrender.com",
+      VITE_API_URL: "https://kontra-api.onrender.com",
     }),
     "",
   );
 });
 
-test("staging routing keeps every API caller on the staging API", () => {
+test("direct staging routing is limited to local development", () => {
   assert.equal(
     resolveApiBase({
       VITE_API_ROUTING_MODE: "direct",
+      DEV: true,
       VITE_API_BASE_URL: "https://api-staging.kontraplatform.com/api/",
     }),
     "https://api-staging.kontraplatform.com",
   );
 });
 
-test("local development falls back to the Vite origin for its /api proxy", () => {
-  assert.equal(resolveApiBase({}, "http://localhost:5173"), "http://localhost:5173");
+test("production builds reject direct routing even with a staging URL", () => {
+  assert.throws(() => resolveApiBase({
+    VITE_API_ROUTING_MODE: "direct",
+    VITE_API_URL: "https://api-staging.kontraplatform.com",
+  }), /only in local development/);
 });
 
-test("hosted builds do not silently fall back to production API", () => {
+test("unknown routing modes fail closed", () => {
+  assert.throws(() => resolveApiBase({
+    VITE_API_ROUTING_MODE: "preview",
+    VITE_API_URL: "https://kontra-api.onrender.com",
+  }), /must be same-origin/);
+});
+
+test("local development rejects production and unknown direct targets", () => {
+  assert.throws(() => resolveApiBase({
+    VITE_API_ROUTING_MODE: "direct",
+    DEV: true,
+    VITE_API_URL: "https://kontra-api.onrender.com",
+  }), /cannot target production/);
+});
+
+test("local development falls back to the Vite origin for its /api proxy", () => {
+  assert.equal(resolveApiBase({ DEV: true }, "http://localhost:5173"), "");
+});
+
+test("missing routing configuration fails closed to same-origin", () => {
   assert.equal(resolveApiBase({}, "https://staging.kontraplatform.com"), "");
 });

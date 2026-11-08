@@ -109,7 +109,6 @@ function getPg() {
   }
   return _pg;
 }
-getPg();
 
 async function getLiveRoleConfig(packId) {
   if (!String(packId || '').startsWith('ws_')) return getPackRoleConfig(packId);

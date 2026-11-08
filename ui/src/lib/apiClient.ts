@@ -1,5 +1,6 @@
 import { getToken, redirectToSignIn } from "./authContext";
 import { getOrgId, setOrgId } from "./orgContext";
+import { resolveApiBase } from "./apiBaseRouting.mjs";
 
 type OrgContext = {
   orgId?: string;
@@ -16,8 +17,6 @@ export function setOrgContext(ctx: OrgContext) {
   };
   setOrgId(normalizedOrgId ?? null);
 }
-
-type EnvRecord = Record<string, string | undefined>;
 
 export type ApiRequestLogEntry = {
   id: string;
@@ -49,17 +48,8 @@ const listeners = new Set<(entry: ApiRequestLogEntry) => void>();
 const logLimit = 50;
 let baseFetch: typeof fetch | null = null;
 
-const normalizeBaseUrl = (value?: string): string => {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) return "";
-  return trimmed.replace(/\/+$/, "").replace(/\/api$/, "");
-};
-
-const env = import.meta.env ?? ({} as EnvRecord);
-const API_BASE_URL = normalizeBaseUrl(env.VITE_API_BASE_URL || env.VITE_API_URL);
-const FORCE_RELATIVE_API = ((import.meta.env ?? ({} as EnvRecord)).VITE_FORCE_RELATIVE_API ?? "").toLowerCase() === "true";
-
-const shouldUseRelativeApiPath = (): boolean => FORCE_RELATIVE_API;
+const API_BASE_URL = resolveApiBase(import.meta.env ?? {});
+const shouldUseRelativeApiPath = (): boolean => !API_BASE_URL;
 
 export function getApiBaseUrl(): string {
   return API_BASE_URL;

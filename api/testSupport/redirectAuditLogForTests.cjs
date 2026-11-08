@@ -3,6 +3,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+if (process.env.NODE_ENV === 'production' || process.env.KONTRA_TEST_ISOLATION !== 'true') {
+  throw new Error('Audit-log test redirection is restricted to isolated test processes.');
+}
+
 const isolatedDirectory = path.join(os.tmpdir(), 'kontra-api-test-audit');
 
 function redirectAuditPath(target) {
@@ -17,7 +21,7 @@ function redirectAuditPath(target) {
 
 fs.mkdirSync(isolatedDirectory, { recursive: true });
 
-for (const method of ['appendFile', 'existsSync', 'readFileSync', 'unlinkSync']) {
+for (const method of ['appendFile', 'existsSync', 'readFileSync', 'writeFileSync', 'unlinkSync']) {
   const original = fs[method].bind(fs);
   fs[method] = (target, ...args) => original(redirectAuditPath(target), ...args);
 }

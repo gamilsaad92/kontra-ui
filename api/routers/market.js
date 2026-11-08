@@ -94,7 +94,6 @@ const express = require('express');
       ]);
     }
   }
-  bootstrap().catch(err => console.warn('[market] bootstrap warn:', err.message));
 
   // ── GET /api/market/listings ─────────────────────────────────────────────────
   router.get('/listings', async (req, res) => {

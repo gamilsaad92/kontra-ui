@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: kontra-phase5-staging-api
+    env: node
+    rootDir: .
+    buildCommand: "npm ci --prefix api --ignore-scripts --no-audit --no-fund"
+    startCommand: "node scripts/start-staging-api-hosted-isolated.js"
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_ENV
+        value: "production"
+      - key: KONTRA_STAGING_ISOLATION
+        value: "true"
+      - key: SUPABASE_URL
+        value: "https://jpemuoapbgzwapydqiio.supabase.co"
+      - key: STAGING_API_ORIGIN
+        value: "https://api-staging.kontraplatform.com"
+      - key: STAGING_FRONTEND_URL
+        value: "https://staging.kontraplatform.com"
+      - key: STAGING_CORS_ORIGINS
+        value: "https://staging.kontraplatform.com"
+      - key: KONTRA_STAGING_HOSTED_INGRESS
+        value: "true"
+      - key: KONTRA_STAGING_HOSTED_INGRESS_REQUIRED
+        value: "true"
+      - key: STAGING_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STAGING_OPENAI_API_KEY
+        sync: false
+      - key: STAGING_SESSION_SECRET
+        sync: false

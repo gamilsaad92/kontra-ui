@@ -8,7 +8,7 @@ import { resolveApiBase } from "./src/lib/apiBaseRouting.mjs";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const enablePwa = env.VITE_ENABLE_PWA === "true";
-  const apiBase = resolveApiBase(env);
+  const apiBase = resolveApiBase({ ...env, DEV: mode === "development" });
 
   return {
     base: "/",

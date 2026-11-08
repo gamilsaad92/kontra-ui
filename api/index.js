@@ -4,8 +4,11 @@
 // override so that env vars set in the Render dashboard take precedence.
 require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: true } : {});
 
+const { assertStagingEnvironment } = require('./lib/stagingEnvironment');
+const stagingEnvironment = assertStagingEnvironment(process.env);
+
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
-if (process.env.OPENAI_API_KEY1) {
+if (!stagingEnvironment.enabled && process.env.OPENAI_API_KEY1) {
   process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY1;
 }
 
@@ -534,6 +537,7 @@ const allowedOrigins = createTrustedOriginSet({
   frontendUrl: process.env.FRONTEND_URL || '',
   vercelUrl: process.env.VERCEL_URL || '',
   replitDevDomain: process.env.REPLIT_DEV_DOMAIN || '',
+  stagingIsolation: stagingEnvironment.enabled,
 });
 
 // Canonical frontend base URL for building links in emails and notifications.
@@ -1086,10 +1090,25 @@ app.use(
 );
 app.use(auditLogger);
 app.use(rateLimit);
-function sendHealthResponse(res, extra = {}) {
+async function sendHealthResponse(res, extra = {}) {
   const missingConfiguration = getMissingRequiredConfiguration();
   const databaseConnected = isDatabaseConnected();
-  const healthy = missingConfiguration.length === 0 && databaseConnected;
+  const missingSchema = [];
+  if (stagingEnvironment.enabled && databaseConnected) {
+    const schemaChecks = [
+      ['deal_rooms', 'property_id,workflow_pack_id,checklist_items,owner_write_token,stages_config,metadata_values,jurisdiction'],
+      ['deal_room_invites', 'id,property_id,role_key,status,verification_method'],
+      ['deal_room_access_sessions', 'id,invite_id,session_token_hash,expires_at'],
+      ['deal_analyses', 'id,property_id,section,processing_status,document_hash'],
+      ['verified_asset_snapshots', 'id,property_id,version,snapshot_hash,snapshot'],
+    ];
+    for (const [table, columns] of schemaChecks) {
+      const { error } = await supabase.from(table).select(columns).limit(0);
+      if (error) missingSchema.push(table);
+    }
+  }
+  const schemaReady = !stagingEnvironment.enabled || missingSchema.length === 0;
+  const healthy = missingConfiguration.length === 0 && databaseConnected && schemaReady;
 
   return res.status(healthy ? 200 : 503).json({
     ok: healthy,
@@ -1098,15 +1117,17 @@ function sendHealthResponse(res, extra = {}) {
     checks: {
       database: databaseConnected ? 'connected' : 'unavailable',
       configuration: missingConfiguration.length === 0 ? 'configured' : 'missing',
+      schema: schemaReady ? (stagingEnvironment.enabled ? 'verified' : 'not_checked') : 'missing',
     },
     missing_configuration: missingConfiguration,
+    missing_schema: missingSchema,
   });
 }
 
 // Render's web-service health check is configured for /health. Keep the
 // existing API path as well so both deployment probes and API clients work.
-app.get(['/health', '/api/health'], (_req, res) => {
-  sendHealthResponse(res, { version: 'v3-hazard-record-gate', deployed: new Date().toISOString() });
+app.get(['/health', '/api/health'], async (_req, res) => {
+  await sendHealthResponse(res, { version: 'v3-hazard-record-gate', deployed: new Date().toISOString() });
 });
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──
@@ -8775,7 +8796,9 @@ app.use('/api', restaurantsRouter);
 // ── Health Checks ──────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.send('Sentry test running!'));
 app.get('/api/test', (req, res) => res.send('✅ API is alive'));
-app.get('/health', (_req, res) => sendHealthResponse(res));
+app.get('/health', async (_req, res) => {
+  await sendHealthResponse(res);
+});
 app.get('/api/whoami', authenticate, (req, res) => {
   res.json({
     ok: true,
@@ -12686,65 +12709,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Server error' });
 });
 
-// ── Startup migration: ensure workflow_pack_id column exists ─────────────────
-// Migration 005 is manual-only; run it automatically here so Render/production
-// gets the column on first boot without a manual Supabase SQL editor step.
-async function ensureWorkflowPackIdColumn() {
-  try {
-    const { Pool } = require('pg');
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
-      ssl: { rejectUnauthorized: false },
-    });
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS workflow_pack_id text DEFAULT 'cre_acquisition'`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_revenue NUMERIC`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stated_ebitda NUMERIC`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS checklist_items JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS owner_write_token TEXT`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS stages_config JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS metadata_values JSONB`
-    );
-    await pool.query(
-      `ALTER TABLE deal_rooms ADD COLUMN IF NOT EXISTS jurisdiction VARCHAR(64)`
-    );
-    // transaction_record_fields and transaction_record_approvals are NOT created
-    // here. They must be applied via the committed Supabase migration:
-    //   kontra-ui-clone/api/migrations/015_transaction_record.sql
-    // Startup checks are kept read-only beyond the deal_rooms column additions above.
-    // analytics_events — created here so it's always present when first event arrives
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS analytics_events (
-        id           BIGSERIAL PRIMARY KEY,
-        session_id   TEXT NOT NULL,
-        event_name   TEXT NOT NULL,
-        workspace_id TEXT,
-        properties   JSONB DEFAULT '{}',
-        created_at   TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_created_at_idx ON analytics_events (created_at DESC)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS analytics_events_event_name_idx ON analytics_events (event_name)`);
-    await pool.end();
-    console.log('[startup] deal_rooms schema columns ready (workflow_pack_id, stated_revenue, stated_ebitda, checklist_items, owner_write_token, stages_config, metadata_values, jurisdiction)');
-  } catch (err) {
-    // Non-fatal: Supabase service role may not allow DDL via pooler — fall back gracefully
-    console.warn('[startup] workflow_pack_id column ensure skipped:', err.message);
-  }
-}
-
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production') {
@@ -12755,7 +12719,6 @@ if (require.main === module) {
   attachCollabServer(server);
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Kontra API listening on port ${PORT}`);
-    void ensureWorkflowPackIdColumn();
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }
