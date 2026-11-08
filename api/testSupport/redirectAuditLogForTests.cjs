@@ -21,7 +21,7 @@ function redirectAuditPath(target) {
 
 fs.mkdirSync(isolatedDirectory, { recursive: true });
 
-for (const method of ['appendFile', 'existsSync', 'readFileSync', 'unlinkSync']) {
+for (const method of ['appendFile', 'existsSync', 'readFileSync', 'writeFileSync', 'unlinkSync']) {
   const original = fs[method].bind(fs);
   fs[method] = (target, ...args) => original(redirectAuditPath(target), ...args);
 }
