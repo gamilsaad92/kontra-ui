@@ -1,6 +1,6 @@
 export function resolveApiBase(env = {}, fallbackOrigin = "") {
   const isDevelopment = env.DEV === true || env.MODE === "development";
-  const mode = env.VITE_API_ROUTING_MODE || (isDevelopment ? "same-origin" : "");
+  const mode = env.VITE_API_ROUTING_MODE || "same-origin";
 
   if (mode === "same-origin") return "";
   if (mode !== "direct") {

@@ -51,6 +51,6 @@ test("local development falls back to the Vite origin for its /api proxy", () =>
   assert.equal(resolveApiBase({ DEV: true }, "http://localhost:5173"), "");
 });
 
-test("hosted builds do not silently fall back to production API", () => {
-  assert.throws(() => resolveApiBase({}, "https://staging.kontraplatform.com"), /must be same-origin/);
+test("missing routing configuration fails closed to same-origin", () => {
+  assert.equal(resolveApiBase({}, "https://staging.kontraplatform.com"), "");
 });
