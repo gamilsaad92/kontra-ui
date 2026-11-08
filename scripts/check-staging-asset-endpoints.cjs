@@ -23,6 +23,7 @@ const bundle = files.map(file => fs.readFileSync(file, 'utf8')).join('\n');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const apiRewrites = (config.rewrites || []).filter(rewrite => rewrite.source === '/api/:path*');
 const productionHosts = ['kontraplatform.com', 'kontraui.com', 'www.kontraui.com', 'kontra-ui.vercel.app'];
+const isStagingConfig = path.basename(configPath) === 'vercel.staging.json';
 const productionApi = 'https://kontra-api.onrender.com/api/:path*';
 const stagingApi = 'https://api-staging.kontraplatform.com/api/:path*';
 const forbidden = [
@@ -31,20 +32,26 @@ const forbidden = [
 ];
 const failures = forbidden.filter(([, pattern]) => pattern.test(bundle)).map(([label]) => label);
 if (config.env?.VITE_API_ROUTING_MODE !== 'same-origin') failures.push('config is not same-origin');
-for (const host of productionHosts) {
-  const matching = apiRewrites.find(rewrite => rewrite.has?.some(
-    condition => condition.type === 'host' && condition.value === host,
-  ));
-  if (matching?.destination !== productionApi) {
-    failures.push(`production host ${host} does not map to the production API`);
+if (isStagingConfig) {
+  if (!apiRewrites.length || apiRewrites.some(rewrite => rewrite.destination !== stagingApi)) {
+    failures.push('staging API routes must map only to the staging API');
   }
+} else {
+  for (const host of productionHosts) {
+    const matching = apiRewrites.find(rewrite => rewrite.has?.some(
+      condition => condition.type === 'host' && condition.value === host,
+    ));
+    if (matching?.destination !== productionApi) {
+      failures.push(`production host ${host} does not map to the production API`);
+    }
+  }
+  const stagingHostRewrite = apiRewrites.find(rewrite => rewrite.has?.some(
+    condition => condition.type === 'host' && condition.value === 'staging.kontraplatform.com',
+  ));
+  const fallbackRewrite = apiRewrites.find(rewrite => !rewrite.has && !rewrite.missing);
+  if (stagingHostRewrite?.destination !== stagingApi) failures.push('staging hostname does not map to the staging API');
+  if (fallbackRewrite?.destination !== stagingApi) failures.push('unknown hosts do not fail closed to the staging API');
 }
-const stagingHostRewrite = apiRewrites.find(rewrite => rewrite.has?.some(
-  condition => condition.type === 'host' && condition.value === 'staging.kontraplatform.com',
-));
-const fallbackRewrite = apiRewrites.find(rewrite => !rewrite.has && !rewrite.missing);
-if (stagingHostRewrite?.destination !== stagingApi) failures.push('staging hostname does not map to the staging API');
-if (fallbackRewrite?.destination !== stagingApi) failures.push('unknown hosts do not fail closed to the staging API');
 if (/https?:\/\/(?:api-staging\.kontraplatform\.com|kontra-api\.onrender\.com)/i.test(bundle)) {
   failures.push('absolute API origin embedded in same-origin assets');
 }
@@ -52,4 +59,4 @@ if (failures.length) {
   console.error(`Deployment asset endpoint scan failed: ${failures.join(', ')}`);
   process.exit(1);
 }
-console.log(`Scanned ${files.length} built assets; production hosts map to production and all other API traffic maps to staging.`);
+console.log(`Scanned ${files.length} built assets; API routes match ${isStagingConfig ? 'staging' : 'production'} routing.`);
