@@ -51,7 +51,10 @@ jobs:
             ui/src/lib/roomOwnerAccess.node-test.cjs \
             ui/src/lib/transactionRecordReview.node-test.cjs \
             ui/src/lib/verifiedAssetReadinessDisplay.node-test.cjs \
-            ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs
+            ui/src/lib/myDealRoomsOwnerSessions.node-test.cjs \
+            api/lib/stagingEnvironment.node-test.cjs \
+            api/lib/stagingCors.node-test.cjs \
+            ui/src/lib/supabaseConfig.test.mjs
       - name: Nodemailer recipient security tests
         env:
           NODE_ENV: test
@@ -121,15 +124,53 @@ jobs:
       - name: Staging frontend build
         if: always()
         env:
+          VERCEL_ENV: production
+          VERCEL_GIT_COMMIT_REF: staging/unified-prep-2026-11-07
           VITE_API_ROUTING_MODE: same-origin
+          VITE_SUPABASE_URL: https://jpemuoapbgzwapydqiio.supabase.co
+          VITE_SUPABASE_ANON_KEY: synthetic-staging-anon-key-for-ci
         run: npm --prefix ui run build -- --outDir dist-staging
       - name: Scan staging asset endpoint configuration
         if: always()
         run: node scripts/check-staging-asset-endpoints.cjs ui/dist-staging ui/vercel.staging.json
+      - name: Preview frontend build with staging Supabase
+        if: always()
+        env:
+          VERCEL_ENV: preview
+          VERCEL_GIT_COMMIT_REF: agent/phase6b-staging-security-remediation
+          VITE_API_ROUTING_MODE: same-origin
+          VITE_SUPABASE_URL: https://jpemuoapbgzwapydqiio.supabase.co
+          VITE_SUPABASE_ANON_KEY: synthetic-staging-anon-key-for-ci
+        run: npm --prefix ui run build -- --outDir dist-preview
+      - name: Reject production Supabase configuration in preview build
+        if: always()
+        env:
+          VERCEL_ENV: preview
+          VERCEL_GIT_COMMIT_REF: agent/phase6b-staging-security-remediation
+          VITE_API_ROUTING_MODE: same-origin
+          VITE_SUPABASE_URL: https://production-test.supabase.co
+          VITE_SUPABASE_ANON_KEY: synthetic-production-anon-key-for-ci
+        run: |
+          log_file="$RUNNER_TEMP/preview-production-supabase-build.log"
+          if npm --prefix ui run build -- --outDir dist-preview-reject >"$log_file" 2>&1; then
+            echo "Preview build unexpectedly accepted production Supabase configuration"
+            cat "$log_file"
+            exit 1
+          fi
+          if ! grep -Fq "Staging and preview builds require the approved staging Supabase project" "$log_file"; then
+            echo "Preview build failed for an unexpected reason"
+            cat "$log_file"
+            exit 1
+          fi
+          echo "Preview build rejected production Supabase configuration as expected"
       - name: Production frontend build
         if: always()
         env:
+          VERCEL_ENV: production
+          VERCEL_GIT_COMMIT_REF: main
           VITE_API_ROUTING_MODE: same-origin
+          VITE_SUPABASE_URL: https://production-test.supabase.co
+          VITE_SUPABASE_ANON_KEY: synthetic-production-anon-key-for-ci
         run: npm --prefix ui run build -- --outDir dist-production
       - name: Scan production asset endpoint configuration
         if: always()
@@ -140,3 +181,6 @@ jobs:
       - name: Migration 036 dependency check
         if: always()
         run: node scripts/check-migration-036-dependencies.cjs
+      - name: Asset-preparation migration dependency and privilege check
+        if: always()
+        run: node scripts/check-staging-asset-privileges.cjs

@@ -4,11 +4,26 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath, URL } from "node:url";
 import { resolveApiBase } from "./src/lib/apiBaseRouting.mjs";
+import {
+  resolveSupabaseConfig,
+  resolveSupabaseDeploymentContext,
+} from "./src/lib/supabaseConfig.mjs";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  const buildEnv = { ...env, ...process.env };
   const enablePwa = env.VITE_ENABLE_PWA === "true";
   const apiBase = resolveApiBase({ ...env, DEV: mode === "development" });
+  const supabaseContext = resolveSupabaseDeploymentContext({
+    vercelEnv: buildEnv.VERCEL_ENV,
+    gitRef: buildEnv.VERCEL_GIT_COMMIT_REF,
+    mode,
+  });
+  resolveSupabaseConfig({
+    context: supabaseContext,
+    url: buildEnv.VITE_SUPABASE_URL,
+    anonKey: buildEnv.VITE_SUPABASE_ANON_KEY,
+  });
 
   return {
     base: "/",
@@ -16,6 +31,7 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_API_BASE": JSON.stringify(apiBase),
       "import.meta.env.VITE_API_BASE_URL": JSON.stringify(apiBase),
       "import.meta.env.VITE_API_URL": JSON.stringify(apiBase),
+      "import.meta.env.VITE_SUPABASE_DEPLOYMENT_CONTEXT": JSON.stringify(supabaseContext),
     },
     plugins: [
       react(),

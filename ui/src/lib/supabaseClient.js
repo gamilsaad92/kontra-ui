@@ -1,25 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
+import { resolveSupabaseConfig } from './supabaseConfig.mjs';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-
-const isPlaceholderValue = (value = '') =>
-  value.includes('<') || value.includes('>') || value.toUpperCase().includes('YOUR_');
-
-const isValidHttpUrl = (value = '') => {
-  if (!value || isPlaceholderValue(value)) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
-
-const hasValidSupabaseUrl = isValidHttpUrl(supabaseUrl);
-const hasValidAnonKey = Boolean(supabaseAnonKey) && !isPlaceholderValue(supabaseAnonKey);
-
-export const isSupabaseConfigured = hasValidSupabaseUrl && hasValidAnonKey;
+const supabaseConfig = resolveSupabaseConfig({
+  context: import.meta.env.VITE_SUPABASE_DEPLOYMENT_CONTEXT || 'local',
+  url: import.meta.env.VITE_SUPABASE_URL,
+  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+});
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = supabaseConfig;
+export const isSupabaseConfigured = supabaseConfig.configured;
 
 if (!isSupabaseConfigured && typeof console !== 'undefined') {
   console.warn(
