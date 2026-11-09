@@ -1,5 +1,16 @@
 -- Append-only human-readable PDFs generated from an exact saved preparation revision.
 -- The PDF bytes live in Supabase Storage; this table stores immutable metadata.
+BEGIN;
+
+DO $preflight$
+BEGIN
+  IF to_regclass('public.digital_asset_preparation_packages') IS NULL
+     OR to_regclass('public.digital_asset_preparation_package_revisions') IS NULL THEN
+    RAISE EXCEPTION 'Migration 027 requires migrations 025 and 026';
+  END IF;
+END
+$preflight$;
+
 CREATE TABLE IF NOT EXISTS digital_asset_preparation_pdf_artifacts (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   package_id               UUID NOT NULL REFERENCES digital_asset_preparation_packages(id),
@@ -32,8 +43,42 @@ DO $$ BEGIN
       AND policyname = 'service_role_digital_asset_preparation_pdf_artifacts'
   ) THEN
     CREATE POLICY "service_role_digital_asset_preparation_pdf_artifacts"
-      ON digital_asset_preparation_pdf_artifacts FOR ALL
+      ON digital_asset_preparation_pdf_artifacts FOR ALL TO service_role
       USING (true)
       WITH CHECK (true);
   END IF;
 END $$;
+
+REVOKE ALL PRIVILEGES ON TABLE public.digital_asset_preparation_pdf_artifacts
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, INSERT, DELETE ON TABLE public.digital_asset_preparation_pdf_artifacts
+  TO service_role;
+
+DO $verify$
+BEGIN
+  IF NOT (SELECT relrowsecurity FROM pg_class
+          WHERE oid = 'public.digital_asset_preparation_pdf_artifacts'::regclass) THEN
+    RAISE EXCEPTION 'RLS is not enabled on digital_asset_preparation_pdf_artifacts';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'digital_asset_preparation_pdf_artifacts'
+      AND policyname = 'service_role_digital_asset_preparation_pdf_artifacts'
+      AND roles = ARRAY['service_role']::name[]
+      AND cmd = 'ALL'
+  ) THEN
+    RAISE EXCEPTION 'Service-role policy is missing or incorrectly scoped on digital_asset_preparation_pdf_artifacts';
+  END IF;
+  IF has_table_privilege('anon', 'public.digital_asset_preparation_pdf_artifacts', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.digital_asset_preparation_pdf_artifacts', 'SELECT')
+     OR has_table_privilege('anon', 'public.digital_asset_preparation_pdf_artifacts', 'TRUNCATE')
+     OR has_table_privilege('authenticated', 'public.digital_asset_preparation_pdf_artifacts', 'TRUNCATE')
+     OR has_table_privilege('service_role', 'public.digital_asset_preparation_pdf_artifacts', 'UPDATE')
+     OR has_table_privilege('service_role', 'public.digital_asset_preparation_pdf_artifacts', 'TRUNCATE') THEN
+    RAISE EXCEPTION 'Unexpected privileges remain on digital_asset_preparation_pdf_artifacts';
+  END IF;
+END
+$verify$;
+
+COMMIT;
