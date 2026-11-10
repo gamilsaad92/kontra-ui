@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+set +x
+umask 077
+
+readonly EXPECTED_REF="refs/heads/staging-migrations"
+readonly EXPECTED_CONFIRMATION="BACKUP-RESTORE jpemuoapbgzwapydqiio"
+readonly PG_IMAGE="postgres:17.11-alpine"
+readonly SUPABASE_CLI_VERSION="3.0.0"
+readonly WORK_DIR="${RUNNER_TEMP:?RUNNER_TEMP is required}/kontra-staging-restore-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+readonly STACK_DIR="$WORK_DIR/supabase"
+readonly CLI_DIR="$WORK_DIR/cli"
+readonly CA_PATH="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}/ops/staging-runner/supabase-root.crt"
+readonly NETWORK="kontra-restore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+readonly LOCAL_DB_PORT="54322"
+
+cleanup() {
+  local result=$?
+  set +e
+  if [[ -x "$CLI_DIR/node_modules/.bin/supabase" && -f "$STACK_DIR/supabase/config.toml" ]]; then
+    (cd "$STACK_DIR" && "$CLI_DIR/node_modules/.bin/supabase" stop --no-backup) >/dev/null 2>&1
+  fi
+  docker network rm "$NETWORK" >/dev/null 2>&1 || true
+  unset STAGING_DATABASE_URL LOCAL_DB_PASSWORD BACKUP_KEY
+  rm -rf "$WORK_DIR"
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+fail() {
+  echo "Staging backup/restore verification stopped: $1" >&2
+  exit 1
+}
+
+[[ "${GITHUB_REF:-}" == "$EXPECTED_REF" ]] || fail "wrong branch"
+[[ "${BACKUP_CONFIRMATION:-}" == "$EXPECTED_CONFIRMATION" ]] || fail "workflow confirmation phrase did not match"
+: "${STAGING_DATABASE_URL:?staging connection is unavailable}"
+[[ -s "$CA_PATH" && -s "${CA_PATH}.sha256" ]] || fail "pinned staging CA files are missing"
+
+mkdir -p "$WORK_DIR" "$STACK_DIR" "$CLI_DIR"
+chmod 700 "$WORK_DIR" "$STACK_DIR" "$CLI_DIR"
+export NPM_CONFIG_CACHE="$WORK_DIR/npm-cache"
+export LOCAL_DB_PASSWORD
+LOCAL_DB_PASSWORD="$(openssl rand -hex 32)"
+echo "::add-mask::$LOCAL_DB_PASSWORD"
+export BACKUP_KEY
+BACKUP_KEY="$(openssl rand -hex 32)"
+echo "::add-mask::$BACKUP_KEY"
+printf 'PGPASSWORD=%s\n' "$LOCAL_DB_PASSWORD" >"$WORK_DIR/local-db.env"
+chmod 600 "$WORK_DIR/local-db.env"
+
+npm install --prefix "$CLI_DIR" --no-audit --no-fund "supabase@$SUPABASE_CLI_VERSION" >/dev/null 2>&1 ||
+  fail "could not install the pinned Supabase CLI"
+SUPABASE="$CLI_DIR/node_modules/.bin/supabase"
+(cd "$STACK_DIR" && "$SUPABASE" init --force) >/dev/null 2>&1 ||
+  fail "could not initialize the temporary Supabase config"
+
+python3 - "$STACK_DIR/supabase/config.toml" "$LOCAL_DB_PASSWORD" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+password = sys.argv[2]
+lines = path.read_text().splitlines()
+section = None
+seen = set()
+out = []
+for line in lines:
+    m = re.match(r"^\s*\[([^\]]+)\]", line)
+    if m:
+        section = m.group(1)
+    if section == "db":
+        for key, value in (
+            ("major_version", "17"),
+            ("port", "54322"),
+            ("password", f'"{password}"'),
+        ):
+            if re.match(rf"^\s*{key}\s*=", line):
+                line = f"{key} = {value}"
+                seen.add(key)
+    out.append(line)
+if not any(re.match(r"^\s*\[db\]", line) for line in out):
+    raise SystemExit("Supabase config has no db section")
+section = None
+insert_at = None
+for i, line in enumerate(out):
+    m = re.match(r"^\s*\[([^\]]+)\]", line)
+    if m:
+        if section == "db" and insert_at is None:
+            insert_at = i
+        section = m.group(1)
+if section == "db" and insert_at is None:
+    insert_at = len(out)
+if insert_at is not None:
+    missing = [k for k in ("major_version", "port", "password") if k not in seen]
+    out[insert_at:insert_at] = [
+        "major_version = 17" if k == "major_version" else
+        "port = 54322" if k == "port" else
+        f'password = "{password}"'
+        for k in missing
+    ]
+path.write_text("\n".join(out) + "\n")
+path.chmod(0o600)
+PY
+
+docker network create --opt com.docker.network.bridge.host_binding_ipv4=127.0.0.1 "$NETWORK" >/dev/null ||
+  fail "could not create the isolated loopback-only Docker network"
+(cd "$STACK_DIR" && "$SUPABASE" start \
+  --network-id "$NETWORK" \
+  --exclude realtime,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,analytics,vector,logflare \
+  >"$WORK_DIR/supabase-start.log" 2>&1) ||
+  fail "the local Supabase PostgreSQL 17 stack failed to start"
+
+ss -ltnH | awk -v p=":$LOCAL_DB_PORT" '
+  $4 ~ p"$" { found=1; if ($4 !~ /^127\.0\.0\.1:/ && $4 !~ /^\[::1\]:/) bad=1 }
+  END { exit (!found || bad) }
+' || fail "the local database port is not bound exclusively to loopback"
+
+LOCAL_DEPENDENCIES_SQL="
+SELECT
+  current_setting('server_version_num')::integer / 10000 = 17
+  AND (SELECT count(*) = 5 FROM pg_extension
+       WHERE (extname, extversion) IN (
+         ('plpgsql','1.0'), ('pgcrypto','1.3'), ('uuid-ossp','1.1'),
+         ('pg_stat_statements','1.11'), ('supabase_vault','0.3.1')))
+  AND (SELECT count(*) = 8 FROM pg_roles
+       WHERE rolname IN ('anon','authenticated','authenticator','postgres',
+         'service_role','supabase_admin','supabase_auth_admin','supabase_storage_admin'))
+  AND to_regprocedure('auth.uid()') IS NOT NULL
+  AND to_regprocedure('auth.role()') IS NOT NULL
+  AND to_regprocedure('auth.email()') IS NOT NULL
+  AND to_regprocedure('auth.jwt()') IS NOT NULL
+  AND to_regclass('storage.objects') IS NOT NULL
+  AND to_regclass('storage.buckets') IS NOT NULL
+"
+docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" \
+  psql -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
+  -X -v ON_ERROR_STOP=1 -Atc "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>/dev/null ||
+  fail "local Supabase dependency check failed"
+[[ "$(<"$WORK_DIR/dependencies.txt")" == "t" ]] ||
+  fail "local Supabase version, extension, role, Auth, or Storage prerequisites differ"
+
+# This is the first staging database connection in the job. The existing script
+# validates project identity, verify-full, the reviewed CA, and its SHA-256 pin.
+GITHUB_REF="$EXPECTED_REF" bash "$GITHUB_WORKSPACE/scripts/staging-connection-smoke.sh" ||
+  fail "the protected staging connection preflight failed"
+
+docker run --rm --network host \
+  -e STAGING_DATABASE_URL -e PGSSLMODE=verify-full \
+  -e PGSSLROOTCERT=/certs/supabase-root.crt \
+  -v "$CA_PATH:/certs/supabase-root.crt:ro" \
+  -v "$WORK_DIR:/backup" \
+  "$PG_IMAGE" sh -ec '
+    pg_dump "$STAGING_DATABASE_URL" --schema=public --format=custom --no-owner \
+      --file=/backup/staging-public.dump
+    pg_restore --list /backup/staging-public.dump >/dev/null
+  ' >/dev/null 2>&1 || fail "custom-format staging dump or archive validation failed"
+
+sha256sum "$WORK_DIR/staging-public.dump" >"$WORK_DIR/staging-public.sha256"
+sha256sum --check "$WORK_DIR/staging-public.sha256" >/dev/null ||
+  fail "source backup checksum verification failed"
+openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -pass env:BACKUP_KEY \
+  -in "$WORK_DIR/staging-public.dump" -out "$WORK_DIR/staging-public.dump.enc" ||
+  fail "backup encryption failed"
+sha256sum "$WORK_DIR/staging-public.dump.enc" >"$WORK_DIR/staging-public.dump.enc.sha256"
+rm -f "$WORK_DIR/staging-public.dump"
+sha256sum --check "$WORK_DIR/staging-public.dump.enc.sha256" >/dev/null ||
+  fail "encrypted backup checksum verification failed"
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_KEY \
+  -in "$WORK_DIR/staging-public.dump.enc" -out "$WORK_DIR/restore.dump" ||
+  fail "backup decryption failed"
+docker run --rm --network host -v "$WORK_DIR:/backup:ro" "$PG_IMAGE" \
+  pg_restore --list /backup/restore.dump >/dev/null 2>&1 ||
+  fail "decrypted custom-format archive validation failed"
+
+docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
+  -v "$WORK_DIR:/backup:ro" "$PG_IMAGE" \
+  pg_restore --exit-on-error --clean --if-exists --no-owner \
+    -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
+    /backup/restore.dump >/dev/null 2>&1 ||
+  fail "restore into the local disposable database failed"
+
+docker run --rm --network host \
+  -e STAGING_DATABASE_URL -e PGSSLMODE=verify-full \
+  -e PGSSLROOTCERT=/certs/supabase-root.crt \
+  -v "$CA_PATH:/certs/supabase-root.crt:ro" \
+  -v "$WORK_DIR:/compare" "$PG_IMAGE" sh -ec '
+    pg_dump "$STAGING_DATABASE_URL" --schema-only --schema=public --no-owner --no-acl \
+      | sed -E "/^-- Dumped (from|by) /d" >/compare/staging-schema.sql
+  ' >/dev/null 2>&1 || fail "staging schema comparison snapshot failed"
+docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
+  -v "$WORK_DIR:/compare" "$PG_IMAGE" sh -ec '
+    pg_dump -h 127.0.0.1 -p 54322 -U postgres -d postgres \
+      --schema-only --schema=public --no-owner --no-acl \
+      | sed -E "/^-- Dumped (from|by) /d" >/compare/local-schema.sql
+  ' >/dev/null 2>&1 || fail "local schema comparison snapshot failed"
+diff -u "$WORK_DIR/staging-schema.sql" "$WORK_DIR/local-schema.sql" >/dev/null ||
+  fail "restored public schema differs from staging"
+
+cat >"$WORK_DIR/counts.sql" <<'SQL'
+SELECT 'deal_rooms', count(*) FROM public.deal_rooms
+UNION ALL SELECT 'deal_analyses', count(*) FROM public.deal_analyses
+UNION ALL SELECT 'party_submissions', count(*) FROM public.party_submissions
+UNION ALL SELECT 'deal_room_tasks', count(*) FROM public.deal_room_tasks
+UNION ALL SELECT 'deal_room_invites', count(*) FROM public.deal_room_invites
+UNION ALL SELECT 'deal_room_access_sessions', count(*) FROM public.deal_room_access_sessions
+UNION ALL SELECT 'custom_workflow_packs', count(*) FROM public.custom_workflow_packs
+UNION ALL SELECT 'transaction_record_fields', count(*) FROM public.transaction_record_fields
+UNION ALL SELECT 'transaction_record_approvals', count(*) FROM public.transaction_record_approvals
+UNION ALL SELECT 'transaction_record_history', count(*) FROM public.transaction_record_history
+UNION ALL SELECT 'transaction_record_conflicts', count(*) FROM public.transaction_record_conflicts
+UNION ALL SELECT 'deal_events', count(*) FROM public.deal_events
+UNION ALL SELECT 'transaction_generation_sessions', count(*) FROM public.transaction_generation_sessions
+UNION ALL SELECT 'transaction_generation_sources', count(*) FROM public.transaction_generation_sources
+UNION ALL SELECT 'deal_room_owner_sessions', count(*) FROM public.deal_room_owner_sessions
+UNION ALL SELECT 'deal_room_owner_exchanges', count(*) FROM public.deal_room_owner_exchanges
+UNION ALL SELECT 'transaction_record_party_relationships', count(*) FROM public.transaction_record_party_relationships
+UNION ALL SELECT 'transaction_record_party_relationship_history', count(*) FROM public.transaction_record_party_relationship_history
+UNION ALL SELECT 'participant_submission_events', count(*) FROM public.participant_submission_events
+UNION ALL SELECT 'verified_asset_snapshots', count(*) FROM public.verified_asset_snapshots
+ORDER BY 1;
+SQL
+docker run --rm --network host \
+  -e STAGING_DATABASE_URL -e PGSSLMODE=verify-full \
+  -e PGSSLROOTCERT=/certs/supabase-root.crt \
+  -v "$CA_PATH:/certs/supabase-root.crt:ro" \
+  -v "$WORK_DIR:/compare" "$PG_IMAGE" sh -ec '
+    psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -AtF "|" -f /compare/counts.sql \
+      >/compare/staging-counts.txt 2>/dev/null
+  ' || fail "staging row-count comparison failed"
+docker run --rm --network host -e PGPASSWORD="$LOCAL_DB_PASSWORD" \
+  -v "$WORK_DIR:/compare" "$PG_IMAGE" sh -ec '
+    psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -AtF "|" \
+      -f /compare/counts.sql >/compare/local-counts.txt 2>/dev/null
+  ' || fail "local row-count comparison failed"
+diff -u "$WORK_DIR/staging-counts.txt" "$WORK_DIR/local-counts.txt" >/dev/null ||
+  fail "restored row counts differ from staging"
+
+echo "Staging public-schema backup restored and verified; no migration was applied."
