@@ -1,0 +1,38 @@
+name: Staging public backup and disposable restore verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type BACKUP-RESTORE jpemuoapbgzwapydqiio to authorize the backup connection
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kontra-staging-public-backup-restore
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ github.ref == 'refs/heads/staging-migrations' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: kontra-staging
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Verify staging backup and isolated restore
+        run: bash scripts/staging-public-backup-restore-verify.sh
+        env:
+          BACKUP_CONFIRMATION: ${{ inputs.confirmation }}
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
