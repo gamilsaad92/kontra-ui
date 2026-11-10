@@ -12710,7 +12710,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-if (require.main === module) {
+async function startServer() {
   if (process.env.NODE_ENV === 'production') {
     startJobSchedulers();
   }
@@ -12722,6 +12722,14 @@ if (require.main === module) {
     if (process.env.NODE_ENV !== 'production') {
       void logBaselineSchemaHealth();
     }
+  });
+  return server;
+}
+
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error(`FATAL: API startup refused: ${error.message}`);
+    process.exitCode = 1;
   });
 }
 
@@ -12943,6 +12951,7 @@ app.getChecklistItemAssignedRoles = getChecklistItemAssignedRoles;
 app.getAssignedSectionsForAccess = getAssignedSectionsForAccess;
 app.buildCreationMetadata = buildCreationMetadata;
 app.isTokenizationTransaction = isTokenizationTransaction;
+app.startServer = startServer;
 if (process.env.NODE_ENV === 'test') {
   app.setMyRoomsOtpForTest = (email, code) => {
     otpStore.set(email, { code, expiresAt: Date.now() + 60_000 });
