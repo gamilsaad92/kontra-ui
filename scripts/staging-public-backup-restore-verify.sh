@@ -119,28 +119,67 @@ ss -ltnH | awk -v p=":$LOCAL_DB_PORT" '
 ' || fail "the local database port is not bound exclusively to loopback"
 
 LOCAL_DEPENDENCIES_SQL="
-SELECT
-  current_setting('server_version_num')::integer / 10000 = 17
-  AND (SELECT count(*) = 5 FROM pg_extension
-       WHERE (extname, extversion) IN (
-         ('plpgsql','1.0'), ('pgcrypto','1.3'), ('uuid-ossp','1.1'),
-         ('pg_stat_statements','1.11'), ('supabase_vault','0.3.1')))
-  AND (SELECT count(*) = 8 FROM pg_roles
-       WHERE rolname IN ('anon','authenticated','authenticator','postgres',
-         'service_role','supabase_admin','supabase_auth_admin','supabase_storage_admin'))
-  AND to_regprocedure('auth.uid()') IS NOT NULL
-  AND to_regprocedure('auth.role()') IS NOT NULL
-  AND to_regprocedure('auth.email()') IS NOT NULL
-  AND to_regprocedure('auth.jwt()') IS NOT NULL
-  AND to_regclass('storage.objects') IS NOT NULL
-  AND to_regclass('storage.buckets') IS NOT NULL
+SELECT 'postgres_major_version',
+       (current_setting('server_version_num')::integer / 10000)::text,
+       '17',
+       (current_setting('server_version_num')::integer / 10000 = 17)::text
+UNION ALL
+SELECT 'extension:' || expected.name,
+       COALESCE(installed.extversion, 'missing'),
+       expected.version,
+       COALESCE(installed.extversion = expected.version, false)::text
+FROM (VALUES
+  ('plpgsql', '1.0'),
+  ('pgcrypto', '1.3'),
+  ('uuid-ossp', '1.1'),
+  ('pg_stat_statements', '1.11'),
+  ('supabase_vault', '0.3.1')
+) AS expected(name, version)
+LEFT JOIN pg_extension AS installed ON installed.extname::text = expected.name
+UNION ALL
+SELECT 'role:' || expected.name,
+       CASE WHEN installed.rolname IS NULL THEN 'missing' ELSE 'present' END,
+       'present',
+       (installed.rolname IS NOT NULL)::text
+FROM (VALUES
+  ('anon'), ('authenticated'), ('authenticator'), ('postgres'),
+  ('service_role'), ('supabase_admin'), ('supabase_auth_admin'),
+  ('supabase_storage_admin')
+) AS expected(name)
+LEFT JOIN pg_roles AS installed ON installed.rolname::text = expected.name
+UNION ALL
+SELECT 'function:' || expected.signature,
+       CASE WHEN to_regprocedure(expected.signature) IS NULL THEN 'missing' ELSE 'present' END,
+       'present',
+       (to_regprocedure(expected.signature) IS NOT NULL)::text
+FROM (VALUES ('auth.uid()'), ('auth.role()'), ('auth.email()'), ('auth.jwt()'))
+  AS expected(signature)
+UNION ALL
+SELECT 'table:' || expected.name,
+       CASE WHEN to_regclass(expected.name) IS NULL THEN 'missing' ELSE 'present' END,
+       'present',
+       (to_regclass(expected.name) IS NOT NULL)::text
+FROM (VALUES ('storage.objects'), ('storage.buckets')) AS expected(name)
+ORDER BY 1
 "
 docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" \
   psql -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
-  -X -v ON_ERROR_STOP=1 -Atc "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>/dev/null ||
-  fail "local Supabase dependency check failed"
-[[ "$(<"$WORK_DIR/dependencies.txt")" == "t" ]] ||
-  fail "local Supabase version, extension, role, Auth, or Storage prerequisites differ"
+  -X -v ON_ERROR_STOP=1 -AtF '|' -c "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>/dev/null ||
+  fail "could not query local Supabase prerequisites"
+
+DEPENDENCY_FAILURES=0
+DEPENDENCY_COUNT=0
+while IFS='|' read -r requirement actual expected passed; do
+  [[ -n "$requirement" && -n "$passed" ]] || fail "local Supabase prerequisite output was incomplete"
+  DEPENDENCY_COUNT=$((DEPENDENCY_COUNT + 1))
+  if [[ "$passed" != "t" ]]; then
+    printf 'Local Supabase prerequisite failed: %s (actual=%s; expected=%s)\n' \
+      "$requirement" "$actual" "$expected" >&2
+    DEPENDENCY_FAILURES=1
+  fi
+done <"$WORK_DIR/dependencies.txt"
+[[ "$DEPENDENCY_COUNT" -eq 20 ]] || fail "local Supabase prerequisite output was incomplete"
+[[ "$DEPENDENCY_FAILURES" -eq 0 ]] || fail "local Supabase prerequisite check failed; see named prerequisite(s) above"
 
 # This is the first staging database connection in the job. The existing script
 # validates project identity, verify-full, the reviewed CA, and its SHA-256 pin.
