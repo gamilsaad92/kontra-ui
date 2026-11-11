@@ -21,7 +21,7 @@ cleanup() {
     (cd "$STACK_DIR" && "$CLI_DIR/node_modules/.bin/supabase" stop --no-backup) >/dev/null 2>&1
   fi
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
-  unset STAGING_DATABASE_URL LOCAL_DB_PASSWORD BACKUP_KEY
+  unset STAGING_DATABASE_URL BACKUP_KEY
   rm -rf "$WORK_DIR"
   exit "$result"
 }
@@ -41,14 +41,9 @@ fail() {
 mkdir -p "$WORK_DIR" "$STACK_DIR" "$CLI_DIR"
 chmod 700 "$WORK_DIR" "$STACK_DIR" "$CLI_DIR"
 export NPM_CONFIG_CACHE="$WORK_DIR/npm-cache"
-export LOCAL_DB_PASSWORD
-LOCAL_DB_PASSWORD="$(openssl rand -hex 32)"
-echo "::add-mask::$LOCAL_DB_PASSWORD"
 export BACKUP_KEY
 BACKUP_KEY="$(openssl rand -hex 32)"
 echo "::add-mask::$BACKUP_KEY"
-printf 'PGPASSWORD=%s\n' "$LOCAL_DB_PASSWORD" >"$WORK_DIR/local-db.env"
-chmod 600 "$WORK_DIR/local-db.env"
 
 npm install --prefix "$CLI_DIR" --no-audit --no-fund "supabase@$SUPABASE_CLI_VERSION" >/dev/null 2>&1 ||
   fail "could not install the pinned Supabase CLI"
@@ -56,7 +51,7 @@ SUPABASE="$CLI_DIR/node_modules/.bin/supabase"
 (cd "$STACK_DIR" && "$SUPABASE" init --force) >/dev/null 2>&1 ||
   fail "could not initialize the temporary Supabase config"
 
-python3 - "$STACK_DIR/supabase/config.toml" "$LOCAL_DB_PASSWORD" <<'PY'
+python3 - "$STACK_DIR/supabase/config.toml" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -75,7 +70,6 @@ for line in lines:
         for key, value in (
             ("major_version", "17"),
             ("port", "54322"),
-            ("password", f'"{password}"'),
         ):
             if re.match(rf"^\s*{key}\s*=", line):
                 line = f"{key} = {value}"
@@ -94,11 +88,9 @@ for i, line in enumerate(out):
 if section == "db" and insert_at is None:
     insert_at = len(out)
 if insert_at is not None:
-    missing = [k for k in ("major_version", "port", "password") if k not in seen]
+    missing = [k for k in ("major_version", "port") if k not in seen]
     out[insert_at:insert_at] = [
-        "major_version = 17" if k == "major_version" else
-        "port = 54322" if k == "port" else
-        f'password = "{password}"'
+        "major_version = 17" if k == "major_version" else "port = 54322"
         for k in missing
     ]
 path.write_text("\n".join(out) + "\n")
@@ -117,6 +109,66 @@ ss -ltnH | awk -v p=":$LOCAL_DB_PORT" '
   $4 ~ p"$" { found=1; if ($4 !~ /^127\.0\.0\.1:/ && $4 !~ /^\[::1\]:/) bad=1 }
   END { exit (!found || bad) }
 ' || fail "the local database port is not bound exclusively to loopback"
+
+# Supabase CLI 3.0.0 uses its built-in credential for the primary local DB;
+# [db].password does not configure that container. Read the DB_URL rendered by the CLI so the
+# client uses the password the running local database accepts, without hardcoding it.
+LOCAL_STATUS_JSON="$WORK_DIR/local-supabase-status.json"
+"$SUPABASE" status --output json >"$LOCAL_STATUS_JSON" 2>"$WORK_DIR/supabase-status.stderr" ||
+  fail "could not read local Supabase database connection settings"
+chmod 600 "$LOCAL_STATUS_JSON"
+python3 - "$LOCAL_STATUS_JSON" "$WORK_DIR/local-db.env" "$LOCAL_DB_PORT" <<'PY'
+import json
+import sys
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+try:
+    status = json.loads(Path(sys.argv[1]).read_text())
+    parsed = urlsplit(status.get("DB_URL") or "")
+    password = unquote(parsed.password or "")
+    if not (
+        parsed.scheme in {"postgres", "postgresql"}
+        and parsed.username == "postgres"
+        and parsed.hostname == "127.0.0.1"
+        and parsed.port == int(sys.argv[3])
+        and parsed.path == "/postgres"
+        and password
+        and chr(10) not in password
+        and chr(13) not in password
+    ):
+        raise ValueError
+    env_file = Path(sys.argv[2])
+    env_file.write_text("PGPASSWORD=" + password + chr(10))
+    env_file.chmod(0o600)
+except (OSError, TypeError, ValueError, json.JSONDecodeError):
+    print("Supabase status did not provide the expected loopback PostgreSQL settings.", file=sys.stderr)
+    sys.exit(1)
+PY
+
+print_local_psql_failure() {
+  local error_file="$1"
+  local label="$2"
+  local kind
+  if grep -Eiq 'connection refused|could not connect|could not translate host name|no route to host|timeout expired|password authentication failed|database "[^"]+" does not exist|role "[^"]+" does not exist' "$error_file"; then
+    kind="connection/authentication"
+  elif grep -Eiq '^(ERROR|FATAL|psql: error):' "$error_file"; then
+    kind="PostgreSQL query/server"
+  else
+    kind="Docker or client startup"
+  fi
+  printf '%s failed (%s).\n' "$label" "$kind" >&2
+  awk '/^(psql: error:|ERROR:|FATAL:|DETAIL:|HINT:)/ && count++ < 4 { print }' "$error_file" |
+    sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted PostgreSQL URI>#g; s#(password|PGPASSWORD)[=:][^[:space:]]+#credential=<redacted>#Ig' >&2
+}
+
+LOCAL_DB_READINESS_ERROR_LOG="$WORK_DIR/local-db-readiness.stderr"
+if ! docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" psql -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres -X -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >"$WORK_DIR/local-db-readiness.txt" 2>"$LOCAL_DB_READINESS_ERROR_LOG"; then
+  print_local_psql_failure "$LOCAL_DB_READINESS_ERROR_LOG" "Local PostgreSQL authenticated readiness check"
+  fail "local Supabase PostgreSQL authenticated readiness check failed"
+fi
+[[ "$(<"$WORK_DIR/local-db-readiness.txt")" == "1" ]] ||
+  fail "local Supabase PostgreSQL authenticated readiness check returned unexpected output"
 
 LOCAL_DEPENDENCIES_SQL="
 SELECT 'postgres_major_version',
@@ -166,15 +218,7 @@ DEPENDENCY_ERROR_LOG="$WORK_DIR/dependencies.stderr"
 if ! docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" \
   psql -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
   -X -v ON_ERROR_STOP=1 -AtF '|' -c "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>"$DEPENDENCY_ERROR_LOG"; then
-  if grep -Eiq 'connection refused|could not connect|no route to host|timeout expired|password authentication failed|database "[^"]+" does not exist|role "[^"]+" does not exist' "$DEPENDENCY_ERROR_LOG"; then
-    DEPENDENCY_QUERY_FAILURE_KIND="connection/authentication"
-  elif grep -Eiq '^(ERROR|FATAL|psql: error):' "$DEPENDENCY_ERROR_LOG"; then
-    DEPENDENCY_QUERY_FAILURE_KIND="PostgreSQL query/server"
-  else
-    DEPENDENCY_QUERY_FAILURE_KIND="Docker or client startup"
-  fi
-  echo "Local prerequisite query failed ($DEPENDENCY_QUERY_FAILURE_KIND)." >&2
-  sed -n -E '/^(psql: error:|ERROR:|FATAL:|DETAIL:|HINT:)/p' "$DEPENDENCY_ERROR_LOG" | head -n 4 | sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted PostgreSQL URI>#g; s#(password|PGPASSWORD)[=:][^[:space:]]+#\1=<redacted>#Ig' >&2
+  print_local_psql_failure "$DEPENDENCY_ERROR_LOG" "Local prerequisite query"
   fail "could not query local Supabase prerequisites"
 fi
 
@@ -280,7 +324,7 @@ docker run --rm --network host \
     psql "$STAGING_DATABASE_URL" -X -v ON_ERROR_STOP=1 -AtF "|" -f /compare/counts.sql \
       >/compare/staging-counts.txt 2>/dev/null
   ' || fail "staging row-count comparison failed"
-docker run --rm --network host -e PGPASSWORD="$LOCAL_DB_PASSWORD" \
+docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
   -v "$WORK_DIR:/compare" "$PG_IMAGE" sh -ec '
     psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -X -v ON_ERROR_STOP=1 -AtF "|" \
       -f /compare/counts.sql >/compare/local-counts.txt 2>/dev/null
