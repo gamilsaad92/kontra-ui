@@ -113,8 +113,27 @@ ss -ltnH | awk -v p=":$LOCAL_DB_PORT" '
 # [db].password does not configure that container. Read the DB_URL rendered by the CLI so the
 # client uses the password the running local database accepts, without hardcoding it.
 LOCAL_STATUS_JSON="$WORK_DIR/local-supabase-status.json"
-"$SUPABASE" status --output json >"$LOCAL_STATUS_JSON" 2>"$WORK_DIR/supabase-status.stderr" ||
-  fail "could not read local Supabase database connection settings"
+LOCAL_STATUS_STDERR="$WORK_DIR/supabase-status.stderr"
+
+print_local_supabase_status_failure() {
+  local error_file="$1"
+  local exit_code="$2"
+  printf 'Supabase status command failed (exit code %s).\n' "$exit_code" >&2
+  if [[ -s "$error_file" ]]; then
+    sed -E 's#[[:alpha:]][[:alnum:].+-]*://[^[:space:]]+#<redacted URL>#g; s#((password|PGPASSWORD|token|secret)[=:][[:space:]]*)[^[:space:],;]+#\1<redacted>#Ig' "$error_file" |
+      awk 'NR <= 5' >&2
+  else
+    echo "Supabase status command emitted no stderr." >&2
+  fi
+}
+
+if (cd "$STACK_DIR" && "$SUPABASE" status -o json >"$LOCAL_STATUS_JSON" 2>"$LOCAL_STATUS_STDERR"); then
+  :
+else
+  LOCAL_STATUS_EXIT=$?
+  print_local_supabase_status_failure "$LOCAL_STATUS_STDERR" "$LOCAL_STATUS_EXIT"
+  fail "Supabase status command failed before local database settings were read"
+fi
 chmod 600 "$LOCAL_STATUS_JSON"
 python3 - "$LOCAL_STATUS_JSON" "$WORK_DIR/local-db.env" "$LOCAL_DB_PORT" <<'PY'
 import json
@@ -124,25 +143,40 @@ from urllib.parse import unquote, urlsplit
 
 try:
     status = json.loads(Path(sys.argv[1]).read_text())
-    parsed = urlsplit(status.get("DB_URL") or "")
+except (OSError, json.JSONDecodeError):
+    print("Supabase status output was not readable JSON.", file=sys.stderr)
+    sys.exit(1)
+if not isinstance(status, dict):
+    print("Supabase status output was not a JSON object.", file=sys.stderr)
+    sys.exit(1)
+raw_url = status.get("DB_URL")
+if not isinstance(raw_url, str) or not raw_url:
+    print("Supabase status output did not contain DB_URL.", file=sys.stderr)
+    sys.exit(1)
+try:
+    parsed = urlsplit(raw_url)
     password = unquote(parsed.password or "")
-    if not (
+    valid_url = (
         parsed.scheme in {"postgres", "postgresql"}
         and parsed.username == "postgres"
         and parsed.hostname == "127.0.0.1"
         and parsed.port == int(sys.argv[3])
         and parsed.path == "/postgres"
+        and not parsed.query
+        and not parsed.fragment
         and password
         and chr(10) not in password
         and chr(13) not in password
-    ):
-        raise ValueError
-    env_file = Path(sys.argv[2])
-    env_file.write_text("PGPASSWORD=" + password + chr(10))
-    env_file.chmod(0o600)
-except (OSError, TypeError, ValueError, json.JSONDecodeError):
-    print("Supabase status did not provide the expected loopback PostgreSQL settings.", file=sys.stderr)
+    )
+except ValueError:
+    valid_url = False
+    password = ""
+if not valid_url:
+    print("Supabase status DB_URL did not match the expected loopback PostgreSQL settings.", file=sys.stderr)
     sys.exit(1)
+env_file = Path(sys.argv[2])
+env_file.write_text("PGPASSWORD=" + password + chr(10))
+env_file.chmod(0o600)
 PY
 
 print_local_psql_failure() {
