@@ -162,10 +162,21 @@ SELECT 'table:' || expected.name,
 FROM (VALUES ('storage.objects'), ('storage.buckets')) AS expected(name)
 ORDER BY 1
 "
-docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" \
+DEPENDENCY_ERROR_LOG="$WORK_DIR/dependencies.stderr"
+if ! docker run --rm --network host --env-file "$WORK_DIR/local-db.env" "$PG_IMAGE" \
   psql -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
-  -X -v ON_ERROR_STOP=1 -AtF '|' -c "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>/dev/null ||
+  -X -v ON_ERROR_STOP=1 -AtF '|' -c "$LOCAL_DEPENDENCIES_SQL" >"$WORK_DIR/dependencies.txt" 2>"$DEPENDENCY_ERROR_LOG"; then
+  if grep -Eiq 'connection refused|could not connect|no route to host|timeout expired|password authentication failed|database "[^"]+" does not exist|role "[^"]+" does not exist' "$DEPENDENCY_ERROR_LOG"; then
+    DEPENDENCY_QUERY_FAILURE_KIND="connection/authentication"
+  elif grep -Eiq '^(ERROR|FATAL|psql: error):' "$DEPENDENCY_ERROR_LOG"; then
+    DEPENDENCY_QUERY_FAILURE_KIND="PostgreSQL query/server"
+  else
+    DEPENDENCY_QUERY_FAILURE_KIND="Docker or client startup"
+  fi
+  echo "Local prerequisite query failed ($DEPENDENCY_QUERY_FAILURE_KIND)." >&2
+  sed -n -E '/^(psql: error:|ERROR:|FATAL:|DETAIL:|HINT:)/p' "$DEPENDENCY_ERROR_LOG" | head -n 4 | sed -E 's#postgres(ql)?://[^[:space:]]+#<redacted PostgreSQL URI>#g; s#(password|PGPASSWORD)[=:][^[:space:]]+#\1=<redacted>#Ig' >&2
   fail "could not query local Supabase prerequisites"
+fi
 
 DEPENDENCY_FAILURES=0
 DEPENDENCY_COUNT=0
