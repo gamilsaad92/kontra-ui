@@ -57,7 +57,6 @@ import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-password = sys.argv[2]
 lines = path.read_text().splitlines()
 section = None
 seen = set()
