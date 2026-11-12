@@ -333,7 +333,43 @@ elif restore_error.search(raw):
     category = "restore object"
 else:
     category = "client or archive"
+
+object_types = (
+    "MATERIALIZED VIEW DATA", "FOREIGN DATA WRAPPER", "OPERATOR FAMILY",
+    "OPERATOR CLASS", "DEFAULT ACL", "SEQUENCE SET", "TABLE DATA",
+    "FK CONSTRAINT", "EVENT TRIGGER", "MATERIALIZED VIEW",
+    "USER MAPPING", "CONSTRAINT", "EXTENSION", "FUNCTION", "PROCEDURE",
+    "AGGREGATE", "COLLATION", "CONVERSION", "DOMAIN", "FOREIGN TABLE",
+    "OPERATOR", "POLICY", "PUBLICATION", "STATISTICS", "SUBSCRIPTION",
+    "TRANSFORM", "TRIGGER", "TYPE", "VIEW", "INDEX", "RULE", "SCHEMA",
+    "SEQUENCE", "SERVER", "TABLE", "ACL", "COMMENT",
+)
+post_data = {
+    "ACL", "COMMENT", "CONSTRAINT", "DEFAULT ACL", "FK CONSTRAINT",
+    "INDEX", "POLICY", "RULE", "STATISTICS", "TRIGGER",
+}
+context = None
+for line in raw.splitlines():
+    match = re.match(r"^pg_restore: (creating|dropping) (.+?) \"", line)
+    if match:
+        operation, description = match.groups()
+        object_type = next(
+            (kind for kind in object_types if description == kind or description.startswith(kind + " ")),
+            None,
+        )
+        if object_type:
+            phase = (
+                "cleanup" if operation == "dropping"
+                else "post-data" if object_type in post_data
+                else "pre-data"
+            )
+            context = f"phase={phase} operation={operation} object_type={object_type}"
+    elif re.match(r"^pg_restore: processing data for table ", line):
+        context = "phase=data operation=processing object_type=TABLE DATA"
+
 print(f"Disposable restore command failed ({category}; exit code {sys.argv[2]}).", file=sys.stderr)
+if context:
+    print(f"Restore context: {context}", file=sys.stderr)
 shown = 0
 for line in raw.splitlines():
     if re.match(r"^(DETAIL|CONTEXT|STATEMENT):|^Command was:|^COPY ", line, re.IGNORECASE):
@@ -359,9 +395,9 @@ PY
 RESTORE_ERROR_LOG="$WORK_DIR/restore.stderr"
 if docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
   -v "$WORK_DIR:/backup:ro" "$PG_IMAGE" \
-  pg_restore --exit-on-error --clean --if-exists --no-owner \
+  pg_restore --verbose --exit-on-error --clean --if-exists --no-owner \
     -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
-    /backup/restore.dump >/dev/null 2>"$RESTORE_ERROR_LOG"; then
+    /backup/restore.dump >"$RESTORE_ERROR_LOG" 2>&1; then
   :
 else
   RESTORE_EXIT=$?
