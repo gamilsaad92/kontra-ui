@@ -338,6 +338,8 @@ object_types = (
     "MATERIALIZED VIEW DATA", "FOREIGN DATA WRAPPER", "OPERATOR FAMILY",
     "OPERATOR CLASS", "DEFAULT ACL", "SEQUENCE SET", "TABLE DATA",
     "FK CONSTRAINT", "EVENT TRIGGER", "MATERIALIZED VIEW",
+    "SEQUENCE OWNED BY", "PUBLICATION TABLE", "SUBSCRIPTION TABLE",
+    "TABLE ATTACH", "BLOB COMMENTS", "BLOB DATA",
     "USER MAPPING", "CONSTRAINT", "EXTENSION", "FUNCTION", "PROCEDURE",
     "AGGREGATE", "COLLATION", "CONVERSION", "DOMAIN", "FOREIGN TABLE",
     "OPERATOR", "POLICY", "PUBLICATION", "STATISTICS", "SUBSCRIPTION",
@@ -346,9 +348,16 @@ object_types = (
 )
 post_data = {
     "ACL", "COMMENT", "CONSTRAINT", "DEFAULT ACL", "FK CONSTRAINT",
-    "INDEX", "POLICY", "RULE", "STATISTICS", "TRIGGER",
+    "INDEX", "POLICY", "PUBLICATION TABLE", "RULE", "SEQUENCE OWNED BY",
+    "STATISTICS", "SUBSCRIPTION TABLE", "TABLE ATTACH", "TRIGGER",
+}
+data_objects = {
+    "BLOB COMMENTS", "BLOB DATA", "MATERIALIZED VIEW DATA",
+    "SEQUENCE SET", "TABLE DATA",
 }
 context = None
+last_operation = None
+last_object_type = None
 for line in raw.splitlines():
     match = re.match(r"^pg_restore: (creating|dropping) (.+?) \"", line)
     if match:
@@ -357,15 +366,46 @@ for line in raw.splitlines():
             (kind for kind in object_types if description == kind or description.startswith(kind + " ")),
             None,
         )
-        if object_type:
-            phase = (
-                "cleanup" if operation == "dropping"
-                else "post-data" if object_type in post_data
-                else "pre-data"
-            )
-            context = f"phase={phase} operation={operation} object_type={object_type}"
+        last_operation = operation
+        last_object_type = object_type
+        phase = (
+            "cleanup" if operation == "dropping"
+            else "post-data" if object_type in post_data
+            else "data" if object_type in data_objects
+            else "pre-data" if object_type
+            else "unknown"
+        )
+        context = f"phase={phase} operation={operation} object_type={object_type or 'unknown'}"
     elif re.match(r"^pg_restore: processing data for table ", line):
         context = "phase=data operation=processing object_type=TABLE DATA"
+        last_operation = "processing"
+        last_object_type = "TABLE DATA"
+    else:
+        toc_entry = re.match(
+            r"^pg_restore: from TOC entry \d+;\s+\d+\s+\d+\s+(.+)$", line
+        )
+        if toc_entry:
+            description = toc_entry.group(1)
+            object_type = next(
+                (kind for kind in object_types if description == kind or description.startswith(kind + " ")),
+                None,
+            )
+            if object_type:
+                operation = (
+                    last_operation
+                    if last_object_type == object_type and last_operation in {"creating", "dropping"}
+                    else "unknown"
+                )
+                phase = (
+                    "cleanup" if operation == "dropping"
+                    else "data" if object_type in data_objects
+                    else "post-data" if object_type in post_data
+                    else "pre-data" if operation == "creating"
+                    else "unknown"
+                )
+                context = f"phase={phase} operation={operation} object_type={object_type}"
+            else:
+                context = "phase=unknown operation=unknown object_type=unknown"
 
 print(f"Disposable restore command failed ({category}; exit code {sys.argv[2]}).", file=sys.stderr)
 if context:
