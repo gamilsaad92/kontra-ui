@@ -260,11 +260,18 @@ DEPENDENCY_COUNT=0
 while IFS='|' read -r requirement actual expected passed; do
   [[ -n "$requirement" && -n "$passed" ]] || fail "local Supabase prerequisite output was incomplete"
   DEPENDENCY_COUNT=$((DEPENDENCY_COUNT + 1))
-  if [[ "$passed" != "t" ]]; then
-    printf 'Local Supabase prerequisite failed: %s (actual=%s; expected=%s)\n' \
-      "$requirement" "$actual" "$expected" >&2
-    DEPENDENCY_FAILURES=1
-  fi
+  case "$passed" in
+    true)
+      ;;
+    false)
+      printf 'Local Supabase prerequisite failed: %s (actual=%s; expected=%s)\n' \
+        "$requirement" "$actual" "$expected" >&2
+      DEPENDENCY_FAILURES=1
+      ;;
+    *)
+      fail "local Supabase prerequisite output had a malformed boolean for $requirement"
+      ;;
+  esac
 done <"$WORK_DIR/dependencies.txt"
 [[ "$DEPENDENCY_COUNT" -eq 20 ]] || fail "local Supabase prerequisite output was incomplete"
 [[ "$DEPENDENCY_FAILURES" -eq 0 ]] || fail "local Supabase prerequisite check failed; see named prerequisite(s) above"
