@@ -309,12 +309,65 @@ docker run --rm --network host -v "$WORK_DIR:/backup:ro" "$PG_IMAGE" \
   pg_restore --list /backup/restore.dump >/dev/null 2>&1 ||
   fail "decrypted custom-format archive validation failed"
 
-docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
+print_local_restore_failure() {
+  local error_file="$1"
+  local exit_code="$2"
+  python3 - "$error_file" "$exit_code" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+raw = Path(sys.argv[1]).read_text(errors="replace")
+connection_error = re.compile(
+    r"connection refused|could not connect|connection to server.*failed|"
+    r"password authentication failed|no route to host|timeout expired|"
+    r"SSL connection|server closed the connection", re.IGNORECASE
+)
+restore_error = re.compile(
+    r"could not execute query|COPY failed|error returned by PQputCopyData|"
+    r"pg_restore: error:|^(ERROR|FATAL):", re.IGNORECASE
+)
+if connection_error.search(raw):
+    category = "database connection"
+elif restore_error.search(raw):
+    category = "restore object"
+else:
+    category = "client or archive"
+print(f"Disposable restore command failed ({category}; exit code {sys.argv[2]}).", file=sys.stderr)
+shown = 0
+for line in raw.splitlines():
+    if re.match(r"^(DETAIL|CONTEXT|STATEMENT):|^Command was:|^COPY ", line, re.IGNORECASE):
+        continue
+    if not re.match(r"^(pg_restore: error:|pg_restore: warning:|ERROR:|FATAL:|psql: error:)", line):
+        continue
+    safe = re.sub(r"[A-Za-z][A-Za-z0-9.+-]*://[^\s\"']+", "<redacted URL>", line)
+    safe = re.sub(
+        r"((?:password|PGPASSWORD|token|secret)[=:]\s*)[^\s,;]+",
+        r"\1<redacted>", safe, flags=re.IGNORECASE
+    )
+    safe = re.sub(r"'[^']*'|\"[^\"]*\"", "<redacted value>", safe)
+    safe = re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", safe)[:300]
+    print(f"Sanitized restore stderr: {safe}", file=sys.stderr)
+    shown += 1
+    if shown == 4:
+        break
+if shown == 0:
+    print("Sanitized pg_restore stderr: no safe diagnostic line was available.", file=sys.stderr)
+PY
+}
+
+RESTORE_ERROR_LOG="$WORK_DIR/restore.stderr"
+if docker run --rm --network host --env-file "$WORK_DIR/local-db.env" \
   -v "$WORK_DIR:/backup:ro" "$PG_IMAGE" \
   pg_restore --exit-on-error --clean --if-exists --no-owner \
     -h 127.0.0.1 -p "$LOCAL_DB_PORT" -U postgres -d postgres \
-    /backup/restore.dump >/dev/null 2>&1 ||
+    /backup/restore.dump >/dev/null 2>"$RESTORE_ERROR_LOG"; then
+  :
+else
+  RESTORE_EXIT=$?
+  print_local_restore_failure "$RESTORE_ERROR_LOG" "$RESTORE_EXIT"
   fail "restore into the local disposable database failed"
+fi
 
 docker run --rm --network host \
   -e STAGING_DATABASE_URL -e PGSSLMODE=verify-full \
