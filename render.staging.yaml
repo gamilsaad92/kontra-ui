@@ -30,3 +30,5 @@ services:
         sync: false
       - key: STAGING_SESSION_SECRET
         sync: false
+      - key: STAGING_TRIAL_ALLOWED_EMAILS
+        sync: false

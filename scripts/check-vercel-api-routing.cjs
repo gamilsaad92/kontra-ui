@@ -3,9 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const productionApi = 'https://kontra-api.onrender.com/api/:path*';
 const stagingApi = 'https://api-staging.kontraplatform.com/api/:path*';
-const productionHosts = ['kontraplatform.com', 'kontraui.com', 'www.kontraui.com', 'kontra-ui.vercel.app'];
 
 function validateVercelApiRouting(config) {
   const rewrites = (config.rewrites || []).filter(rule => rule.source === '/api/:path*');
@@ -15,35 +13,27 @@ function validateVercelApiRouting(config) {
     failures.push('VITE_API_ROUTING_MODE must be same-origin');
   }
 
-  for (const host of productionHosts) {
-    const rule = rewrites.find(candidate => candidate.has?.some(
-      condition => condition.type === 'host' && condition.value === host,
-    ));
-    if (rule?.destination !== productionApi) {
-      failures.push(`production host ${host} must map to the production API`);
-    }
+  if (config.env?.VITE_SUPABASE_URL !== 'https://jpemuoapbgzwapydqiio.supabase.co') {
+    failures.push('VITE_SUPABASE_URL must identify the approved staging Supabase project');
   }
 
-  const stagingRule = rewrites.find(rule => rule.has?.some(
-    condition => condition.type === 'host' && condition.value === 'staging.kontraplatform.com',
-  ));
-  if (stagingRule?.destination !== stagingApi) {
-    failures.push('staging.kontraplatform.com must map to the staging API');
+  if (config.env?.VITE_AUTO_LOGIN !== 'false') {
+    failures.push('VITE_AUTO_LOGIN must be false');
   }
 
-  const fallback = rewrites.find(rule => !rule.has && !rule.missing);
-  if (fallback?.destination !== stagingApi) {
-    failures.push('unknown hosts and preview deployments must map to the staging API');
+  if (!rewrites.some(rule => !rule.has && !rule.missing && rule.destination === stagingApi)) {
+    failures.push('all hosts and preview deployments must map to the staging API');
   }
 
   for (const rule of rewrites) {
-    if (rule.destination === productionApi) {
-      const host = rule.has?.find(condition => condition.type === 'host')?.value;
-      if (!productionHosts.includes(host)) {
-        failures.push('production API destination appears outside the approved production host allowlist');
-      }
-    } else if (rule.destination !== stagingApi) {
+    if (rule.destination !== stagingApi) {
       failures.push(`unexpected API rewrite destination: ${rule.destination}`);
+    }
+  }
+
+  for (const key of ['VITE_API_BASE', 'VITE_API_BASE_URL', 'VITE_API_URL']) {
+    if (config.env?.[key]) {
+      failures.push(`${key} must not bypass same-origin staging routing`);
     }
   }
 
@@ -58,7 +48,7 @@ if (require.main === module) {
     console.error(`Vercel API routing check failed: ${failures.join('; ')}`);
     process.exit(1);
   }
-  console.log('Vercel API routing is fail-closed: approved production hosts use production; all others use staging.');
+  console.log('Vercel API routing is staging-only: all API requests use the approved staging API.');
 }
 
 module.exports = { validateVercelApiRouting };

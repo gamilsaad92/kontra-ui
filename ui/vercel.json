@@ -5,31 +5,6 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "has": [{ "type": "host", "value": "kontraplatform.com" }],
-      "destination": "https://kontra-api.onrender.com/api/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "has": [{ "type": "host", "value": "kontraui.com" }],
-      "destination": "https://kontra-api.onrender.com/api/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "has": [{ "type": "host", "value": "www.kontraui.com" }],
-      "destination": "https://kontra-api.onrender.com/api/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "has": [{ "type": "host", "value": "kontra-ui.vercel.app" }],
-      "destination": "https://kontra-api.onrender.com/api/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "has": [{ "type": "host", "value": "staging.kontraplatform.com" }],
-      "destination": "https://api-staging.kontraplatform.com/api/:path*"
-    },
-    {
-      "source": "/api/:path*",
       "destination": "https://api-staging.kontraplatform.com/api/:path*"
     },
     {
@@ -39,9 +14,8 @@
   ],
   "env": {
     "VITE_API_ROUTING_MODE": "same-origin",
-    "VITE_SUPABASE_URL": "https://<your-project-ref>.supabase.co",
-    "VITE_SUPABASE_ANON_KEY": "<YOUR_PUBLIC_ANON_KEY>",
-    "VITE_SENTRY_DSN": "<your-dsn>",
+    "VITE_SUPABASE_URL": "https://jpemuoapbgzwapydqiio.supabase.co",
+    "VITE_AUTO_LOGIN": "false",
     "VITE_NEW_DASH": "true"
   }
 }

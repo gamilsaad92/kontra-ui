@@ -5,6 +5,7 @@ import { trackEvent } from "../../lib/analytics";
 import { listWorkflowPacks, fetchCustomPacks, getWorkflowPack, deleteCustomPack, registerCustomPack } from "../../lib/workflowPacks";
 import { API_BASE } from "../../lib/apiBase";
 import { isDigitalAssetReadinessOptedIn } from "../../lib/digitalAssetReadiness";
+import { getToken, redirectToSignIn } from "../../lib/authContext";
 
 const ICON_CHOICES = ["📄","🏢","💼","🏦","🔍","🛡️","⚖️","📊","⚙️","🏗️","🧾","📋","🤝","🏭","👤","🔑","✍️","📝","🌐","🏛️"];
 const COLOR_CHOICES = ["#800020","#1d4ed8","#16a34a","#d97706","#6d28d9","#0369a1","#374151","#dc2626","#0891b2","#7c3aed"];
@@ -807,9 +808,18 @@ export default function CreateDealRoomPage() {
         if (!sessionRes.ok) throw new Error(sessionData.error || "Approve the generated proposal before creating a room.");
       }
       const endpoint = demo ? `${API_BASE}/api/checkout/trial` : `${API_BASE}/api/checkout/guest`;
+      const headers = { "Content-Type": "application/json" };
+      if (demo) {
+        const token = await getToken();
+        if (!token) {
+          redirectToSignIn();
+          return;
+        }
+        headers.Authorization = `Bearer ${token}`;
+      }
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(buildPayload()),
       });
       const data = await res.json();

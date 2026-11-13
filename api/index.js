@@ -6,6 +6,7 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 
 const { assertStagingEnvironment } = require('./lib/stagingEnvironment');
 const stagingEnvironment = assertStagingEnvironment(process.env);
+const { stagingDemoRouteGuard, stagingTrialAuth } = require('./lib/stagingTrialAuth');
 
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
 if (!stagingEnvironment.enabled && process.env.OPENAI_API_KEY1) {
@@ -2378,9 +2379,20 @@ app.post('/api/checkout/guest', async (req, res) => {
 });
 
 // ── Demo Checkout — bypasses Stripe for local/internal testing ──────────────
-app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
+const demoCheckoutHandler = async (req, res) => {
   try {
-    const { propertyId, propertyName, plan = 'deal', email, role = 'owner', meta = {} } = req.body;
+    const isTrial = req.path === '/api/checkout/trial';
+    const {
+      propertyId,
+      propertyName,
+      plan = 'deal',
+      email: requestedEmail,
+      role = 'owner',
+      meta = {},
+    } = req.body;
+    const email = stagingEnvironment.enabled && isTrial
+      ? req.stagingTrialUser.email
+      : requestedEmail;
     let transactionEntryMode;
     try {
       transactionEntryMode = normalizeTransactionEntryMode(meta.transactionEntryMode);
@@ -2398,7 +2410,9 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
         message: workflowApproval.message,
       });
     }
-    const origin = req.headers.origin || 'https://kontraplatform.com';
+    const origin = stagingEnvironment.enabled && isTrial
+      ? stagingEnvironment.frontendOrigin
+      : req.headers.origin || 'https://kontraplatform.com';
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -2574,14 +2588,20 @@ app.post(['/api/checkout/demo', '/api/checkout/trial'], async (req, res) => {
       .eq('property_id', pid)
       .then(() => {}).catch(() => {});
 
-    const isTrial = req.path === '/api/checkout/trial';
     const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&trial=${isTrial ? 'true' : 'false'}&owner_token=${demoOwnerToken}`;
     res.json({ url: successUrl });
   } catch (err) {
     console.error('[checkout/demo]', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
+
+app.post('/api/checkout/demo', stagingDemoRouteGuard(stagingEnvironment.enabled), demoCheckoutHandler);
+app.post(
+  '/api/checkout/trial',
+  stagingTrialAuth(stagingEnvironment.enabled, supabase, process.env.STAGING_TRIAL_ALLOWED_EMAILS),
+  demoCheckoutHandler,
+);
 
 // ── Session analytics — public event ingestion, IP rate-limited ───────────────
 // Lightweight behaviour tracking (phase transitions, tab switches, page views).
