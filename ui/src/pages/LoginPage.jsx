@@ -5,13 +5,6 @@ import SignUpForm from "../components/SignUpForm";
 import { AuthContext } from "../lib/authContext";
 import { getAppRoleFromToken } from "../lib/usePortalRouter";
 
-const DEMO_PORTALS = [
-  { role: "lender",   label: "Lender",   color: "#800020", desc: "Portfolio · Risk · Capital Markets" },
-  { role: "servicer", label: "Servicer", color: "#92400E", desc: "Draws · Inspections · Payments" },
-  { role: "investor", label: "Investor", color: "#6D28D9", desc: "Holdings · Distributions · Governance" },
-  { role: "borrower", label: "Borrower", color: "#065F46", desc: "Loan · Covenants · Documents" },
-];
-
 /**
  * Reads ?action=watchlist&propertyId=123 from the URL and stores the intent
  * in localStorage so the destination page can complete the action after login.
@@ -24,10 +17,9 @@ function saveIntent(action, propertyId) {
 }
 
 export default function LoginPage() {
-  const { session, loading, loginAsDemo } = useContext(AuthContext);
+  const { session, loading } = useContext(AuthContext);
   const [mode, setMode] = useState("login");
   const [redirecting, setRedirecting] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(null);
   const navigate = useNavigate();
   const didRedirect = useRef(false);
   const [searchParams] = useSearchParams();
@@ -39,22 +31,12 @@ export default function LoginPage() {
 
   // Show context-aware message if user was redirected here from an action
   const actionMessages = {
-    watchlist: "Sign in to save this property to your watchlist.",
-    claim: "Sign in to claim this property.",
-    inspection: "Sign in to request an inspection.",
-    documents: "Sign in to access the document workspace.",
+    watchlist: "Sign in to save this opportunity to your watchlist.",
+    claim: "Sign in to continue with this transaction.",
+    inspection: "Sign in to open the transaction workspace.",
+    documents: "Sign in to access the transaction documents.",
   };
   const contextMessage = actionParam ? actionMessages[actionParam] : null;
-
-  const handleDemo = async (portal) => {
-    setDemoLoading(portal.role);
-    await loginAsDemo(portal.role);
-    // Save intent before navigating
-    if (actionParam) saveIntent(actionParam, propertyIdParam);
-    const dest = redirectParam || "/dashboard";
-    navigate(dest, { replace: true });
-    setDemoLoading(null);
-  };
 
   useEffect(() => {
     const token = session?.access_token;
@@ -82,157 +64,133 @@ export default function LoginPage() {
 
   if (loading || redirecting) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "#0f1623" }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent" style={{ borderColor: "#800020", borderTopColor: "transparent" }} />
-          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: "#64748b" }}>
+      <main className="flex min-h-screen items-center justify-center bg-[#0c1320] px-6 text-white" aria-busy="true">
+        <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+          <span className="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-rose-500" aria-hidden="true" />
+          <span className="text-sm font-medium text-slate-300">
             {redirecting ? "Opening your workspace…" : "Loading"}
           </span>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="relative flex min-h-screen" style={{ background: "#0f1623" }}>
-
-      {/* ── Left brand panel ───────────────────────────────────── */}
+    <main className="relative min-h-screen overflow-hidden bg-[#0c1320] text-white">
       <div
-        className="hidden lg:flex lg:w-[420px] xl:w-[460px] flex-col justify-between p-10 shrink-0"
-        style={{
-          background: "linear-gradient(160deg, #1a0a0a 0%, #111827 55%, #0f1623 100%)",
-          borderRight: "1px solid rgba(255,255,255,0.07)",
-        }}
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        {/* Logo + back to marketplace link */}
-        <div>
-          <Link to="/" className="flex items-center gap-2.5 mb-8">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
-              <span className="text-sm font-black text-white" style={{ letterSpacing: "-0.05em" }}>K</span>
-            </div>
-            <div>
-              <span className="text-base font-bold text-white" style={{ letterSpacing: "-0.02em" }}>Kontra</span>
-            </div>
-          </Link>
-          <Link to="/" className="text-xs font-medium text-gray-500 hover:text-gray-300 transition">
-            ← Back to home
-          </Link>
-        </div>
+        <div className="absolute -left-40 -top-48 h-[28rem] w-[28rem] rounded-full bg-rose-950/35 blur-3xl" />
+        <div className="absolute -bottom-56 right-1/4 h-[32rem] w-[32rem] rounded-full bg-indigo-950/30 blur-3xl" />
+      </div>
 
-        {/* Hero copy */}
-        <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#800020" }}>
-            CRE Deal Room Infrastructure
+      <div className="relative mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[minmax(0,1fr)_minmax(25rem,31rem)]">
+        <section
+          aria-labelledby="login-brand-heading"
+          className="flex flex-col px-6 pb-8 pt-7 sm:px-10 lg:justify-between lg:px-14 lg:py-10"
+        >
+          <header className="flex items-center justify-between">
+            <Link
+              to="/"
+              aria-label="Kontra home"
+              className="inline-flex items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-rose-400"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#800020] text-base font-black shadow-lg shadow-rose-950/40">
+                K
+              </span>
+              <span className="text-lg font-bold tracking-tight">Kontra</span>
+            </Link>
+            <Link
+              to="/"
+              className="rounded-md px-2 py-1 text-sm text-slate-400 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 lg:hidden"
+            >
+              Home
+            </Link>
+          </header>
+
+          <div className="my-10 max-w-2xl lg:my-0 lg:py-16">
+            <p className="inline-flex items-center gap-2 rounded-full border border-rose-300/15 bg-rose-400/5 px-3 py-1.5 text-xs font-semibold tracking-wide text-rose-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-400" aria-hidden="true" />
+              AI-powered transaction workspace
+            </p>
+            <h2
+              id="login-brand-heading"
+              className="mt-6 max-w-xl text-4xl font-semibold leading-tight tracking-[-0.035em] text-white sm:text-5xl"
+            >
+              Move private-market transactions forward.
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
+              Bring deal teams, diligence, documents, and decisions together in one
+              shared workspace. Kontra AI helps surface the details that keep
+              complex transactions moving.
+            </p>
+
+            <div className="mt-9 hidden max-w-xl grid-cols-2 gap-3 sm:grid lg:mt-12">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-sm font-semibold text-slate-100">One connected deal room</p>
+                <p className="mt-1.5 text-xs leading-5 text-slate-400">
+                  Keep people, workstreams, and transaction records in context.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                <p className="text-sm font-semibold text-slate-100">AI-assisted diligence</p>
+                <p className="mt-1.5 text-xs leading-5 text-slate-400">
+                  Find relevant facts and open questions across deal materials.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p className="hidden text-xs text-slate-500 lg:block">
+            A shared workspace for the people moving transactions forward.
           </p>
-          <h2 className="mb-4 text-3xl font-black leading-tight text-white" style={{ letterSpacing: "-0.03em" }}>
-            {contextMessage
-              ? <>One more step<br />to continue</>
-              : <>Your CRE workspace<br />starts here.</>}
-          </h2>
-          {contextMessage ? (
-            <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)" }}>
-              <p className="text-sm leading-relaxed" style={{ color: "#fca5a5" }}>
-                {contextMessage}
+        </section>
+
+        <section
+          aria-labelledby="login-title"
+          className="flex items-center justify-center px-5 pb-10 sm:px-8 lg:py-12"
+        >
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/90 p-6 shadow-2xl shadow-black/30 backdrop-blur sm:p-8">
+            <div className="mb-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-300">
+                Secure workspace access
+              </p>
+              <h1
+                id="login-title"
+                className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl"
+              >
+                {mode === "login" ? "Welcome back" : "Create your account"}
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                {mode === "login"
+                  ? "Sign in to continue to your transactions."
+                  : "Set up your Kontra account to get started."}
               </p>
             </div>
-          ) : (
-            <p className="text-sm leading-relaxed" style={{ color: "#94a3b8" }}>
-              Discover properties, track assets, analyze documents with AI, manage compliance, and connect with service providers — all in one place.
-            </p>
-          )}
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-          <span className="text-[11px]" style={{ color: "#475569" }}>Secure · Encrypted · SOC 2 Ready</span>
-          <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-        </div>
-      </div>
+            {contextMessage && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-5 rounded-xl border border-rose-300/20 bg-rose-400/5 px-4 py-3 text-sm leading-6 text-rose-100"
+              >
+                {contextMessage}
+              </div>
+            )}
 
-      {/* ── Right form panel ───────────────────────────────────── */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+            {mode === "login"
+              ? <LoginForm onSwitch={() => setMode("signup")} />
+              : <SignUpForm onSwitch={() => setMode("login")} />}
 
-        {/* Mobile logo */}
-        <div className="mb-8 flex flex-col items-center gap-3 lg:hidden">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "#800020" }}>
-              <span className="text-base font-black text-white">K</span>
+            <div className="mt-7 border-t border-white/10 pt-5">
+              <p className="text-center text-xs leading-5 text-slate-500">
+                Access is limited to authorized members of your transaction workspace.
+              </p>
             </div>
-            <span className="text-base font-bold text-white">Kontra</span>
-          </Link>
-        </div>
-
-        <div className="w-full max-w-[360px]">
-          {/* Context banner (mobile only) */}
-          {contextMessage && (
-            <div className="mb-5 rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(128,0,32,0.12)", border: "1px solid rgba(128,0,32,0.2)", color: "#fca5a5" }}>
-              {contextMessage}
-            </div>
-          )}
-
-          {/* Heading */}
-          <div className="mb-7">
-            <h1 className="mb-1.5 text-2xl font-black text-white" style={{ letterSpacing: "-0.02em" }}>
-              {mode === "login" ? "Welcome back" : "Create account"}
-            </h1>
-            <p className="text-sm" style={{ color: "#94a3b8" }}>
-              {mode === "login"
-                ? "Sign in to your workspace"
-                : "Set up your Kontra account"}
-            </p>
           </div>
-
-          {mode === "login"
-            ? <LoginForm onSwitch={() => setMode("signup")} />
-            : <SignUpForm onSwitch={() => setMode("login")} />}
-
-          {/* ── Demo access ── */}
-          <div className="mt-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "#475569" }}>
-                Or explore the demo
-              </span>
-              <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_PORTALS.map((portal) => (
-                <button
-                  key={portal.role}
-                  onClick={() => handleDemo(portal)}
-                  disabled={demoLoading !== null}
-                  className="flex flex-col items-start gap-1 rounded-xl px-3.5 py-3 text-left transition-all hover:scale-[1.02] disabled:opacity-50"
-                  style={{
-                    background: `${portal.color}12`,
-                    border: `1px solid ${portal.color}30`,
-                  }}
-                >
-                  <div className="flex items-center gap-2 w-full">
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest"
-                      style={{ background: `${portal.color}25`, color: portal.color }}
-                    >
-                      {portal.label}
-                    </span>
-                    {demoLoading === portal.role && (
-                      <span className="ml-auto h-3 w-3 animate-spin rounded-full border border-t-transparent" style={{ borderColor: portal.color, borderTopColor: "transparent" }} />
-                    )}
-                  </div>
-                  <span className="text-[10px] leading-snug" style={{ color: "#64748b" }}>
-                    {portal.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <p className="mt-3 text-center text-[10px]" style={{ color: "#334155" }}>
-              No login required · Read-only demo data · No account needed
-            </p>
-          </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
