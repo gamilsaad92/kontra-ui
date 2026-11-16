@@ -178,10 +178,10 @@ const { getNewlyAssignedChecklistEntries } = require('./lib/documentAssignmentEv
 const {
   isTokenizationQuestion,
   buildTokenizationGuidance,
-  buildTokenizationPrompt,
   buildTokenizationAnswerPrefix,
   buildFixtureTransactionContext,
 } = require('./lib/tokenizationGuidance');
+const { buildDemoQaSystemPrompt } = require('./lib/demoQaPrompt');
 const { DEMO_AI_MAX_TOKENS, sanitizeDemoTokenizationAnswer } = require('./lib/demoRoomFixtures');
 const {
   buildLegacyProposal,
@@ -237,14 +237,6 @@ function isTokenizationTransaction(packId, transactionType, metadataValues = nul
     || transactionType === 'tokenization'
     || transactionType === 'token_issuance'
     || digitalAssetEnabled;
-}
-
-function buildDemoQaSystemPrompt(basePrompt, fixture, question) {
-  if (!isTokenizationQuestion(question)) return basePrompt;
-  const guidance = buildTokenizationGuidance({
-    transactionContext: buildFixtureTransactionContext(fixture),
-  });
-  return `${basePrompt}\n\n${buildTokenizationPrompt(guidance)}`;
 }
 
 function formatDemoTokenizationAnswer(answer, fixture, question) {
