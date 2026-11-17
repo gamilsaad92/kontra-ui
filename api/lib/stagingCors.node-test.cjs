@@ -23,9 +23,11 @@ test('staging CORS is pinned to the authorized staging origin', async () => {
     ));
   });
   assert.equal(await check('https://staging.kontraplatform.com'), true);
+  assert.equal(await check('https://kontra-ui-staging.vercel.app'), true);
   assert.equal(await check('https://kontraplatform.com'), false);
   assert.equal(await check('https://unreviewed.example'), false);
   assert.equal(await check('https://evil.vercel.app'), false);
+  assert.equal(await check('https://kontra-ui-staging.vercel.app.attacker.example'), false);
 });
 
 test('staging owner-cookie mutations reject missing and unauthorized origins', () => {

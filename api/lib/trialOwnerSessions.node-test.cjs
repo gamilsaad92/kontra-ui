@@ -106,3 +106,39 @@ test('invalid or replayed owner exchange capabilities are rejected', async () =>
   });
   assert.equal(result.ok, false);
 });
+
+test('expired and wrong-room owner exchange capabilities are rejected', async () => {
+  const now = new Date('2026-11-06T12:00:00Z');
+  for (const invite of [
+    {
+      id: 'expired-owner-invite',
+      property_id: 'room-1',
+      role_key: OWNER_ROLE_KEY,
+      status: 'pending',
+      expires_at: '2026-11-06T11:59:59Z',
+    },
+    {
+      id: 'other-room-owner-invite',
+      property_id: 'room-2',
+      role_key: OWNER_ROLE_KEY,
+      status: 'pending',
+      expires_at: '2026-11-06T12:15:00Z',
+    },
+  ]) {
+    const client = {
+      from() {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: invite, error: null }) }),
+          }),
+        };
+      },
+    };
+    const result = await exchangeTrialOwnerCredential(client, {
+      propertyId: 'room-1',
+      token: 'c'.repeat(64),
+      now,
+    });
+    assert.equal(result.ok, false);
+  }
+});

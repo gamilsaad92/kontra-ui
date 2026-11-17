@@ -342,6 +342,7 @@ const {
   exchangeTrialOwnerCredential,
   sha256: hashOwnerSessionToken,
 } = require('./lib/trialOwnerSessions');
+const { buildTrialCheckoutResponse } = require('./lib/trialCheckout');
 const { workflows, addWorkflow } = require('./workflowStore');
 const { runWorkflow } = require('./hyperautomation');
 const path = require('path');
@@ -2374,6 +2375,7 @@ app.post('/api/checkout/guest', async (req, res) => {
 const demoCheckoutHandler = async (req, res) => {
   try {
     const isTrial = req.path === '/api/checkout/trial';
+    const stagingTrial = stagingEnvironment.enabled && isTrial;
     const {
       propertyId,
       propertyName,
@@ -2406,7 +2408,15 @@ const demoCheckoutHandler = async (req, res) => {
       ? stagingEnvironment.frontendOrigin
       : req.headers.origin || 'https://kontraplatform.com';
     const fakeSessionId = 'demo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    const pid = propertyId || (propertyName || 'demo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const generatedPropertyId = (propertyName || 'demo').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const pid = String(propertyId || generatedPropertyId).trim();
+    if (stagingTrial && !/^[a-z0-9][a-z0-9-]{0,99}$/.test(pid)) {
+      return res.status(400).json({
+        error: 'invalid_property_id',
+        message: 'The room identifier must contain only lowercase letters, numbers, and hyphens.',
+      });
+    }
 
     // If the owner customized the config, persist it as a custom pack so the
     // workspace loads with the owner's roles/documents/stages.
@@ -2492,8 +2502,17 @@ const demoCheckoutHandler = async (req, res) => {
 
     let roomCreated = false;
     try {
-      const { error: upsertErr } = await supabase.from('deal_rooms').upsert(dealRoomRecord, { onConflict: 'property_id' });
+      const writeRoomRecord = record => stagingTrial
+        ? supabase.from('deal_rooms').insert(record)
+        : supabase.from('deal_rooms').upsert(record, { onConflict: 'property_id' });
+      const { error: upsertErr } = await writeRoomRecord(dealRoomRecord);
       if (upsertErr) {
+        if (stagingTrial && (upsertErr.code === '23505' || /duplicate key|already exists/i.test(upsertErr.message || ''))) {
+          return res.status(409).json({
+            error: 'room_id_conflict',
+            message: 'A room with this identifier already exists. Choose a new room name and try again.',
+          });
+        }
         const schemaError = classifyDealRoomSchemaError(upsertErr);
         if (transactionEntryMode === TRANSACTION_ENTRY_MODES.PREVIOUSLY_COMPLETED) {
           const migrationError = createHistoricalRoomMigrationError(upsertErr);
@@ -2516,7 +2535,7 @@ const demoCheckoutHandler = async (req, res) => {
           }
           if (/stages_config/i.test(upsertErr.message || '')) delete baseRecord.stages_config;
           if (/workflow_pack_id/i.test(upsertErr.message || '')) delete baseRecord.workflow_pack_id;
-          const { error: retryErr } = await supabase.from('deal_rooms').upsert(baseRecord, { onConflict: 'property_id' });
+          const { error: retryErr } = await writeRoomRecord(baseRecord);
           if (retryErr) throw retryErr;
           roomCreated = true;
           console.log(`[demo] ✅ Deal room created (no workflow_pack_id/stages_config col yet) — ${pid}`);
@@ -2527,7 +2546,8 @@ const demoCheckoutHandler = async (req, res) => {
         roomCreated = true;
         console.log(`[demo] ✅ Deal room created — ${pid}`);
       }
-      // Set link_token in a separate step (graceful — no-op if column not yet migrated)
+      // Set link_token in a separate step (graceful — no-op if column not yet migrated).
+      // This optional legacy link does not gate the staging owner-session flow.
       supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
     } catch (dbErr) {
@@ -2540,7 +2560,10 @@ const demoCheckoutHandler = async (req, res) => {
       }
       return res.status(503).json({
         error: 'Workspace could not be created',
-        message: 'The workspace database is not ready. No room was created; please try again after the database is updated.',
+        message: stagingTrial
+          ? 'The workspace database could not create this room. No success link was issued; retry with a new room identifier.'
+          : 'The workspace database is not ready. No room was created; please try again after the database is updated.',
+        ...(stagingTrial ? { propertyId: pid } : {}),
       });
     }
 
@@ -2568,8 +2591,36 @@ const demoCheckoutHandler = async (req, res) => {
       console.error('[demo] canonical transaction record materialization failed:', recordErr.message);
       return res.status(503).json({
         error: 'Workspace could not be created',
-        message: 'The approved transaction facts could not be saved. Please retry after the database is updated.',
+        message: stagingTrial
+          ? 'The room row was created, but its Transaction Record could not be saved. No success link was issued; support can recover this partial room.'
+          : 'The approved transaction facts could not be saved. Please retry after the database is updated.',
+        ...(stagingTrial ? { propertyId: pid, partialRoom: true } : {}),
       });
+    }
+
+    if (stagingTrial) {
+      let ownerExchangeToken;
+      try {
+        ownerExchangeToken = await createTrialOwnerExchange(supabase, pid, email);
+      } catch (exchangeError) {
+        console.error('[demo] owner exchange creation failed:', exchangeError.message);
+        return res.status(503).json({
+          error: 'owner_access_unavailable',
+          message: 'The room and Transaction Record were saved, but secure owner access could not be issued. No success link was returned; support can recover this partial room.',
+          propertyId: pid,
+          partialRoom: true,
+        });
+      }
+      return res.json(buildTrialCheckoutResponse({
+        origin,
+        plan,
+        propertyId: pid,
+        propertyName,
+        sessionId: fakeSessionId,
+        isTrial,
+        stagingIsolation: true,
+        ownerExchangeToken,
+      }));
     }
 
     // Generate owner write token and persist it — included in the redirect URL
@@ -4484,10 +4535,13 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
     if (ownerAccess) return ownerAccess;
   }
 
-  const ownerToken = (
+  const presentedOwnerToken = (
     (req.headers['x-owner-write-token'] || '').trim()
     || String(ownerTokenOverride || '').trim()
   );
+  const ownerToken = presentedOwnerToken === 'room-owner-session'
+    ? ''
+    : presentedOwnerToken;
   if (ownerToken) {
     const { data: owner } = await supabase
       .from('deal_rooms')
@@ -4530,6 +4584,41 @@ async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
       updateOwnSubmission: false,
     },
   };
+}
+
+async function requireRoomOwnerAccess(req, propertyId, ownerTokenOverride = '') {
+  // Staging trial owners use the secure room-scoped cookie. Outside staging,
+  // preserve the legacy body-token contract for endpoints that used to require it.
+  if (!stagingEnvironment.enabled) {
+    const token = String(ownerTokenOverride || '').trim();
+    if (!token || token === 'room-owner-session') return null;
+    const { data: owner, error } = await supabase
+      .from('deal_rooms')
+      .select('id, owner_write_token, customer_email')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error || !owner?.owner_write_token || owner.owner_write_token !== token) return null;
+    return {
+      mode: 'owner',
+      role: 'owner',
+      actorId: owner.customer_email || 'owner',
+      email: owner.customer_email || null,
+      roomId: owner.id || null,
+      actorType: 'owner',
+      permissions: {
+        viewOverview: true,
+        viewAssignedDocuments: true,
+        uploadAssignedDocuments: true,
+        viewAllDocuments: true,
+        manageStages: true,
+        manageParticipants: true,
+        manageSettings: true,
+        updateOwnSubmission: true,
+      },
+    };
+  }
+  const access = await getRoomAccessContext(req, propertyId, ownerTokenOverride);
+  return access.mode === 'owner' ? access : null;
 }
 
 function accessDenied(res, message = 'A verified deal-room invitation or owner access token is required') {
@@ -5747,32 +5836,19 @@ app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
-  if (access.mode !== 'owner') {
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) {
     return accessDenied(res, 'Only the deal-room owner can edit the document checklist');
-  }
-
-  // Authorization: require the owner_write_token generated at checkout time.
-  // This is a 256-bit server-generated credential delivered only through the
-  // verified checkout success redirect — never user-controlled, never exposed
-  // in any public GET response.  Any missing or mismatched token is a hard deny.
-  if (!ownerWriteToken) {
-    return res.status(403).json({ error: 'owner_write_token required' });
   }
 
   try {
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token, checklist_items')
+      .select('checklist_items')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (roomErr) throw roomErr;
     if (!room) return res.status(404).json({ error: 'Workspace not found' });
-
-    // Constant-time-equivalent string comparison (both sides must be present and equal)
-    if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-      return res.status(403).json({ error: 'Invalid owner token — checklist edit not authorized' });
-    }
 
     // Light sanitisation — strip anything that isn't a plain object
     const clean = items.filter(i => i && typeof i === 'object' && !Array.isArray(i));
@@ -6856,7 +6932,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     return res.status(400).json({ error: 'inviteToken required' });
   }
 
-  if (!bearerJwt && !ownerWriteToken) {
+  if (!bearerJwt && !ownerWriteToken && !readOwnerSessionCookie(req)) {
     return res.status(401).json({ error: 'Owner authentication required' });
   }
 
@@ -6874,6 +6950,7 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     if (inviteErr || !invite) return res.status(404).json({ error: 'Invite not found' });
     if (invite.status === 'revoked') return res.status(400).json({ error: 'Invite is revoked' });
     if (!invite.invited_email) return res.status(400).json({ error: 'This invite has no email recipient (PIN-only)' });
+    const ownerAccess = await requireRoomOwnerAccess(req, invite.property_id, ownerWriteToken);
 
     // 4. Verify caller is the deal room owner.
     //    Path A — Supabase JWT: caller email must match deal_rooms.customer_email.
@@ -6881,23 +6958,22 @@ app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
     //             (generated at checkout, never exposed in public GET responses).
     const { data: room, error: roomErr } = await supabase
       .from('deal_rooms')
-      .select('property_name, first_name, workflow_pack_id, customer_email, owner_write_token')
+      .select('property_name, first_name, workflow_pack_id, customer_email')
       .eq('property_id', invite.property_id)
       .single();
     if (roomErr || !room) return res.status(404).json({ error: 'Deal room not found' });
 
     let authorized = false;
 
-    if (bearerJwt) {
+    if (ownerAccess) {
+      authorized = true;
+    }
+
+    if (!authorized && bearerJwt) {
       const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
       if (!authErr && user?.email) {
         authorized = (room.customer_email || '').toLowerCase() === user.email.toLowerCase();
       }
-    }
-
-    if (!authorized && ownerWriteToken) {
-      // Constant-time-equivalent comparison — both sides must be present and match
-      authorized = !!(room.owner_write_token && room.owner_write_token === ownerWriteToken);
     }
 
     if (!authorized) {
@@ -7162,17 +7238,17 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
   const { propertyId } = req.params;
   const { stages, ownerWriteToken } = req.body || {};
 
-  // Auth: require owner_write_token
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can update stages');
   let { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, deal_stage, transaction_entry_mode')
+    .select('deal_stage, transaction_entry_mode')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr && /transaction_entry_mode.*(does not exist|schema cache)|column .*transaction_entry_mode/i.test(authErr.message || '')) {
     const legacy = await supabase
       .from('deal_rooms')
-      .select('owner_write_token, deal_stage')
+      .select('deal_stage')
       .eq('property_id', propertyId)
       .maybeSingle();
     if (legacy.error) return res.status(500).json({ error: legacy.error.message });
@@ -7183,9 +7259,6 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
   }
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
-  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-    return res.status(403).json({ error: 'invalid owner_write_token' });
-  }
   if (isPreviouslyCompletedRoom(room)) {
     return res.status(409).json({
       error: 'HISTORICAL_ROOM_NON_ADVANCING',
@@ -7250,18 +7323,16 @@ app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   const { propertyId } = req.params;
   const { values, ownerWriteToken } = req.body || {};
 
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can update transaction details');
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, workflow_pack_id, deal_type')
+    .select('workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
-  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-    return res.status(403).json({ error: 'invalid owner_write_token' });
-  }
 
   // Sanitize values: only allow string/number/null, max 64 keys, max 500 chars per value
   if (typeof values !== 'object' || values === null || Array.isArray(values)) {
@@ -7422,7 +7493,8 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
   const { propertyId } = req.params;
   const { values, ownerWriteToken } = req.body || {};
 
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can update workspace details');
   if (typeof values !== 'object' || values === null || Array.isArray(values)) {
     return res.status(400).json({ error: 'values must be an object' });
   }
@@ -7434,14 +7506,11 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, metadata_values, jurisdiction, workflow_pack_id, deal_type')
+    .select('metadata_values, jurisdiction, workflow_pack_id, deal_type')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
-  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-    return res.status(403).json({ error: 'invalid owner_write_token' });
-  }
 
   // Merge: start from existing values, apply incoming keys (empty string = delete)
   const merged = { ...(room.metadata_values || {}) };
@@ -7504,18 +7573,16 @@ app.patch('/api/public/deal-room/:propertyId/ownership', async (req, res) => {
     cap_table_rows,
   } = req.body || {};
 
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can update ownership details');
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, metadata_values')
+    .select('metadata_values')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
-  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-    return res.status(403).json({ error: 'invalid owner_write_token' });
-  }
 
   const merged = { ...(room.metadata_values || {}) };
   const scalars = { token_name, token_symbol, total_supply, token_price, raise_target, asset_valuation, pct_tokenized };
@@ -8244,21 +8311,19 @@ app.patch('/api/public/deal-room/:propertyId/jurisdiction', async (req, res) => 
   const { propertyId } = req.params;
   const { jurisdiction, ownerWriteToken } = req.body || {};
 
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can update jurisdiction');
   if (jurisdiction && !VALID_JURISDICTIONS.includes(jurisdiction)) {
     return res.status(400).json({ error: `Invalid jurisdiction. Must be one of: ${VALID_JURISDICTIONS.join(', ')}` });
   }
 
   const { data: room, error: authErr } = await supabase
     .from('deal_rooms')
-    .select('owner_write_token, jurisdiction, workflow_pack_id, deal_type, metadata_values')
+    .select('jurisdiction, workflow_pack_id, deal_type, metadata_values')
     .eq('property_id', propertyId)
     .maybeSingle();
   if (authErr) return res.status(500).json({ error: authErr.message });
   if (!room) return res.status(404).json({ error: 'room not found' });
-  if (!room.owner_write_token || room.owner_write_token !== ownerWriteToken) {
-    return res.status(403).json({ error: 'invalid owner_write_token' });
-  }
   const normalizedJurisdiction = await jurisdictionForTransaction(
     jurisdiction || room.jurisdiction || '',
     room.workflow_pack_id,
@@ -8325,22 +8390,20 @@ app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
 app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend', async (req, res) => {
   const { propertyId, notificationId } = req.params;
   const { ownerWriteToken } = req.body || {};
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can resend notifications');
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return res.status(503).json({ error: 'Email not configured (RESEND_API_KEY not set)' });
 
   try {
     const [roomRes, notifRes] = await Promise.all([
-      supabase.from('deal_rooms').select('owner_write_token, property_name')
+      supabase.from('deal_rooms').select('property_name')
         .eq('property_id', propertyId).maybeSingle(),
       supabase.from('deal_notifications').select('id, type, to_email, subject, sent_at')
         .eq('id', notificationId).eq('property_id', propertyId).maybeSingle(),
     ]);
     if (roomRes.error) throw roomRes.error;
     if (!roomRes.data) return res.status(404).json({ error: 'room not found' });
-    if (!roomRes.data.owner_write_token || roomRes.data.owner_write_token !== ownerWriteToken) {
-      return res.status(403).json({ error: 'invalid owner_write_token' });
-    }
     if (notifRes.error) throw notifRes.error;
     if (!notifRes.data) return res.status(404).json({ error: 'notification not found' });
 
@@ -8389,9 +8452,8 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
 app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) => {
   const { propertyId } = req.params;
   const { ownerWriteToken, roles: assignedRoles = [], docLabel, docSection } = req.body || {};
-  if (!ownerWriteToken) return res.status(403).json({ error: 'owner_write_token required' });
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
-  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can request documents');
+  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  if (!access) return accessDenied(res, 'Only the deal-room owner can request documents');
   if (!docLabel) return res.status(400).json({ error: 'docLabel required' });
   const RESEND_KEY = process.env.RESEND_API_KEY;
 

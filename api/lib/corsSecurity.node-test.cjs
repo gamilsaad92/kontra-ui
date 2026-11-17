@@ -74,8 +74,9 @@ test('staging isolation excludes production and user-configured origins', () => 
     corsOrigins: 'https://kontraplatform.com,https://attacker.example',
     frontendUrl: 'https://kontraplatform.com',
   });
-  assert.equal(stagingOrigins.size, 1);
+  assert.equal(stagingOrigins.size, 2);
   assert.equal(isTrustedOrigin('https://staging.kontraplatform.com', stagingOrigins), true);
+  assert.equal(isTrustedOrigin('https://kontra-ui-staging.vercel.app', stagingOrigins), true);
   assert.equal(isTrustedOrigin('https://kontraplatform.com', stagingOrigins), false);
   assert.equal(isTrustedOrigin('https://attacker.example', stagingOrigins), false);
 });

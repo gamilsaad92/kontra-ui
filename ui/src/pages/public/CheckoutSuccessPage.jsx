@@ -1,5 +1,6 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { API_BASE } from "../../lib/apiBase";
 import PublicLayout from "./PublicLayout";
 
 export default function CheckoutSuccessPage() {
@@ -8,21 +9,49 @@ export default function CheckoutSuccessPage() {
   const plan       = searchParams.get("plan") || "deal";
   const ownerToken = searchParams.get("owner_token") || "";
   const isTrial = searchParams.get("trial") === "true";
+  const [ownerExchangeError, setOwnerExchangeError] = useState("");
+  const isStagingTrial = isTrial
+    && typeof window !== "undefined"
+    && window.location.origin === "https://kontra-ui-staging.vercel.app";
   // `name` carries the clean workspace name the user entered; fall back to
   // transforming the slug only when the param is absent (e.g. old links).
   const nameParam  = searchParams.get("name") || "";
 
-  // Persist the owner write token in localStorage so the workspace's checklist
-  // panel can send it when authorising server-side mutations.  This is the only
-  // channel through which the token is delivered — it is never exposed in any
-  // public GET response.
   useEffect(() => {
-    if (property && ownerToken) {
+    if (isStagingTrial && property) {
+      const key = `kontra_trial_owner_exchange_${property}`;
+      let exchangeToken = "";
       try {
-        localStorage.setItem(`kontra_owner_token_${property}`, ownerToken);
-      } catch { /* storage unavailable */ }
+        exchangeToken = sessionStorage.getItem(key) || "";
+        sessionStorage.removeItem(key);
+      } catch { /* token is discarded if tab storage is unavailable */ }
+      if (window.location.search.includes("owner_token=")) {
+        const safe = new URL(window.location.href);
+        safe.searchParams.delete("owner_token");
+        window.history.replaceState(window.history.state, "", `${safe.pathname}${safe.search}${safe.hash}`);
+      }
+      if (!exchangeToken) {
+        setOwnerExchangeError("Secure owner access could not be established. Contact support with this room name.");
+        return;
+      }
+      fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(property)}/owner-session/exchange`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exchangeToken }),
+      }).then(async response => {
+        if (!response.ok) throw new Error("Owner session exchange failed");
+        // Non-secret UI hint only. The API verifies the HttpOnly cookie for every operation.
+        localStorage.setItem(`kontra_owner_token_${property}`, "room-owner-session");
+      }).catch(() => {
+        setOwnerExchangeError("Secure owner access could not be established. Contact support with this room name.");
+      });
+      return;
     }
-  }, [property, ownerToken]);
+    if (property && ownerToken) {
+      try { localStorage.setItem(`kontra_owner_token_${property}`, ownerToken); } catch { /* storage unavailable */ }
+    }
+  }, [property, ownerToken, isStagingTrial]);
 
   const planLabel     = plan === "deal" ? "Deal Room" : "Kontra plan";
   const propertyLabel = nameParam
@@ -50,6 +79,11 @@ export default function CheckoutSuccessPage() {
               {isTrial ? "No payment required · Invite your transaction team" : `${planLabel} · A receipt has been sent to your email`}
             </p>
           </div>
+          {ownerExchangeError && (
+            <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {ownerExchangeError}
+            </p>
+          )}
 
           {/* Next steps */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-5 divide-y divide-gray-100">

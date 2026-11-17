@@ -28,8 +28,8 @@ test('staging identity maps only staging credentials and pins the approved proje
   assert.equal(env.SESSION_SECRET, 'synthetic-staging-session-secret-for-tests-only-123456');
   assert.equal(env.OPENAI_API_KEY1, undefined);
   assert.equal(env.AI_INTEGRATIONS_OPENAI_API_KEY, undefined);
-  assert.equal(env.CORS_ORIGINS, 'https://staging.kontraplatform.com');
-  assert.equal(env.FRONTEND_URL, 'https://staging.kontraplatform.com');
+  assert.equal(env.CORS_ORIGINS, 'https://kontra-ui-staging.vercel.app');
+  assert.equal(env.FRONTEND_URL, 'https://kontra-ui-staging.vercel.app');
 });
 
 test('staging rejects database fallbacks and production Supabase URLs', () => {

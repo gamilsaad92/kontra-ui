@@ -2,7 +2,7 @@
 
 const STAGING_PROJECT_REF = 'jpemuoapbgzwapydqiio';
 const STAGING_SUPABASE_URL = `https://${STAGING_PROJECT_REF}.supabase.co`;
-const STAGING_FRONTEND_ORIGIN = 'https://staging.kontraplatform.com';
+const STAGING_FRONTEND_ORIGIN = 'https://kontra-ui-staging.vercel.app';
 const PLACEHOLDERS = new Set(['placeholder', 'placeholder-key', 'sk-not-configured']);
 
 function isConfiguredSecret(value) {

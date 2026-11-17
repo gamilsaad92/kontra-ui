@@ -824,6 +824,18 @@ export default function CreateDealRoomPage() {
       });
       const data = await res.json();
       if (data.url) {
+        if (data.ownerExchange?.propertyId && data.ownerExchange?.token) {
+          try {
+            sessionStorage.setItem(
+              `kontra_trial_owner_exchange_${data.ownerExchange.propertyId}`,
+              data.ownerExchange.token,
+            );
+          } catch {
+            setError("Secure owner access could not be prepared in this browser. The room was saved; contact support before retrying.");
+            setLoading(false);
+            return;
+          }
+        }
         window.location.href = data.url;
       } else {
         setError(data.error || data.message || "Something went wrong. Please try again.");

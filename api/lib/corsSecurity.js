@@ -14,6 +14,7 @@ const DEFAULT_TRUSTED_ORIGINS = Object.freeze([
 ]);
 const STAGING_TRUSTED_ORIGINS = Object.freeze([
   'https://staging.kontraplatform.com',
+  'https://kontra-ui-staging.vercel.app',
 ]);
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
