@@ -6,6 +6,10 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 
 const { assertStagingEnvironment } = require('./lib/stagingEnvironment');
 const stagingEnvironment = assertStagingEnvironment(process.env);
+const {
+  createStagingScoringGuard,
+  createStagingScoringScheduler,
+} = require('./lib/stagingScoringGuard');
 const { stagingDemoRouteGuard, stagingTrialAuth } = require('./lib/stagingTrialAuth');
 
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
@@ -743,17 +747,13 @@ const JOB_SCHEDULES = [
   { type: 'score-loans', intervalMs: 6 * 60 * 60 * 1000 },
   { type: 'score-troubled', intervalMs: 12 * 60 * 60 * 1000 }
 ];
-let jobSchedulersStarted = false;
-
-function startJobSchedulers() {
-  if (jobSchedulersStarted || !JOB_SCHEDULES.length) return;
-  jobSchedulersStarted = true;
-  JOB_SCHEDULES.forEach(({ type, intervalMs }) => {
-    // Kick off immediately on boot to hydrate dashboards, then schedule interval.
-    addJob(type);
-    setInterval(() => addJob(type), intervalMs);
-  });
-}
+const startJobSchedulers = createStagingScoringScheduler({
+  nodeEnv: process.env.NODE_ENV,
+  stagingEnvironment,
+  schedules: JOB_SCHEDULES,
+  addJob,
+  setIntervalFn: setInterval,
+});
 
 // Define the functions that the assistant can “call.”
 const functions = [
@@ -8781,6 +8781,7 @@ app.use('/api', (req, res, next) => {
   });
 });
 
+app.use(createStagingScoringGuard(stagingEnvironment));
 app.use('/api', requireOrgContext);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
