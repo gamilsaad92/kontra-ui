@@ -16,6 +16,7 @@ const { readTransactionState } = require('./transactionState');
 const {
   projectDocumentChecklist,
 } = require('./documentStatus');
+const { resolveRoomChecklist } = require('./customPackChecklist');
 const {
   getChecklistItemAssignedRoles,
   hasDocumentRole,
@@ -581,13 +582,14 @@ async function buildGroundedContext(propertyId) {
       .eq('property_id', propertyId),
   ]);
   const room = transactionState.room;
+  const packId = transactionState.packId || DEFAULT_PACK_ID;
+  const checklistItems = await resolveRoomChecklist(room, supabase);
   const documentProjection = projectDocumentChecklist(
-    Array.isArray(room?.checklist_items) ? room.checklist_items : [],
+    checklistItems,
     analyses,
   );
   const projectedChecklist = documentProjection.items;
   const activeAnalyses = documentProjection.activeAnalyses;
-  const packId = transactionState.packId || DEFAULT_PACK_ID;
   const generatedProposal = room?.generated_proposal
     || room?.metadata_values?.generated_proposal
     || null;

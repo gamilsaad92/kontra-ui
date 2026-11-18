@@ -84,6 +84,10 @@ const aiDealReviewRouter = require('./routers/aiDealReview');
 const tasksRouter = require('./routers/tasks');
 const operationsManagerRouter = require('./routers/operationsManager');
 const {
+  buildReadTimeChecklistItems,
+  loadCustomPackDocuments,
+} = require('./lib/customPackChecklist');
+const {
   clearBriefingCache,
   askQuestion,
   buildGroundedContext,
@@ -5704,37 +5708,7 @@ function normalizeCanonicalPackSchema(packId, schema) {
 async function getCanonicalChecklist(packId, propertyType) {
   const packSchemas = PACK_DOCUMENT_SCHEMAS[packId];
   if (!packSchemas) {
-    if (!packId?.startsWith('ws_')) return null;
-    try {
-      const { data, error } = await supabase
-        .from('custom_workflow_packs')
-        .select('config')
-        .eq('id', packId)
-        .maybeSingle();
-      if (error || !Array.isArray(data?.config?.documents)) return null;
-      return data.config.documents
-        .map((document, index) => {
-          const section = document?.section || document?.id || `document_${index + 1}`;
-          const assignedTo = Array.isArray(document?.assignedTo)
-            ? document.assignedTo
-            : document?.assignedRole
-              ? [document.assignedRole]
-              : [];
-          return {
-            ...document,
-            id: document?.id || section,
-            section,
-            label: document?.label || document?.name || section.replace(/_/g, ' '),
-            assignedTo: assignedTo
-              .map(role => String(role || '').trim().replace(/\s+/g, '_'))
-              .filter(Boolean),
-          };
-        })
-        .filter(document => document.section);
-    } catch (error) {
-      console.warn('[checklist] custom pack schema lookup failed:', error.message);
-      return null;
-    }
+    return loadCustomPackDocuments(supabase, packId);
   }
   const pt = String(propertyType || '').trim();
   // Exact match first
@@ -5805,18 +5779,7 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
     // Read-time fallback for rooms created before checklist_items was populated.
     const canonical = await getCanonicalChecklist(data.workflow_pack_id, data.property_type);
     if (canonical) {
-      const items = canonical.map((d, i) => ({
-        id:         d.id || d.section,
-        section:    d.section,
-        label:      d.label,
-        required:   !!d.required,
-        ai:         !!d.ai,
-        assignedTo: Array.isArray(d.assignedTo) ? d.assignedTo : [],
-        category:   d.category || 'General',
-        isCustom:   false,
-        sortOrder:  i,
-        status:     'missing',
-      }));
+      const items = buildReadTimeChecklistItems(canonical);
       const projected = projectDocumentChecklist(items, analyses);
       const scopedItems = await scopeChecklistItemsForAccess(
         projected.items,
