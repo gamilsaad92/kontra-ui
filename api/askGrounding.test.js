@@ -39,6 +39,8 @@ const {
   filterTasksToLiveParticipants,
   buildGroundedBlockers,
   buildHistoricalVerificationBriefing,
+  buildStageDecisionAnswer,
+  classifyStageDecisionQuestion,
 } = require('./lib/operationsManager');
 
 const PACKS = Object.keys(workflowStages).filter(key => !key.startsWith('_'));
@@ -357,6 +359,108 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       expect(result.answer).toEqual(expect.stringContaining('Closing date'));
     }
     expect(mockOpenAICompletion).not.toHaveBeenCalled();
+  });
+
+  test('answers mixed record-review and closing questions with all pending fields and blockers', async () => {
+    const question = 'Which Transaction Record fields are still awaiting confirmation, and what must be verified before Redwood Business Center Acquisition can proceed toward closing?';
+    const fieldLabels = [
+      'Buyer',
+      'Current Stage',
+      'Due Diligence Status',
+      'Location',
+      'LOI Status',
+      'Property Name',
+      'Property Size',
+      'Purchase Price',
+      'Required Reviews',
+      'Seller',
+      'Target Closing Date',
+    ];
+    const recordFields = fieldLabels.map((label, index) => ({
+      key: `record.field_${index + 1}`,
+      label,
+      value: `test-value-${index + 1}`,
+      status: 'awaiting',
+      required: true,
+    }));
+    const documentLabels = [
+      'Letter of Intent',
+      'Property Inspection Report',
+      'Title Report',
+      'Financing Documents',
+      'Closing Documents',
+      'Financial Statements',
+    ];
+    const checklist = documentLabels.map((label, index) => ({
+      id: `document_${index + 1}`,
+      section: `document_${index + 1}`,
+      label,
+      required: true,
+      status: 'missing',
+    }));
+    mockReadTransactionState.mockResolvedValue({
+      packId: 'generated_ai',
+      room: {
+        property_id: 'redwood-business-center-acquisition',
+        property_name: 'Redwood Business Center Acquisition',
+        workflow_pack_id: 'generated_ai',
+        deal_type: 'cre_acquisition',
+        deal_stage: 'due_diligence',
+        checklist_items: checklist,
+        generated_proposal: {
+          stages: [
+            { key: 'due_diligence', name: 'Due Diligence' },
+            { key: 'closing', name: 'Closing' },
+          ],
+          participants: [],
+        },
+        metadata_values: { digital_asset_enabled: false },
+      },
+      recordState: {
+        schemaKey: 'cre_acquisition',
+        fields: recordFields,
+        requiredFields: recordFields,
+        requiredCount: fieldLabels.length,
+        confirmedCount: 0,
+        awaitingRequiredCount: fieldLabels.length,
+        conflictRequiredCount: 0,
+        notApplicableCount: 0,
+        unresolvedConflicts: [],
+      },
+      conflicts: [],
+      readiness: { digitalAssetEnabled: false, digitalAssetOptional: true },
+    });
+    mockListTasksForRoom.mockResolvedValue([]);
+    setupCustomRoomQueries([], []);
+
+    expect(classifyStageDecisionQuestion(question)).toBe('transaction_record_review');
+    expect(classifyStageDecisionQuestion('Should Redwood proceed toward closing?'))
+      .toBe('eligibility');
+
+    const result = await askQuestion('redwood-business-center-acquisition', question);
+
+    expect(result.answer).toMatch(/^No — do not advance/);
+    for (const label of fieldLabels) expect(result.answer).toContain(label);
+    for (const label of documentLabels) expect(result.answer).toContain(label);
+    expect(result.answer).toContain('Transaction Record fields awaiting confirmation');
+    expect(result.answer).toContain('Other requirements before advancing');
+    expect(mockOpenAICompletion).not.toHaveBeenCalled();
+
+    const genericAnswer = buildStageDecisionAnswer({
+      stageDecision: {
+        currentStage: { label: 'Due Diligence' },
+        nextStage: { label: 'Closing' },
+        recommendationAllowed: false,
+        blockers: documentLabels.map((label, index) => ({
+          sourceType: 'required_document',
+          label,
+          detail: 'A required room document has not been received.',
+          key: `document-${index + 1}`,
+        })),
+      },
+    });
+    expect(genericAnswer).toContain('Closing Documents');
+    expect(genericAnswer).not.toContain('Financial Statements');
   });
 
   test('does not turn generic or unevidenced tasks into Ask Kontra blockers', () => {

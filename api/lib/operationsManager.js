@@ -1068,6 +1068,11 @@ function classifyStageDecisionQuestion(question) {
   if (!isStageDecisionQuestion(question)) return null;
   const text = String(question || '');
 
+  if (/\btransaction record\b/i.test(text)
+    && /\b(?:field|fields|awaiting|confirmation|confirm|verify|verified)\b/i.test(text)) {
+    return 'transaction_record_review';
+  }
+
   if (/\bwhat\s+(?:would|needs?|must)\s+(?:need\s+to\s+)?happen\b/i.test(text)
     || /\bwhat\s+(?:do|does)\s+(?:we|the team|the transaction)\s+need\s+to\s+(?:do|complete)\b/i.test(text)
     || /\bwhat\s+needs\s+to\s+be\s+(?:done|completed|resolved)\b/i.test(text)
@@ -1197,6 +1202,9 @@ function buildStageDecisionAnswer(ctx, responseForm = 'eligibility') {
   if (!decision) {
     return 'The live stage decision is unavailable right now; refresh the room and try again.';
   }
+  if (responseForm === 'transaction_record_review') {
+    return buildTransactionRecordStageAnswer(ctx);
+  }
   if (!decision.nextStage) {
     return decision.reason || 'The current workflow stage has no later stage configured.';
   }
@@ -1222,6 +1230,47 @@ function buildStageDecisionAnswer(ctx, responseForm = 'eligibility') {
     .map(blocker => stageDecisionBlockerText(blocker))
     .join(' ');
   return `No — do not advance ${transition} yet. ${blockerSummary || decision.reason}`;
+}
+
+function buildTransactionRecordStageAnswer(ctx) {
+  const decision = ctx.stageDecision || {};
+  const awaiting = Array.isArray(ctx.transactionContext?.record?.awaitingConfirmation)
+    ? ctx.transactionContext.record.awaitingConfirmation
+    : [];
+  const blockers = Array.isArray(decision.blockers) ? decision.blockers : [];
+  const awaitingKeys = new Set(awaiting.map(field => String(field.key || '').toLowerCase()));
+  const otherRecordBlockers = blockers.filter(blocker =>
+    blocker.sourceType === 'transaction_record'
+      && !awaitingKeys.has(String(blocker.fieldKey || blocker.key || '').toLowerCase())
+  );
+  const otherRequirements = blockers.filter(blocker => blocker.sourceType !== 'transaction_record');
+  const awaitingLabels = [...new Set(awaiting.map(field => field.label || field.key).filter(Boolean))];
+  const transition = decision.nextStage
+    ? `from ${decision.currentStage?.label || 'the current stage'} to ${decision.nextStage.label || decision.nextStage.key}`
+    : null;
+
+  const decisionText = !decision.nextStage
+    ? decision.reason || 'The current workflow stage has no later stage configured.'
+    : decision.recommendationAllowed
+      ? `Yes — the transaction can advance${transition ? ` ${transition}` : ''}. ${decision.reason || ''}`.trim()
+      : `No — do not advance${transition ? ` ${transition}` : ''} yet.`;
+  const awaitingText = awaitingLabels.length > 0
+    ? `Transaction Record fields awaiting confirmation: ${awaitingLabels.join(', ')}.`
+    : 'No populated Transaction Record fields are awaiting confirmation.';
+  const unresolvedRecordText = otherRecordBlockers.length > 0
+    ? `Other incomplete required Transaction Record fields: ${otherRecordBlockers
+      .map(blocker => stageDecisionBlockerText(blocker, true)).join(' ')}`
+    : '';
+  const requirementsText = otherRequirements.length > 0
+    ? `Other requirements before advancing: ${otherRequirements
+      .map(blocker => stageDecisionBlockerText(blocker, true)).join(' ')}`
+    : decision.nextStage && !decision.recommendationAllowed && blockers.length === 0
+      ? decision.reason || ''
+      : '';
+
+  return [decisionText, awaitingText, unresolvedRecordText, requirementsText]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function buildDocumentStatusAnswer(ctx) {
