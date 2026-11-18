@@ -6,6 +6,7 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 
 const { assertStagingEnvironment } = require('./lib/stagingEnvironment');
 const stagingEnvironment = assertStagingEnvironment(process.env);
+const { getOtpEmailConfiguration } = require('./lib/emailConfig');
 const {
   createStagingScoringGuard,
   createStagingScoringScheduler,
@@ -3647,8 +3648,11 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
 const otpStore = new Map();
 
 app.post('/api/public/my-rooms/request-otp', async (req, res) => {
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
+  const { apiKey: RESEND_KEY, from, configured } = getOtpEmailConfiguration({
+    env: process.env,
+    stagingIsolationVerified: stagingEnvironment.enabled,
+  });
+  if (!configured) return res.status(500).json({ error: 'Email not configured' });
   const email = (req.body?.email || '').trim().toLowerCase();
   if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
   const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -3658,7 +3662,7 @@ app.post('/api/public/my-rooms/request-otp', async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kontra <notifications@kontraplatform.com>',
+        from,
         to: email,
         subject: `Your Kontra access code: ${code}`,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
