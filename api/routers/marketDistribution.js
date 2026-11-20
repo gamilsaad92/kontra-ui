@@ -3,6 +3,7 @@ const authenticate = require('../middlewares/authenticate');
 const rateLimit = require('../middlewares/rateLimit');
 const asyncHandler = require('../lib/asyncHandler');
 const { supabase } = require('../db');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const {
   getTenantId,
   getUserWallet,
@@ -34,6 +35,7 @@ function wrapRouter(routerInstance) {
   });
 }
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 wrapRouter(router);
 

@@ -19,25 +19,6 @@ const {
 const router = express.Router();
 const { supabase } = require('../db');
 
-const FALLBACK_COLLECTIONS_SUMMARY = {
-  monthToDateCollected: 1_845_000,
-  outstanding: 675_000,
-  delinquentCount: 18,
-  promisesToPay: 6,
-  lastPaymentAt: null,
-};
-
-const FALLBACK_REPORT_SUMMARY = {
-  summary: {
-    scheduled: 4,
-    saved: 11,
-    totalRuns: 36,
-    lastRunAt: null,
-  },
-  collections: FALLBACK_COLLECTIONS_SUMMARY,
-  recentReports: [],
-};
-
 const EMPTY_COLLECTIONS_SUMMARY = {
   monthToDateCollected: 0,
   outstanding: 0,
@@ -57,8 +38,41 @@ const EMPTY_REPORT_SUMMARY = {
   recentReports: [],
 };
 
+const REPORT_FIELDS = Object.freeze({
+  loans: SCHEMA_CATALOG.tables.loans.columns.filter((field) =>
+    !['organization_id', 'borrower_user_id'].includes(field)),
+  payments: SCHEMA_CATALOG.tables.payments.columns,
+});
+const REPORT_TENANT_COLUMNS = Object.freeze({
+  loans: 'organization_id',
+  payments: 'org_id',
+});
+const SAFE_REPORT_CATALOG = Object.freeze({
+  tables: Object.fromEntries(Object.keys(REPORT_FIELDS).map((table) => [
+    table,
+    { columns: REPORT_FIELDS[table], joins: [] },
+  ])),
+  joins: [],
+});
+
 const SCHEDULE_FILE = path.join(__dirname, '..', 'scheduledReports.json');
 const SAVED_FILE = path.join(__dirname, '..', 'savedReports.json');
+
+router.use((req, res, next) => {
+  const membership = req.membership;
+  if (
+    !req.authContext?.verified ||
+    !req.authUserId ||
+    !req.orgId ||
+    !membership ||
+    membership.status !== 'active' ||
+    membership.deleted_at ||
+    String(membership.org_id) !== String(req.orgId)
+  ) {
+    return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  }
+  return next();
+});
 
 function sendFormatted(res, rows, format) {
   if (format === 'pdf') {
@@ -89,6 +103,10 @@ function loadJobs() {
   }
 }
 
+function forOrganization(items, orgId) {
+  return items.filter((item) => String(item.organizationId || '') === String(orgId));
+}
+
 function saveJobs(jobs) {
   fs.writeFileSync(SCHEDULE_FILE, JSON.stringify(jobs, null, 2));
 }
@@ -106,22 +124,7 @@ function saveSaved(items) {
 }
 
 function resolveOrgId(req) {
-  const header =
-    req.headers['x-organization-id'] || req.headers['X-Organization-Id'] || req.headers['x-org-id'];
-  if (header) {
-    const raw = Array.isArray(header) ? header[0] : header;
-    const parsed = parseInt(raw, 10);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-  if (typeof req.organizationId === 'number') {
-    return req.organizationId;
-  }
-  if (req.user && typeof req.user.organization_id === 'number') {
-    return req.user.organization_id;
-  }
-  return null;
+  return req.orgId;
 }
 
 function toNumber(value) {
@@ -142,13 +145,60 @@ function normalizeFilters(filters) {
   }, {});
 }
 
+function buildScopedReportQuery(req, table, fields = '*', filters = {}) {
+  const orgId = resolveOrgId(req);
+  const tenantColumn = REPORT_TENANT_COLUMNS[table];
+  const allowedFields = REPORT_FIELDS[table];
+  if (!orgId || !tenantColumn || !allowedFields) {
+    const error = new Error('Unsupported or unscoped report table');
+    error.status = 400;
+    throw error;
+  }
+
+  const selectedFields = fields === '*' || fields == null
+    ? allowedFields
+    : (Array.isArray(fields) ? fields : String(fields).split(',')).map((field) => String(field).trim());
+  if (
+    !selectedFields.length ||
+    selectedFields.some((field) => !allowedFields.includes(field)) ||
+    Object.keys(filters || {}).some((field) =>
+      !allowedFields.includes(field) || field === tenantColumn ||
+      ['org_id', 'organization_id', 'tenant_id'].includes(field))
+  ) {
+    const error = new Error('Report fields or filters are not allowed');
+    error.status = 400;
+    throw error;
+  }
+
+  let query = supabase.from(table).select(selectedFields.join(',')).eq(tenantColumn, orgId).limit(1000);
+  for (const [key, value] of Object.entries(filters || {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const error = new Error('Invalid report filter');
+      error.status = 400;
+      throw error;
+    }
+    query = Array.isArray(value) ? query.in(key, value) : query.eq(key, value);
+  }
+  return query;
+}
+
+function validateScopedReportSpec(spec) {
+  const validation = validateReportSpec(spec);
+  if (!validation.valid) return validation;
+  try {
+    buildScopedReportQuery({ orgId: 'validation-only' }, spec.table, spec.fields, spec.filters);
+    return validation;
+  } catch (error) {
+    return { valid: false, errors: [error.message] };
+  }
+}
+
 async function fetchCollections(orgId) {
+  if (!orgId) throw new Error('Verified organization context is required');
   let query = supabase
     .from('collections')
     .select('amount, status, due_date, updated_at, paid_at, promise_date');
-  if (orgId) {
-    query = query.eq('organization_id', orgId);
-  }
+  query = query.eq('organization_id', orgId);
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
@@ -156,7 +206,7 @@ async function fetchCollections(orgId) {
 
 function computeCollectionsSummary(rows) {
   if (!rows || rows.length === 0) {
-    return { ...FALLBACK_COLLECTIONS_SUMMARY };
+    return { ...EMPTY_COLLECTIONS_SUMMARY };
   }
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -205,21 +255,18 @@ function computeCollectionsSummary(rows) {
 }
 
 async function fetchReportRuns(orgId) {
+  if (!orgId) throw new Error('Verified organization context is required');
   try {
     let query = supabase
       .from('report_runs')
       .select('id, name, status, generated_at');
-    if (orgId) {
-      query = query.eq('organization_id', orgId);
-    }
+    query = query.eq('organization_id', orgId);
     const { data, error } = await query.order('generated_at', { ascending: false }).limit(5);
     if (error) throw error;
     let totalRuns = data?.length || 0;
     try {
       let countQuery = supabase.from('report_runs').select('id', { count: 'exact', head: true });
-      if (orgId) {
-        countQuery = countQuery.eq('organization_id', orgId);
-      }
+      countQuery = countQuery.eq('organization_id', orgId);
       const { count } = await countQuery;
       if (typeof count === 'number') {
         totalRuns = count;
@@ -239,9 +286,9 @@ async function fetchReportRuns(orgId) {
 
 router.get('/', async (req, res) => {
   try {
-    const scheduled = loadJobs();
-    const saved = loadSaved();
     const orgId = resolveOrgId(req);
+    const scheduled = forOrganization(loadJobs(), orgId);
+    const saved = forOrganization(loadSaved(), orgId);
 
     let collectionsResult;
     let runsResult;
@@ -281,7 +328,7 @@ router.get('/', async (req, res) => {
       return;
     }
     console.error('Report summary error:', error);
-    res.json(FALLBACK_REPORT_SUMMARY);
+    res.status(503).json({ message: 'Report summary is unavailable' });
   }
 });
 
@@ -289,11 +336,7 @@ router.post('/run', async (req, res) => {
   const { table, fields = '*', filters = {}, format } = req.body || {};
   if (!table) return res.status(400).json({ message: 'Missing table' });
   try {
-    let q = supabase.from(table).select(fields).limit(1000);
-    for (const [key, value] of Object.entries(filters)) {
-      if (Array.isArray(value)) q = q.in(key, value);
-      else q = q.eq(key, value);
-    }
+    const q = buildScopedReportQuery(req, table, fields, filters);
     const { data, error } = await q;
     if (error) throw error;
     if (format === 'pdf') {
@@ -310,13 +353,17 @@ router.post('/run', async (req, res) => {
       res.json({ rows: data });
     }
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
     console.error('Report run error:', err);
     res.status(500).json({ message: 'Failed to run report' });
   }
 });
 
 router.get('/ai/catalog', (req, res) => {
-  res.json({ catalog: SCHEMA_CATALOG, templates: Object.keys(ROLE_TEMPLATES) });
+  const templates = Object.entries(ROLE_TEMPLATES)
+    .filter(([, template]) => Object.hasOwn(REPORT_FIELDS, template.table))
+    .map(([name]) => name);
+  res.json({ catalog: SAFE_REPORT_CATALOG, templates });
 });
 
 router.post('/ai/propose', (req, res) => {
@@ -327,7 +374,7 @@ router.post('/ai/propose', (req, res) => {
     outlook_days,
     include_executive_summary,
   });
-  const validation = validateReportSpec(plan.spec);
+  const validation = validateScopedReportSpec(plan.spec);
   if (!validation.valid) {
     return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
   }
@@ -365,19 +412,15 @@ router.post('/ai/run', async (req, res) => {
   if (!approved) {
     return res.status(400).json({ message: 'Approval is required to run this report.' });
   }
-  const validation = validateReportSpec(spec);
+  const validation = validateScopedReportSpec(spec);
   if (!validation.valid) {
     return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
   }
   const start = Date.now();
   try {
-    const fields = Array.isArray(spec.fields) ? spec.fields.join(',') : '*';
+    const fields = Array.isArray(spec.fields) ? spec.fields : '*';
     const filters = normalizeFilters(spec.filters);
-    let q = supabase.from(spec.table).select(fields).limit(1000);
-    for (const [key, value] of Object.entries(filters)) {
-      if (Array.isArray(value)) q = q.in(key, value);
-      else q = q.eq(key, value);
-    }
+    const q = buildScopedReportQuery(req, spec.table, fields, filters);
     const { data, error } = await q;
     if (error) throw error;
     const durationMs = Date.now() - start;
@@ -396,6 +439,7 @@ router.post('/ai/run', async (req, res) => {
     });
     res.json({ rows: data, durationMs, specHash });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ message: error.message });
     logAuditEntry({
       event: 'ai_report_execution_failed',
       tenant_id: resolveOrgId(req),
@@ -417,7 +461,7 @@ router.post('/ai/save', (req, res) => {
   if (!name || !spec?.table) {
     return res.status(400).json({ message: 'Missing name or table' });
   }
-  const validation = validateReportSpec(spec);
+  const validation = validateScopedReportSpec(spec);
   if (!validation.valid) {
     return res.status(400).json({ message: 'Invalid report spec', errors: validation.errors });
   }
@@ -430,6 +474,7 @@ router.post('/ai/save', (req, res) => {
     fields: Array.isArray(spec.fields) ? spec.fields.join(',') : '*',
     filters: spec.filters || {},
     groupBy: spec.groupBy || '',
+    organizationId: resolveOrgId(req),
   });
   saveSaved(items);
   logAuditEntry({
@@ -446,22 +491,23 @@ router.post('/ai/save', (req, res) => {
 router.get('/fields', async (req, res) => {
   const { table } = req.query || {};
   if (!table) return res.status(400).json({ message: 'Missing table' });
-  try {
-    const { data, error } = await supabase.from(table).select('*').limit(1);
-    if (error) throw error;
-    const fields = data && data[0] ? Object.keys(data[0]) : [];
-    res.json({ fields });
-  } catch (err) {
-    console.error('Field lookup error:', err);
-    res.status(500).json({ message: 'Failed to fetch fields' });
-  }
+  const fields = REPORT_FIELDS[table];
+  if (!fields) return res.status(400).json({ message: 'Unsupported report table' });
+  res.json({ fields });
 });
 
 router.post('/schedule', authenticate, async (req, res) => {
   const { email, schedule = 'daily', table, fields = '*', filters = {} } = req.body || {};
   if (!email || !table) return res.status(400).json({ message: 'Missing email or table' });
   const organizationColumn = getReportOrganizationColumn(table);
-  if (!organizationColumn) return res.status(400).json({ message: 'Unsupported report table' });
+  if (!organizationColumn || !REPORT_FIELDS[table]) {
+    return res.status(400).json({ message: 'Unsupported report table' });
+  }
+  try {
+    buildScopedReportQuery(req, table, fields, filters);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
   if (!await isAuthenticatedTenantMember(supabase, req)) {
     return res.status(403).json({ message: 'Organization access denied' });
   }
@@ -491,15 +537,20 @@ router.post('/schedule', authenticate, async (req, res) => {
 });
 
 router.get('/saved', (req, res) => {
-  res.json({ reports: loadSaved() });
+  res.json({ reports: forOrganization(loadSaved(), resolveOrgId(req)) });
 });
 
 router.post('/save', (req, res) => {
   const { name, table, fields = '*', filters = {} } = req.body || {};
   if (!name || !table) return res.status(400).json({ message: 'Missing name or table' });
+  try {
+    buildScopedReportQuery(req, table, fields, filters);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
   const items = loadSaved();
   const id = Date.now();
-  items.push({ id, name, table, fields, filters });
+  items.push({ id, name, table, fields, filters, organizationId: resolveOrgId(req) });
   saveSaved(items);
   res.status(201).json({ id });
 });
@@ -507,7 +558,13 @@ router.post('/save', (req, res) => {
 router.get('/export', async (req, res) => {
   const { table, format = 'csv' } = req.query || {};
   if (!table) return res.status(400).json({ message: 'Missing table' });
-  const { data, error } = await supabase.from(table).select('*');
+  let query;
+  try {
+    query = buildScopedReportQuery(req, table);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+  const { data, error } = await query;
   if (error) return res.status(500).json({ message: 'Failed to export' });
   if (format === 'json') {
     res.json({ rows: data });
@@ -519,78 +576,26 @@ router.get('/export', async (req, res) => {
   }
 });
 
-router.get('/investor-distribution', async (req, res) => {
-  const { format } = req.query || {};
-  try {
-    const { data, error } = await supabase
-      .from('investments')
-      .select('investor, amount');
-    if (error) throw error;
-    const totals = {};
-    for (const row of data) {
-      const investor = row.investor || 'Unknown';
-      const amt = Number(row.amount) || 0;
-      totals[investor] = (totals[investor] || 0) + amt;
-    }
-    const rows = Object.entries(totals).map(([investor, total]) => ({ investor, total }));
-    sendFormatted(res, rows, format);
-  } catch (err) {
-    const rows = [
-      { investor: 'Demo Capital', total: 100000 },
-      { investor: 'Sample Partners', total: 75000 },
-    ];
-    sendFormatted(res, rows, format);
-  }
+router.get('/investor-distribution', (req, res) => {
+  res.status(501).json({ message: 'This report has no verified organization scope' });
 });
 
-router.get('/asset-performance', async (req, res) => {
-  const { period = 'monthly', format } = req.query || {};
-  try {
-    const { data, error } = await supabase
-      .from('asset_performance')
-      .select('period, asset, return');
-    if (error) throw error;
-    const rows = data.filter(r => (period === 'quarterly' ? /Q/.test(r.period) : !/Q/.test(r.period)));
-    sendFormatted(res, rows, format);
-  } catch (err) {
-    const monthly = [
-      { period: '2024-01', asset: 'Building A', return: 0.05 },
-      { period: '2024-02', asset: 'Building B', return: -0.02 },
-    ];
-    const quarterly = [
-      { period: '2024-Q1', asset: 'Building A', return: 0.12 },
-      { period: '2024-Q1', asset: 'Building B', return: 0.03 },
-    ];
-    const rows = period === 'quarterly' ? quarterly : monthly;
-    sendFormatted(res, rows, format);
-  }
+router.get('/asset-performance', (req, res) => {
+  res.status(501).json({ message: 'This report has no verified organization scope' });
 });
 
 router.get('/loan-risk', async (req, res) => {
   const { format } = req.query || {};
   try {
-    const { data, error } = await supabase
-      .from('loans')
-      .select('id, days_late, balance, ltv');
+    const { data, error } = await buildScopedReportQuery(req, 'loans', ['id', 'status', 'risk_score']);
     if (error) throw error;
-    const rows = data.map(l => ({
-      loan_id: l.id,
-      days_late: l.days_late || 0,
-      risk:
-        (l.days_late || 0) > 90 || (l.ltv || 0) > 0.8
-          ? 'high'
-          : (l.days_late || 0) > 30
-          ? 'medium'
-          : 'low',
-    }));
-    sendFormatted(res, rows, format);
-  } catch (err) {
-    const rows = [
-      { loan_id: 'LN100', days_late: 45, risk: 'medium' },
-      { loan_id: 'LN101', days_late: 10, risk: 'low' },
-      { loan_id: 'LN102', days_late: 120, risk: 'high' },
-    ];
-    sendFormatted(res, rows, format);
+    return sendFormatted(res, (data || []).map((loan) => ({
+      loan_id: loan.id,
+      status: loan.status,
+      risk_score: loan.risk_score,
+    })), format);
+  } catch (error) {
+    return res.status(error.status || 500).json({ message: 'Failed to run scoped loan-risk report' });
   }
 });
 

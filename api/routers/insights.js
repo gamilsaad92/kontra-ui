@@ -6,9 +6,11 @@ const { supabase } = require('../db');
 const { getLoanServicingSnapshot } = require('../services/insightsComposer');
 const { evaluateServicingExceptions } = require('../services/servicingRules');
 const { generateLoanInsights, buildWatchlistDraft, buildEmailDraft } = require('../services/ai/loanInsightsAI');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 
 function parseRangeDays(range) {

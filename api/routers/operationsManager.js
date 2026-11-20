@@ -30,7 +30,6 @@ router.post('/deal-room/:propertyId/brain/ask', async (req, res) => {
       origin: req.get('origin') || null,
       accessMode: 'operations_manager_router',
       authHeaderPresence: {
-        ownerWriteToken: Boolean(req.headers['x-owner-write-token'] || req.body?.ownerWriteToken),
         session: Boolean(req.headers['x-kontra-session']),
       },
       trace: true,

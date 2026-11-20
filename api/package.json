@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "jest",
+    "test": "env -u NODE_OPTIONS sh testSupport/runIsolatedJest.sh",
+    "test:integration:canonical-state": "env -u NODE_OPTIONS sh testSupport/runIsolatedJest.sh --local-postgres --runTestsByPath lib/canonicalStateAtomicity.pg.test.js",
     "score-assets": "node jobs/scoreAssets.js",
     "score-loans": "node jobs/scoreLoans.js",
     "score-troubled": "node jobs/scoreTroubled.js",

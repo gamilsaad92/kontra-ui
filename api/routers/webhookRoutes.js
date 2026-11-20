@@ -1,5 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const {
   listWebhooks,
   addWebhook,
@@ -9,6 +10,7 @@ const {
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 
 function isValidEvent(event) {

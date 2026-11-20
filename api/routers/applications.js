@@ -14,42 +14,6 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 const { supabase } = require('../db');
 
-const FALLBACK_LOAN_APPLICATIONS = [
-  {
-    id: 'demo-001',
-    name: 'Alex Johnson',
-    amount: 50000,
-    credit_score: 710,
-    kyc_passed: true,
-    decision: 'approved',
-    status: 'funded',
-    submitted_at: '2024-02-12T09:30:00.000Z',
-    document_url: null,
-  },
-  {
-    id: 'demo-002',
-    name: 'Jordan Smith',
-    amount: 25000,
-    credit_score: 665,
-    kyc_passed: true,
-    decision: 'review',
-    status: 'under_review',
-    submitted_at: '2024-02-10T14:45:00.000Z',
-    document_url: null,
-  },
-  {
-    id: 'demo-003',
-    name: 'Morgan Lee',
-    amount: 15000,
-    credit_score: 640,
-    kyc_passed: false,
-    decision: 'pending',
-    status: 'needs_documents',
-    submitted_at: '2024-02-08T11:20:00.000Z',
-    document_url: null,
-  },
-];
-
 const piiSecret = process.env.PII_ENCRYPTION_KEY;
 // Guard: only derive the key when the secret is present; callers check PII_KEY before use
 const PII_KEY = piiSecret ? crypto.createHash('sha256').update(piiSecret).digest() : null;
@@ -216,6 +180,7 @@ router.post(
   upload.single('package'),
   async (req, res) => {
     try {
+      if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
       const metadata = parseJsonField(req.body.metadata, {});
       const applicantInput = parseJsonField(req.body.applicant, {});
       const borrower = Object.assign({}, metadata?.applicant || {}, applicantInput || {});
@@ -299,6 +264,7 @@ router.post(
       }
 
       const recordPayload = {
+        organization_id: req.orgId,
         applicant: borrower,
         status: 'completed',
         outputs: structuredOutputs,
@@ -335,10 +301,12 @@ router.post(
 
 router.get('/orchestrations', async (req, res) => {
   try {
+    if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
     const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 10));
     const { data, error } = await supabase
       .from('application_orchestrations')
       .select('*')
+      .eq('organization_id', req.orgId)
       .order('submitted_at', { ascending: false })
       .limit(limit);
 
@@ -362,11 +330,13 @@ router.get('/orchestrations', async (req, res) => {
 
 router.get('/orchestrations/:id', async (req, res) => {
   try {
+    if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
     const { id } = req.params;
     const { data, error } = await supabase
       .from('application_orchestrations')
       .select('*')
       .eq('id', id)
+      .eq('organization_id', req.orgId)
       .single();
 
     if (error) {
@@ -395,6 +365,7 @@ router.post(
   upload.single('document'),
   async (req, res) => {
     try {
+      if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
       const { name, email, ssn, amount } = req.body;
 
       // ---- Validation ----
@@ -488,6 +459,7 @@ router.post(
         .from('loan_applications')
         .insert([
           {
+            organization_id: req.orgId,
             name,
             email,
             ssn: encryptedSsn,
@@ -522,11 +494,13 @@ router.post(
 
 router.get('/', async (req, res) => {
   try {
+    if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
     const selectFields =
       'id, name, amount, credit_score, kyc_passed, decision, status, submitted_at, document_url';
     let { data, error } = await supabase
       .from('loan_applications')
        .select(selectFields)
+      .eq('organization_id', req.orgId)
       .order('submitted_at', { ascending: false });
 
     if (error) {
@@ -534,10 +508,7 @@ router.get('/', async (req, res) => {
         return;
       }
       console.error('List applications error:', error);
-      return res.json({
-        applications: FALLBACK_LOAN_APPLICATIONS,
-        from_cache: true,
-      });
+      return res.status(503).json({ message: 'Failed to fetch applications' });
     }
 
     return res.json({ applications: data, from_cache: false });
@@ -546,10 +517,7 @@ router.get('/', async (req, res) => {
       return;
     }
     console.error('Unexpected error listing applications:', err);
-    return res.json({
-      applications: FALLBACK_LOAN_APPLICATIONS,
-      from_cache: true,
-    });
+    return res.status(503).json({ message: 'Failed to fetch applications' });
   }
 });
 

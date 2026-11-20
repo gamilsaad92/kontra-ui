@@ -31,7 +31,6 @@ function buildTrialCheckoutResponse({
     };
   }
 
-  successUrl.searchParams.set('owner_token', ownerExchangeToken);
   return { url: successUrl.toString() };
 }
 

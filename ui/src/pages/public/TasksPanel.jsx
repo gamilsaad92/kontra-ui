@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { roomScopedTaskActionPath } from '../../lib/roomScopedRoutes.mjs';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
@@ -57,7 +58,7 @@ function OwnerBadge({ ownerType, ownerRole }) {
   );
 }
 
-export default function TasksPanel({ propertyId, role, onTabChange, authHeaders }) {
+export default function TasksPanel({ propertyId, role, canManage = false, onTabChange, authHeaders }) {
   const [tasks, setTasks] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
@@ -77,11 +78,10 @@ export default function TasksPanel({ propertyId, role, onTabChange, authHeaders 
 
   const refresh = useCallback(async () => {
     try {
-      const ownerToken = (authHeaders || {})['x-owner-write-token'] || '';
       await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
-        body: JSON.stringify({ ownerWriteToken: ownerToken }),
+        body: JSON.stringify({}),
       });
       await load();
     } catch (e) {
@@ -90,17 +90,18 @@ export default function TasksPanel({ propertyId, role, onTabChange, authHeaders 
   }, [propertyId, load, authHeaders]);
 
   useEffect(() => {
-    load().then(refresh);
-  }, [load, refresh]);
+    load().then(() => {
+      if (canManage) return refresh();
+    });
+  }, [load, refresh, canManage]);
 
   const act = async (taskId, action) => {
     setBusyId(taskId);
     try {
-      const ownerToken = (authHeaders || {})['x-owner-write-token'] || '';
-      const r = await fetch(`${API_BASE}/api/public/tasks/${taskId}/${action}`, {
+      const r = await fetch(`${API_BASE}${roomScopedTaskActionPath(propertyId, taskId, action)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
-        body: JSON.stringify({ ownerWriteToken: ownerToken }),
+        body: JSON.stringify({}),
       });
       if (!r.ok) throw new Error(`Failed to ${action} task`);
       await load();
@@ -196,7 +197,7 @@ export default function TasksPanel({ propertyId, role, onTabChange, authHeaders 
                           <p className="text-violet-600">{task.draft_action.subject}</p>
                         </div>
                       )}
-                      {task.owner_type === 'ai' && (
+                      {task.owner_type === 'ai' && canManage && (
                         <div className="flex gap-2 mt-2.5">
                           {task.draft_action && (
                             <button disabled={busyId === task.id} onClick={() => act(task.id, 'approve')}

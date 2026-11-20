@@ -4,6 +4,7 @@ const path = require('path');
 const { ZodError } = require('../lib/zod');
 const { supabase } = require('../db');
 const requireOrg = require('../middlewares/requireOrg');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const { runPaymentAgent } = require('../ai/agents/paymentAgent');
 const { runInspectionAgent } = require('../ai/agents/inspectionAgent');
 
@@ -62,6 +63,7 @@ const sendValidated = (res, schema, payload, status = 200) => {
   return res.status(status).json(parsed);
 };
 
+router.use(skipPublicDealRoomRouter);
 router.use(requireOrg);
 
 router.post('/ai/payments/review', async (req, res) => {

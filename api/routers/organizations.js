@@ -2,29 +2,54 @@ const express = require('express');
 const { runKycCheck } = require('../compliance');
 const { logAuditEntry } = require('../auditLogger');
 const { supabase, replica } = require('../db');
+const authenticate = require('../middlewares/authenticate');
+const { resolveCanonicalIdentity } = require('../middlewares/resolveCanonicalIdentity');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
 
 const router = express.Router();
+router.use(authenticate);
+router.use(async (req, res, next) => {
+  try {
+    const identity = await resolveCanonicalIdentity(req, supabase);
+    if (identity.error) return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+    if (!identity.userId) return res.status(403).json({ code: 'IDENTITY_LINK_REQUIRED' });
+    req.authUserId = identity.userId;
+    return next();
+  } catch {
+    return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+  }
+});
 
 // List organizations
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   const { data, error } = await replica
-    .from('organizations')
-    .select('*')
+    .from('org_memberships')
+    .select('role, organizations!inner(*)')
+    .eq('user_id', req.authUserId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .eq('organizations.status', 'active')
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ organizations: data });
+  res.json({ organizations: (data || []).map((membership) => ({
+    ...membership.organizations,
+    membership_role: membership.role,
+  })) });
 });
 
 // Create organization
 router.post('/', async (req, res) => {
   const { name, branding, parent_id } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Name required' });
-  const { data, error } = await supabase
-    .from('organizations')
-    .insert([{ name, branding, parent_id, kyc_approved: false }])
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('create_organization_with_owner', {
+    p_name: name,
+    p_owner_user_id: req.authUserId,
+    p_branding: branding || {},
+    p_parent_id: parent_id || null,
+    p_data: req.body?.data || {},
+  });
   if (error) return res.status(500).json({ error: 'Failed to create organization' });
+  if (!data?.id) return res.status(500).json({ error: 'Failed to create organization' });
 
   let approved = false;
   try {
@@ -45,6 +70,7 @@ router.post('/', async (req, res) => {
 // Get single organization
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
+  if (String(req.orgId) !== String(id)) return res.status(403).json({ code: 'ORG_FORBIDDEN' });
  const { data, error } = await replica
     .from('organizations')
     .select('*')
@@ -56,8 +82,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update branding
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireMembershipRole('owner', 'admin'), async (req, res) => {
   const { id } = req.params;
+  if (String(req.orgId) !== String(id)) return res.status(403).json({ code: 'ORG_FORBIDDEN' });
   const { name, branding } = req.body || {};
   const { data, error } = await supabase
     .from('organizations')

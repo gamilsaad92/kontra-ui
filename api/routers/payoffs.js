@@ -1,8 +1,10 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 
 const { supabase } = require('../db');

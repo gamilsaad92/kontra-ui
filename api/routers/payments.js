@@ -1,6 +1,7 @@
 const express = require('express');
 const { getOrders } = require('./orders');
 const requireOrg = require('../middlewares/requireOrg');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ const getPayments = orgId => paymentsByOrg[orgId] || [];
 
 const { broadcastAnalytics } = require('./analyticsShared');
 
+router.use(skipPublicDealRoomRouter);
 router.use(requireOrg);
 
 router.get('/payments', (req, res) => {

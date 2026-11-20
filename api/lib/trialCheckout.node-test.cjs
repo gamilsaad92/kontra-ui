@@ -25,7 +25,7 @@ test('staging trial response puts the one-time capability only in the response b
   assert.equal(response.ownerExchange.token, 'synthetic-one-time-capability');
 });
 
-test('non-staging checkout preserves the legacy owner token redirect', () => {
+test('non-staging checkout does not expose owner credentials in the redirect', () => {
   const response = buildTrialCheckoutResponse({
     origin: 'https://kontraplatform.com',
     plan: 'deal',
@@ -35,6 +35,7 @@ test('non-staging checkout preserves the legacy owner token redirect', () => {
     stagingIsolation: false,
     ownerExchangeToken: 'synthetic-paid-token',
   });
-  assert.equal(new URL(response.url).searchParams.get('owner_token'), 'synthetic-paid-token');
+  assert.equal(new URL(response.url).searchParams.has('owner_token'), false);
+  assert.equal(new URL(response.url).searchParams.has('owner_exchange_token'), false);
   assert.equal(response.ownerExchange, undefined);
 });

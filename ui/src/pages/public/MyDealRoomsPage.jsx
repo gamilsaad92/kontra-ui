@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { getWorkflowPack, ensureWorkflowPackLoaded } from "../../lib/workflowPacks";
 import { getCoordinatorRoleKeys } from "../../lib/workflowRoles";
-import { clearInviteSession } from "../../lib/inviteUtils";
+import { clearInviteSession, setOwnerSessionHint } from "../../lib/inviteUtils";
 import {
   exchangeMyDealRoomsOwnerSessions,
   logoutMyDealRoomsOwnerSessions,
@@ -110,7 +110,7 @@ function PartyMini({ parties, workflowPackId }) {
   );
 }
 
-function DealCard({ room, email, onDeleted }) {
+function DealCard({ room, onDeleted }) {
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -130,10 +130,8 @@ function DealCard({ room, email, onDeleted }) {
     setDeleting(true);
     setDeleteError("");
     try {
-      const res = await fetch(`${API_BASE}/api/public/my-rooms/${room.property_id}`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(room.property_id)}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -331,11 +329,7 @@ export default function MyDealRoomsPage() {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (saved) {
-        const { rooms: r, email: e, ownerName: n, owner_tokens: ownerTokens = {} } = JSON.parse(saved);
-        Object.entries(ownerTokens).forEach(([propertyId, ownerToken]) => {
-          if (!propertyId || !ownerToken) return;
-          try { localStorage.setItem(`kontra_owner_token_${propertyId}`, ownerToken); } catch {}
-        });
+        const { rooms: r, email: e, ownerName: n } = JSON.parse(saved);
         for (const room of r || []) {
           if (room?.property_id) clearInviteSession(room.property_id);
         }
@@ -349,10 +343,36 @@ export default function MyDealRoomsPage() {
   }, []);
 
   useEffect(() => {
-    if (step !== "dashboard" || !email) return;
-    fetch(`${API_BASE}/api/public/my-rooms/analytics?email=${encodeURIComponent(email.trim().toLowerCase())}`)
-      .then(r => r.json()).then(d => setAnalytics(d)).catch(() => {});
-  }, [step, email]);
+    if (step !== "dashboard") return;
+    if (!rooms.length) {
+      setAnalytics(null);
+      return;
+    }
+    let active = true;
+    Promise.all(rooms.map(async room => {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${encodeURIComponent(room.property_id)}/analytics`,
+      );
+      if (!response.ok) throw new Error("Room analytics unavailable");
+      return response.json();
+    })).then(results => {
+      if (!active) return;
+      const numeric = key => results.reduce((sum, result) => sum + (Number(result[key]) || 0), 0);
+      const activeDays = results.map(result => result.avgDaysActive).filter(Number.isFinite);
+      setAnalytics({
+        totalDeals: numeric("totalDeals"),
+        waitingOnBorrower: numeric("waitingOnBorrower"),
+        waitingOnInspector: numeric("waitingOnInspector"),
+        avgDaysActive: activeDays.length
+          ? Math.round(activeDays.reduce((sum, value) => sum + value, 0) / activeDays.length)
+          : null,
+        documentsUploaded: numeric("documentsUploaded"),
+        aiReviewsCompleted: numeric("aiReviewsCompleted"),
+        activeParticipants: numeric("activeParticipants"),
+      });
+    }).catch(() => { if (active) setAnalytics(null); });
+    return () => { active = false; };
+  }, [step, rooms]);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -396,6 +416,9 @@ export default function MyDealRoomsPage() {
         exchangeTokens: data.owner_exchange_tokens || {},
         apiBase: API_BASE,
       });
+      for (const room of data.rooms || []) {
+        if (room?.property_id) setOwnerSessionHint(room.property_id);
+      }
       const n = data.rooms?.[0]?.owner_name || "";
       const packIds = [...new Set((data.rooms || []).map(r => r.workflow_pack_id).filter(Boolean))];
       await Promise.all(packIds.map(id => ensureWorkflowPackLoaded(id)));
@@ -419,7 +442,7 @@ export default function MyDealRoomsPage() {
     } finally {
       for (const room of currentRooms) {
         if (!room?.property_id) continue;
-        try { localStorage.removeItem(`kontra_owner_token_${room.property_id}`); } catch {}
+        setOwnerSessionHint(room.property_id, false);
       }
       sessionStorage.removeItem(SESSION_KEY);
       setStep("email"); setRooms([]); setEmail(""); setOwnerName(""); setError("");
@@ -427,11 +450,12 @@ export default function MyDealRoomsPage() {
   }
 
   async function manageBilling() {
+    const room = rooms.find(item => item?.property_id);
+    if (!room) return;
     setBillingState("loading");
     try {
-      const res = await fetch(`${API_BASE}/api/public/billing-portal`, {
+      const res = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(room.property_id)}/billing-portal`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       const data = await res.json();
       if (data.error === "billing_portal_not_configured") {
@@ -628,7 +652,7 @@ export default function MyDealRoomsPage() {
                   </p>
                 </div>
                 <div className="space-y-3">
-                  {activeRooms.map(r => <DealCard key={r.property_id} room={r} email={email} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
+                  {activeRooms.map(r => <DealCard key={r.property_id} room={r} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
                 </div>
               </section>
             )}
@@ -641,7 +665,7 @@ export default function MyDealRoomsPage() {
                   </p>
                 </div>
                 <div className="space-y-3 opacity-70">
-                  {otherRooms.map(r => <DealCard key={r.property_id} room={r} email={email} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
+                  {otherRooms.map(r => <DealCard key={r.property_id} room={r} onDeleted={id => setRooms(prev => prev.filter(x => x.property_id !== id))} />)}
                 </div>
               </section>
             )}

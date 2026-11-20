@@ -1,11 +1,18 @@
 const express = require('express');
 const { triggerWebhooks } = require('../webhooks');
 const authenticate = require('../middlewares/authenticate');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
 const asyncHandler = require('../lib/asyncHandler');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
+router.use((req, res, next) => {
+  if (['/my-loans', '/my-applications'].includes(req.path)) return next();
+  return requireMembershipRole('owner', 'admin')(req, res, next);
+});
 
 function wrapRouter(routerInstance) {
   const methods = ['get', 'post', 'put', 'patch', 'delete'];

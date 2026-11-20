@@ -46,21 +46,31 @@ describe('room authorization header precedence', () => {
     }
   });
 
-  it('sends the owner token when no participant session exists', () => {
+  it('never emits an owner token header from browser storage', () => {
     localStorage.setItem(ownerKey, 'owner-token');
 
-    expect(getRoomAuthHeaders(propertyId)).toEqual({
-      'x-owner-write-token': 'owner-token',
+    let headers;
+    jest.isolateModules(() => {
+      const fresh = require('./inviteUtils');
+      headers = fresh.getRoomAuthHeaders(propertyId);
     });
+
+    expect(headers).toEqual({});
+    expect(localStorage.getItem(ownerKey)).toBeNull();
   });
 
-  it('removes an expired participant session and falls back to the owner token', () => {
+  it('removes an expired participant session without falling back to an owner token', () => {
     localStorage.setItem(ownerKey, 'owner-token');
     storeInviteSession(propertyId, 'expired-session', '2000-01-01T00:00:00.000Z');
 
-    expect(getRoomAuthHeaders(propertyId)).toEqual({
-      'x-owner-write-token': 'owner-token',
+    let headers;
+    jest.isolateModules(() => {
+      const fresh = require('./inviteUtils');
+      headers = fresh.getRoomAuthHeaders(propertyId);
     });
+
+    expect(headers).toEqual({});
+    expect(localStorage.getItem(ownerKey)).toBeNull();
     expect(sessionStorage.getItem(`kontra_session_${propertyId}`)).toBeNull();
   });
 

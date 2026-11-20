@@ -129,9 +129,21 @@ async function runListeningProcess(entry, port, env) {
   }
 }
 
+function allowLoopbackPort(port) {
+  const ports = new Set(
+    String(process.env.KONTRA_TEST_ALLOWED_LOCAL_PORTS || '')
+      .split(',')
+      .map(value => Number(value.trim()))
+      .filter(value => Number.isInteger(value) && value > 0),
+  );
+  ports.add(port);
+  process.env.KONTRA_TEST_ALLOWED_LOCAL_PORTS = [...ports].join(',');
+}
+
 describe('API server startup', () => {
   test('requiring the API exposes startup but does not bind a listener', async () => {
     const port = await unusedPort();
+    allowLoopbackPort(port);
     const script = `
       const net = require('net');
       const api = require(${JSON.stringify(API_ENTRY)});
@@ -162,12 +174,14 @@ describe('API server startup', () => {
 
   test('direct API execution starts the staging server and serves /health', async () => {
     const port = await unusedPort();
+    allowLoopbackPort(port);
     const output = await runListeningProcess(API_ENTRY, port, stagingRuntime(port));
     expect(output).toContain(`Kontra API listening on port ${port}`);
   }, 35_000);
 
   test('validated staging launcher starts the server and serves /health', async () => {
     const port = await unusedPort();
+    allowLoopbackPort(port);
     const output = await runListeningProcess(
       STAGING_LAUNCHER,
       port,

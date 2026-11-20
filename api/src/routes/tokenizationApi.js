@@ -52,7 +52,9 @@ router.use('/webhooks', paymentWebhook);
 // ── Org context ───────────────────────────────────────────────────────────────
 
 router.use((req, res, next) => {
-  req.orgId = req.headers['x-org-id'] || req.user?.orgId || 'demo-org';
+  if (!req.authUserId || !req.orgId) {
+    return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  }
   next();
 });
 

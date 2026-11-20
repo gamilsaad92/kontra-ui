@@ -1,13 +1,13 @@
 // aiDealReview.js
-// Public, no-auth-required AI document-review endpoints. Extracted out of
-// index.js (which had grown past 4,000 lines) to keep the AI-review surface
-// in one place. Mounted at /api/ai in index.js and must stay registered
-// BEFORE the requireOrgContext middleware, same as before extraction.
+// AI routes are public for general scoring utilities. Document-review uploads
+// still require a verified participant session or room-scoped owner session.
+// Mounted at /api/ai and the room-scoped Deal Room prefix before org middleware.
 const express = require('express');
 const crypto = require('crypto');
 const multer = require('multer');
 const OpenAI = require('openai');
 const { supabase } = require('../db');
+const { resolveRoomSessionAccess } = require('../lib/roomSessionAccess');
 const aiRateLimit = require('../middlewares/aiRateLimit');
 const { uploadToStorage, logEvent, notifyOwner, notifyLender } = require('../lib/dealRoomHelpers');
 const { recalculateTransactionState } = require('../lib/transactionState');
@@ -35,7 +35,7 @@ const {
   syncParticipantSubmissionFromDocument,
 } = require('../lib/participantSubmissionState');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 let transactionFieldExtractor = null;
 
 function safeAiErrorMessage(error, fallback = 'Document analysis failed. Please try again.') {
@@ -245,77 +245,54 @@ async function getCustomPackDocumentAssignments(packId) {
 }
 
 async function authorizeDocumentUpload(req, res, section) {
-  const propertyId = String(req.body?.property_id || '').trim();
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) req.body = {};
+  for (const field of ['ownerWriteToken', 'ownerToken', 'owner_token', 'owner_write_token']) {
+    delete req.body[field];
+  }
+  const routePropertyId = String(req.params?.propertyId || '').trim();
+  const bodyPropertyId = String(req.body?.property_id || '').trim();
+  if (routePropertyId && bodyPropertyId && routePropertyId !== bodyPropertyId) {
+    res.status(403).json({ error: 'Access denied', message: 'The requested room does not match the upload room' });
+    return null;
+  }
+  const propertyId = routePropertyId || bodyPropertyId;
   if (!propertyId) {
     res.status(400).json({ error: 'property_id required' });
     return null;
   }
+  req.body.property_id = propertyId;
 
-  // Owner access is stronger than a participant session. Browsers can retain
-  // an old invite session while the coordinator returns to the room; checking
-  // the participant first incorrectly rejects a valid owner upload when the
-  // selected section is not assigned to that stale participant role.
-  const ownerToken = String(
-    req.headers['x-owner-write-token'] || req.body?.ownerWriteToken || '',
-  ).trim();
-  if (ownerToken) {
+  const access = await resolveRoomSessionAccess(req, propertyId, supabase);
+  if (access.mode === 'owner') return { mode: 'owner', role: 'owner', propertyId };
+  if (access.mode === 'participant') {
     const { data: room } = await supabase
       .from('deal_rooms')
-      .select('owner_write_token')
+      .select('workflow_pack_id, property_type, checklist_items')
       .eq('property_id', propertyId)
       .maybeSingle();
-    if (room?.owner_write_token && room.owner_write_token === ownerToken) {
-      return { mode: 'owner', role: 'owner', propertyId };
-    }
-  }
-
-  const sessionToken = String(req.headers['x-kontra-session'] || '').trim();
-  if (sessionToken) {
-    const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
-    const { data: session } = await supabase
-      .from('deal_room_access_sessions')
-      .select('invite_id')
-      .eq('session_token_hash', tokenHash)
-      .gt('expires_at', new Date().toISOString())
-      .is('revoked_at', null)
-      .maybeSingle();
-    if (session?.invite_id) {
-      const { data: invite } = await supabase
-        .from('deal_room_invites')
-        .select('property_id, role_key, status')
-        .eq('id', session.invite_id)
-        .maybeSingle();
-      if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
-        const { data: room } = await supabase
-          .from('deal_rooms')
-          .select('workflow_pack_id, property_type, checklist_items')
-          .eq('property_id', propertyId)
-          .maybeSingle();
-        const normalizedSection = section === 'brand-standards' ? 'brand_standards' : section;
-        const assignments = getSectionAssignments(room?.workflow_pack_id || 'cre_acquisition', room?.property_type || 'Multifamily');
-        const customAssignments = await getCustomPackDocumentAssignments(room?.workflow_pack_id);
-        const checklistItems = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
-        const assignedSections = getAssignedSectionsFromChecklist(
-          checklistItems,
-          invite.role_key,
-          assignments,
-          customAssignments,
-        );
-        if (checklistItems.length === 0) {
-          for (const [key, roles] of Object.entries(customAssignments || assignments || {})) {
-            if (hasDocumentRole(roles, invite.role_key)) assignedSections.add(key);
-          }
-        }
-        if (!assignedSections.has(section) && !assignedSections.has(normalizedSection)) {
-          res.status(403).json({ error: 'Access denied', message: 'This document section is not assigned to your role' });
-          return null;
-        }
-        return { mode: 'participant', role: invite.role_key, propertyId };
+    const normalizedSection = section === 'brand-standards' ? 'brand_standards' : section;
+    const assignments = getSectionAssignments(room?.workflow_pack_id || 'cre_acquisition', room?.property_type || 'Multifamily');
+    const customAssignments = await getCustomPackDocumentAssignments(room?.workflow_pack_id);
+    const checklistItems = Array.isArray(room?.checklist_items) ? room.checklist_items : [];
+    const assignedSections = getAssignedSectionsFromChecklist(
+      checklistItems,
+      access.role,
+      assignments,
+      customAssignments,
+    );
+    if (checklistItems.length === 0) {
+      for (const [key, roles] of Object.entries(customAssignments || assignments || {})) {
+        if (hasDocumentRole(roles, access.role)) assignedSections.add(key);
       }
     }
+    if (!assignedSections.has(section) && !assignedSections.has(normalizedSection)) {
+      res.status(403).json({ error: 'Access denied', message: 'This document section is not assigned to your role' });
+      return null;
+    }
+    return { mode: 'participant', role: access.role, propertyId };
   }
 
-  res.status(403).json({ error: 'Access denied', message: 'A verified deal-room invitation or owner access token is required' });
+  res.status(403).json({ error: 'Access denied', message: 'A verified deal-room invitation or owner session is required' });
   return null;
 }
 

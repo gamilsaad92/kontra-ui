@@ -8,7 +8,7 @@
  *
  * Required:
  *   BRAIN_SMOKE_PROPERTY_ID
- *   BRAIN_SMOKE_OWNER_WRITE_TOKEN or BRAIN_SMOKE_SESSION_TOKEN
+ *   BRAIN_SMOKE_OWNER_SESSION_COOKIE
  *
  * Optional full deployment verification:
  *   BRAIN_SMOKE_EXPECTED_COMMIT
@@ -16,7 +16,7 @@
  *   RENDER_OWNER_ID
  *   RENDER_SERVICE_ID
  *
- * The token and response body are never printed.
+ * The cookie and response body are never printed.
  */
 
 const DEFAULT_BASE_URL = 'https://kontra-api.onrender.com';
@@ -39,7 +39,7 @@ function usage() {
     '',
     'Required environment:',
     '  BRAIN_SMOKE_PROPERTY_ID',
-    '  BRAIN_SMOKE_OWNER_WRITE_TOKEN or BRAIN_SMOKE_SESSION_TOKEN',
+    '  BRAIN_SMOKE_OWNER_SESSION_COOKIE (kontra_owner_session=<value>)',
     '',
     'Optional full deployment verification:',
     '  BRAIN_SMOKE_EXPECTED_COMMIT',
@@ -168,16 +168,13 @@ async function main() {
 
   const baseUrl = (process.env.BRAIN_SMOKE_BASE_URL || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
   const propertyId = required('BRAIN_SMOKE_PROPERTY_ID');
-  const ownerToken = String(process.env.BRAIN_SMOKE_OWNER_WRITE_TOKEN || '').trim();
-  const sessionToken = String(process.env.BRAIN_SMOKE_SESSION_TOKEN || '').trim();
-  if (!ownerToken && !sessionToken) {
-    fail('BRAIN_SMOKE_OWNER_WRITE_TOKEN or BRAIN_SMOKE_SESSION_TOKEN is required');
+  const ownerSessionCookie = String(process.env.BRAIN_SMOKE_OWNER_SESSION_COOKIE || '').trim();
+  if (!ownerSessionCookie.startsWith('kontra_owner_session=')) {
+    fail('BRAIN_SMOKE_OWNER_SESSION_COOKIE must contain the room owner session cookie');
   }
 
   const requestId = `brain-smoke-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const headers = { Accept: 'application/json' };
-  if (ownerToken) headers['x-owner-write-token'] = ownerToken;
-  else headers['x-kontra-session'] = sessionToken;
+  const headers = { Accept: 'application/json', Cookie: ownerSessionCookie };
 
   const health = await fetchJson(`${baseUrl}/health`, { headers: { Accept: 'application/json' } });
   assertHealth(health.response, health.body);

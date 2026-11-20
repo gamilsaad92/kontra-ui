@@ -20,6 +20,7 @@ const {
 const { TRANSACTION_NOTIFICATION_FROM } = require('./emailConfig');
 const { emit } = require('./eventBus');
 const { selectActiveDocumentVersions } = require('./documentVersions');
+const { loadTaskSubmissions } = require('./taskSubmissionQuery');
 const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
@@ -436,7 +437,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
 
   const [existingRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
-    supabase.from('party_submissions').select('role, email, name, status, doc_count, submitted_at').eq('property_id', propertyId),
+    loadTaskSubmissions(supabase, propertyId),
     supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
     supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
   ]);

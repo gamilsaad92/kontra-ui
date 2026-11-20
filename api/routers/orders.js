@@ -1,6 +1,7 @@
 const express = require('express');
 const { menuItems } = require('./menu');
 const requireOrg = require('../middlewares/requireOrg');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
 const ordersByOrg = {};
@@ -11,6 +12,7 @@ const getOrders = orgId => ordersByOrg[orgId] || [];
 
 const { broadcastAnalytics } = require('./analyticsShared');
 
+router.use(skipPublicDealRoomRouter);
 router.use(requireOrg);
 
 // Get all orders

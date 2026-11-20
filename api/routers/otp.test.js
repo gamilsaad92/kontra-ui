@@ -1,16 +1,10 @@
-jest.mock('../cache', () => ({
+jest.mock('../lib/cache', () => ({
   set: jest.fn().mockResolvedValue(undefined),
   get: jest.fn().mockResolvedValue(null),
+  del: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../communications', () => ({
-  sendSms: jest.fn().mockResolvedValue(undefined),
-  sendEmail: jest.fn().mockResolvedValue(undefined),
-}));
-
-const cache = require('../cache');
-const communications = require('../communications');
-const { OTP_TTL_SECONDS } = require('../constants/otp');
+const cache = require('../lib/cache');
 const router = require('./otp');
 
 function getRouteHandler(method, path) {
@@ -26,7 +20,7 @@ describe('otp router', () => {
     jest.clearAllMocks();
   });
 
-  it('stores OTPs using the shared TTL', async () => {
+  it('stores a hashed OTP using the configured TTL without exposing the code', async () => {
     const handler = getRouteHandler('post', '/request');
     const json = jest.fn();
     const res = {
@@ -34,18 +28,12 @@ describe('otp router', () => {
       json,
     };
 
-    await handler({ body: { channel: 'email', destination: 'user@example.com' } }, res);
+    await handler({ body: { channel: 'email', subject: 'user@example.com' } }, res);
 
-    expect(cache.set).toHaveBeenCalledWith(
-      'otp:user@example.com',
-      expect.any(String),
-      OTP_TTL_SECONDS
-    );
-    expect(communications.sendEmail).toHaveBeenCalledWith(
-      'user@example.com',
-      'Verification Code',
-      expect.stringMatching(/^Your verification code is \d{6}$/)
-    );
-    expect(json).toHaveBeenCalledWith({ sent: true });
+    const [key, digest, ttl] = cache.set.mock.calls[0];
+    expect(key).toBe('otp:user@example.com');
+    expect(digest).toMatch(/^[a-f0-9]{64}$/);
+    expect(ttl).toBe(Number(process.env.OTP_TTL_SEC || '300'));
+    expect(json).toHaveBeenCalledWith({ ok: true, ttl });
   });
 });

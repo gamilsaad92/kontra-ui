@@ -1,80 +1,122 @@
-// Convert integer org IDs (e.g. "20") to UUID format used in Supabase tables.
-// This ensures all routes — including the AI routes that use req.orgId directly —
-// receive the correct UUID without needing to call toOrgUuid() in every handler.
-function toOrgUuidStr(orgId) {
-  if (!orgId) return orgId;
-  const id = String(orgId);
-  // Already a UUID (contains hyphens) — pass through
-  if (/[0-9a-f]{8}-/i.test(id)) return id;
-  // Pure integer → pad to UUID format
-  if (/^\d+$/.test(id)) {
-    return `00000000-0000-0000-0000-${id.padStart(12, '0')}`;
-  }
-  return orgId;
+'use strict';
+
+const authenticate = require('../../middlewares/authenticate');
+const { supabase } = require('../../db');
+const { UUID_RE, resolveCanonicalIdentity } = require('../../middlewares/resolveCanonicalIdentity');
+
+function requestPath(req) {
+  return (req.originalUrl || req.url || '').split('?')[0];
 }
 
-function requireOrgContext(req, res, next) {
-  // Use both req.originalUrl (full path) and req.url (may be mount-stripped by Express).
-  // When mounted as app.use('/api', requireOrgContext), Express sets req.url to the path
-  // AFTER the mount point, e.g. '/public/deal-room/...' instead of '/api/public/deal-room/...'.
-  // req.originalUrl always retains the full path, but we check both to be safe under proxies.
-  const originalPath = (req.originalUrl || '').split('?')[0];
-  const mountedPath  = (req.url || '').split('?')[0];
-
-  // Always skip health, dev, public AI, guest checkout, and all /api/public/* routes
-  if (
-    originalPath === '/api/health' ||
-    mountedPath  === '/health' ||
-    originalPath.startsWith('/api/dev/') ||
-    mountedPath.startsWith('/dev/') ||
-    originalPath.startsWith('/api/auth/') ||
-    mountedPath.startsWith('/auth/') ||
-    originalPath.startsWith('/api/copilot/') ||
-    mountedPath.startsWith('/copilot/') ||
-    originalPath.startsWith('/api/checkout/guest') ||
-    mountedPath.startsWith('/checkout/guest') ||
-    originalPath.startsWith('/api/public/') ||
-    mountedPath.startsWith('/public/') ||
-    originalPath === '/api/waitlist' ||
-    mountedPath  === '/waitlist'
-  ) {
-    return next();
-  }
-
-  const path = originalPath; // retained for legacy log messages below
-
-  const orgHeader = req.get('X-Org-Id') || req.get('x-org-id') || req.get('x-organization-id');
-
-  // If an explicit header is provided, convert it to UUID format and move on
-  if (orgHeader) {
-    req.orgId = toOrgUuidStr(String(orgHeader));
-    req.organizationId = req.orgId;
-    req.tenant_id = req.orgId;
-    return next();
-  }
-
-  // If req.orgId was already set (e.g. by authenticate running earlier), accept it
-  if (req.orgId) {
-    req.orgId = toOrgUuidStr(req.orgId);
-    req.organizationId = req.orgId;
-    req.tenant_id = req.orgId;
-    return next();
-  }
-
-  // If there's a Bearer token, authenticate middleware will resolve the org.
-  // Pass through so authenticate can run and set req.orgId — the route handler
-  // is responsible for enforcing org presence after authentication.
-  const authHeader = req.get('Authorization') || '';
-  if (authHeader.startsWith('Bearer ')) {
-    return next();
-  }
-
-  // No auth, no org header — let protected routers report the correct
-  // authentication failure instead of masking it as a tenancy error.
-  return res.status(401).json({
-    code: 'AUTH_REQUIRED',
-    message: 'Authentication required',
-  });
+function isExempt(req) {
+  const path = requestPath(req);
+  const mounted = (req.url || '').split('?')[0];
+  const method = String(req.method || 'GET').toUpperCase();
+  return path === '/api/health' ||
+    mounted === '/health' ||
+    path.startsWith('/api/dev/') ||
+    mounted.startsWith('/dev/') ||
+    path.startsWith('/api/auth/') ||
+    mounted.startsWith('/auth/') ||
+    path.startsWith('/api/copilot/') ||
+    mounted.startsWith('/copilot/') ||
+    path.startsWith('/api/checkout/guest') ||
+    mounted.startsWith('/checkout/guest') ||
+    path.startsWith('/api/public/') ||
+    mounted.startsWith('/public/') ||
+    path === '/api/waitlist' ||
+    mounted === '/waitlist' ||
+    path === '/api/payments/stablecoin/webhook' ||
+    path === '/api/otp/request' ||
+    path === '/api/otp/verify';
 }
 
-module.exports = { requireOrgContext };
+function candidateOrgIds(req) {
+  const rawHeaders = [
+    req.headers['x-org-id'],
+    req.headers['x-organization-id'],
+  ].filter(Boolean);
+  if (rawHeaders.some(Array.isArray)) {
+    return { error: 'ORG_CONTEXT_AMBIGUOUS' };
+  }
+  const body = req.body || {};
+  const query = req.query || {};
+  const raw = [
+    ...rawHeaders,
+    query.orgId,
+    query.org_id,
+    body.orgId,
+    body.org_id,
+  ].filter((value) => value !== undefined && value !== null && value !== '');
+  const values = [...new Set(raw.map(String))];
+  if (values.length > 1) return { error: 'ORG_CONTEXT_AMBIGUOUS' };
+  if (values.length && !UUID_RE.test(values[0])) return { error: 'ORG_CONTEXT_INVALID' };
+  return { orgId: values[0] || null };
+}
+
+function createRequireOrgContext({ auth = authenticate, db = supabase } = {}) {
+  return function requireOrgContext(req, res, next) {
+    if (isExempt(req)) return next();
+
+    return auth(req, res, async (authError) => {
+      if (authError) return next(authError);
+      if (!req.authContext?.verified) {
+        return res.status(401).json({ code: 'AUTH_REQUIRED', message: 'Authentication required' });
+      }
+
+      try {
+        const identity = await resolveCanonicalIdentity(req, db);
+        if (identity.error) {
+          return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+        }
+        if (!identity.userId) {
+          return res.status(403).json({ code: 'IDENTITY_LINK_REQUIRED' });
+        }
+
+        const candidate = candidateOrgIds(req);
+        if (candidate.error) {
+          return res.status(400).json({ code: candidate.error });
+        }
+
+        let query = db
+          .from('org_memberships')
+          .select('id, org_id, user_id, role, status, deleted_at, created_at, organizations!inner(status)')
+          .eq('user_id', identity.userId)
+          .eq('status', 'active')
+          .is('deleted_at', null)
+          .eq('organizations.status', 'active')
+          .order('created_at', { ascending: true });
+        const { data: memberships, error } = await query;
+        if (error) {
+          console.error('[OrgAuth] membership lookup failed', error.message);
+          return res.status(503).json({ code: 'ORG_AUTHORIZATION_UNAVAILABLE' });
+        }
+
+        const active = memberships || [];
+        const membership = candidate.orgId
+          ? active.find((item) => String(item.org_id) === candidate.orgId)
+          : active[0];
+        if (!membership) {
+          return res.status(403).json({
+            code: candidate.orgId ? 'ORG_FORBIDDEN' : 'ORG_MEMBERSHIP_REQUIRED',
+            message: 'Active organization membership required',
+          });
+        }
+
+        req.authUserId = identity.userId;
+        req.membership = membership;
+        req.membershipRole = membership.role;
+        req.orgId = String(membership.org_id);
+        req.organizationId = req.orgId;
+        req.tenant_id = req.orgId;
+        return next();
+      } catch (error) {
+        console.error('[OrgAuth] authorization failed', error.message);
+        return res.status(503).json({ code: 'ORG_AUTHORIZATION_UNAVAILABLE' });
+      }
+    });
+  };
+}
+
+const requireOrgContext = createRequireOrgContext();
+module.exports = { requireOrgContext, createRequireOrgContext, candidateOrgIds, isExempt };

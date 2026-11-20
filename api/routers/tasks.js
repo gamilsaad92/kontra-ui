@@ -1,14 +1,12 @@
 // routers/tasks.js — Task Engine + AI Ownership Layer API (Observe Mode)
 //
-// Mounted at /api/public/deal-room/:propertyId/tasks* alongside the other
-// public deal-room routes (same property-scoped, no-org-auth model — see
-// index.js for the rest of the /api/public/deal-room/* surface). Also
-// exposes a global /api/tasks/:id/approve|dismiss since a task's id is
-// already an unguessable UUID and the approve/dismiss actions don't need
-// the propertyId in the path.
+// Mounted at /api/public. Owner task decisions use room-scoped paths so the
+// browser sends the existing owner cookie, and the task is checked against
+// that room before authorization.
 const express = require('express');
 const crypto = require('crypto');
 const { supabase } = require('../db');
+const { resolveRoomSessionAccess } = require('../lib/roomSessionAccess');
 const router = express.Router();
 const {
   listTasksForRoom,
@@ -17,60 +15,23 @@ const {
   dismissTask,
 } = require('../lib/taskEngine');
 
-async function getTaskAccess(req, propertyId, ownerTokenOverride = '') {
-  const sessionToken = String(req.headers['x-kontra-session'] || '').trim();
-  if (sessionToken) {
-    const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
-    const { data: session } = await supabase
-      .from('deal_room_access_sessions')
-      .select('invite_id')
-      .eq('session_token_hash', tokenHash)
-      .gt('expires_at', new Date().toISOString())
-      .is('revoked_at', null)
-      .maybeSingle();
-    if (session?.invite_id) {
-      const { data: invite } = await supabase
-        .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status')
-        .eq('id', session.invite_id)
-        .maybeSingle();
-      if (invite?.property_id === propertyId && !['revoked', 'expired'].includes(invite.status)) {
-        return {
-          mode: 'participant',
-          role: invite.role_key,
-          actorId: session.invite_id,
-          email: invite.invited_email || null,
-          actorType: 'participant',
-        };
-      }
-    }
-  }
-
-  const ownerToken = String(
-    req.headers['x-owner-write-token'] || ownerTokenOverride || '',
-  ).trim();
-  if (ownerToken) {
-    const { data: room } = await supabase
-      .from('deal_rooms')
-      .select('id, owner_write_token, customer_email')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (room?.owner_write_token && room.owner_write_token === ownerToken) {
-      return {
-        mode: 'owner',
-        role: 'owner',
-        actorId: room.customer_email || 'owner',
-        email: room.customer_email || null,
-        roomId: room.id,
-        actorType: 'owner',
-      };
-    }
-  }
-  return { mode: 'anonymous', role: 'guest' };
+async function getTaskAccess(req, propertyId) {
+  return resolveRoomSessionAccess(req, propertyId, supabase);
 }
 
 function deny(res) {
-  return res.status(403).json({ error: 'Access denied', message: 'A verified deal-room invitation or owner access token is required' });
+  return res.status(403).json({ error: 'Access denied', message: 'A verified deal-room invitation or owner session is required' });
+}
+
+async function loadTaskInRoom(taskId, propertyId) {
+  const { data, error } = await supabase
+    .from('deal_room_tasks')
+    .select('property_id')
+    .eq('id', taskId)
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 router.get('/deal-room/:propertyId/tasks', async (req, res) => {
@@ -92,7 +53,7 @@ router.get('/deal-room/:propertyId/tasks', async (req, res) => {
 router.post('/deal-room/:propertyId/tasks/refresh', async (req, res) => {
   try {
     const propertyId = req.params.propertyId;
-    const access = await getTaskAccess(req, propertyId, req.body?.ownerWriteToken);
+    const access = await getTaskAccess(req, propertyId);
     if (access.mode !== 'owner') return deny(res);
     const created = await evaluateDealRoomForTasks(propertyId, {
       correlationId: req.headers['x-correlation-id'] || crypto.randomUUID(),
@@ -105,22 +66,19 @@ router.post('/deal-room/:propertyId/tasks/refresh', async (req, res) => {
   }
 });
 
-router.post('/tasks/:taskId/approve', async (req, res) => {
+router.post('/deal-room/:propertyId/tasks/:taskId/approve', async (req, res) => {
   try {
-    const { data: task } = await supabase
-      .from('deal_room_tasks')
-      .select('property_id')
-      .eq('id', req.params.taskId)
-      .maybeSingle();
+    const { propertyId, taskId } = req.params;
+    const task = await loadTaskInRoom(taskId, propertyId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
-    const access = await getTaskAccess(req, task.property_id, req.body?.ownerWriteToken);
+    const access = await getTaskAccess(req, propertyId);
     if (access.mode !== 'owner') return deny(res);
     const decision = ['approve', 'reject', 'send_back'].includes(req.body?.decision)
       ? req.body.decision
       : 'approve';
-    const result = await approveTask(req.params.taskId, {
+    const result = await approveTask(taskId, {
       ...access,
-      propertyId: task.property_id,
+      propertyId,
       reason: req.body?.reason || null,
       idempotencyKey: req.headers['x-idempotency-key'] || req.body?.idempotencyKey,
     }, decision);
@@ -132,17 +90,14 @@ router.post('/tasks/:taskId/approve', async (req, res) => {
   }
 });
 
-router.post('/tasks/:taskId/dismiss', async (req, res) => {
+router.post('/deal-room/:propertyId/tasks/:taskId/dismiss', async (req, res) => {
   try {
-    const { data: taskRecord } = await supabase
-      .from('deal_room_tasks')
-      .select('property_id')
-      .eq('id', req.params.taskId)
-      .maybeSingle();
+    const { propertyId, taskId } = req.params;
+    const taskRecord = await loadTaskInRoom(taskId, propertyId);
     if (!taskRecord) return res.status(404).json({ error: 'Task not found' });
-    const access = await getTaskAccess(req, taskRecord.property_id, req.body?.ownerWriteToken);
+    const access = await getTaskAccess(req, propertyId);
     if (access.mode !== 'owner') return deny(res);
-    const task = await dismissTask(req.params.taskId);
+    const task = await dismissTask(taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json({ ok: true });
   } catch (err) {
@@ -150,5 +105,12 @@ router.post('/tasks/:taskId/dismiss', async (req, res) => {
     res.status(500).json({ error: 'Failed to dismiss task' });
   }
 });
+
+const rejectLegacyTaskAction = (_req, res) => res.status(410).json({
+  error: 'ROOM_SCOPED_TASK_ACTION_REQUIRED',
+  message: 'Use the room-scoped task action endpoint.',
+});
+router.post('/tasks/:taskId/approve', rejectLegacyTaskAction);
+router.post('/tasks/:taskId/dismiss', rejectLegacyTaskAction);
 
 module.exports = router;

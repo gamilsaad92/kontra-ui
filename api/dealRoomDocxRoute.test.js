@@ -4,6 +4,8 @@ const request = require('supertest');
 
 const mockCompletionCreate = jest.fn();
 const mockRows = [];
+const mockOwnerSessionToken = 'docx-owner-session';
+const mockOwnerSessionHash = crypto.createHash('sha256').update(mockOwnerSessionToken).digest('hex');
 
 jest.mock('openai', () => jest.fn().mockImplementation(() => ({
   chat: { completions: { create: mockCompletionCreate } },
@@ -61,6 +63,24 @@ jest.mock('./db', () => {
     if (table === 'deal_analyses') {
       return { data: mockRows.filter(matches), error: null };
     }
+    if (table === 'deal_room_access_sessions') {
+      return state.filters.session_token_hash === mockOwnerSessionHash
+        ? { data: { invite_id: 'owner-invite', expires_at: '2999-01-01T00:00:00.000Z', revoked_at: null }, error: null }
+        : { data: null, error: null };
+    }
+    if (table === 'deal_room_invites') {
+      return {
+        data: {
+          property_id: 'hazard-room',
+          role_key: '__room_owner__',
+          invited_email: 'owner@example.test',
+          status: 'accepted',
+          expires_at: '2999-01-01T00:00:00.000Z',
+          revoked_at: null,
+        },
+        error: null,
+      };
+    }
     return { data: [], error: null };
   };
 
@@ -82,6 +102,8 @@ jest.mock('./db', () => {
         state.filters[key] = value;
         return chain;
       },
+      gt: () => chain,
+      is: () => chain,
       neq: (key, value) => {
         state.filters.__neq = [key, value];
         return chain;
@@ -103,12 +125,22 @@ jest.mock('./db', () => {
     return chain;
   };
 
-  return { supabase: { from } };
+  return {
+    supabase: {
+      from,
+      rpc: async (_name, args) => ({
+        data: { status: 'committed', document_id: args?.p_document?.id || mockRows.at(-1)?.id || 'doc-1' },
+        error: null,
+      }),
+    },
+  };
 });
 
 const router = require('./routers/aiDealReview');
+router.setTransactionFieldExtractor(async () => ({ status: 'committed' }));
 const app = express();
 app.use('/api/ai', router);
+app.use('/api/public/deal-room/:propertyId/ai', router);
 
 const DOCX_FIXTURE = Buffer.from(
   'UEsDBBQAAAAIAIUMI13TPDzjAAEAALEBAAARAAAAd29yZC9kb2N1bWVudC54bWyNkMFOwzAMhu97iihCO40mTDCNru1OcAWh8QBeErpITRzZYaVvTwpCSAgJLn8UJ/7+3272b2EQZ0fsMbbyqtJSuGjQ+ti38vlwf7mVgjNECwNG18rJsdx3i2asLZrX4GIWhRC5Hlt5yjnVSrE5uQBcYXKxvL0gBcjlSr0akWwiNI65GIRBrbXeqAA+yq4gj2in+Uyz0Cy5e3IJPIk7zr5gXKPm4qz0oenn/wNmGAR9dhnkXIuL283qeqsrrf/sfqSSmvIkLATonUg4eDOJwQc/g9arG61XWv+L9TBGR0tIyDsWkMrc55JsCSHtSrCYCUxGEmyK5S8w9bUP9b3rbvEOUEsBAh4DFAAAAAgAhQwjXdM8POMAAQAAsQEAABEAAAAAAAAAAQAAAKSBAAAAAHdvcmQvZG9jdW1lbnQueG1sUEsFBgAAAAABAAEAPwAAAC8BAAAAAA==',
@@ -155,8 +187,8 @@ describe('Deal Room generic AI DOCX upload route', () => {
     });
 
     const response = await request(app)
-      .post('/api/ai/analyze-document')
-      .set('x-owner-write-token', 'hazard-owner-token')
+      .post('/api/public/deal-room/hazard-room/ai/analyze-document')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
       .field('property_id', 'hazard-room')
       .field('section', section)
       .attach('file', DOCX_FIXTURE, {
@@ -184,5 +216,46 @@ describe('Deal Room generic AI DOCX upload route', () => {
         summary: expect.stringContaining('$96,480.00'),
       }),
     }));
+  });
+
+  test('rejects a document upload whose body room conflicts with the room-scoped URL', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/other-room/ai/analyze-document')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .field('property_id', 'hazard-room')
+      .field('section', 'insurance_claim_documentation')
+      .attach('file', DOCX_FIXTURE, {
+        filename: 'loss-documentation.docx',
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toMatch(/room does not match/i);
+    expect(mockCompletionCreate).not.toHaveBeenCalled();
+  });
+
+  test('raw owner token fields cannot replace the owner session on the room-scoped route', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/hazard-room/ai/analyze-document')
+      .set('x-owner-write-token', 'hazard-owner-token')
+      .field('property_id', 'hazard-room')
+      .field('owner_write_token', 'hazard-owner-token')
+      .field('section', 'insurance_claim_documentation')
+      .attach('file', DOCX_FIXTURE, {
+        filename: 'loss-documentation.docx',
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+
+    expect(response.status).toBe(403);
+    expect(mockCompletionCreate).not.toHaveBeenCalled();
+  });
+
+  test('keeps non-owner AI scoring available on the existing /api/ai path', async () => {
+    const response = await request(app)
+      .post('/api/ai/score-property')
+      .send({ propertyType: 'Multifamily', occupancy: 95, noi: 120000 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
   });
 });

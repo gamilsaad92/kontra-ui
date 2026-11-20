@@ -17,7 +17,28 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 // ── Session storage ───────────────────────────────────────────────────────────
 
 const SESSION_KEY = (propertyId) => `kontra_session_${propertyId}`;
+const OWNER_HINT_KEY = (propertyId) => `kontra_owner_token_${propertyId}`;
+const OWNER_SESSION_HINT = 'room-owner-session';
 const inviteSessionsInMemory = new Map();
+
+// Remove reusable owner credentials left by earlier releases. Only a
+// non-secret marker may remain in browser storage; authorization is cookie-only.
+try {
+  if (typeof localStorage !== 'undefined') {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith('kontra_owner_token_')) continue;
+      if (localStorage.getItem(key) !== OWNER_SESSION_HINT) localStorage.removeItem(key);
+    }
+  }
+} catch { /* storage unavailable */ }
+
+export function setOwnerSessionHint(propertyId, enabled = true) {
+  try {
+    if (enabled) localStorage.setItem(OWNER_HINT_KEY(propertyId), OWNER_SESSION_HINT);
+    else localStorage.removeItem(OWNER_HINT_KEY(propertyId));
+  } catch { /* storage unavailable */ }
+}
 
 /** Persist a session token for the current tab lifetime. */
 export function storeInviteSession(propertyId, sessionToken, expiresAt) {
@@ -62,9 +83,6 @@ export function getRoomAuthHeaders(propertyId, extra = {}) {
     const sessionToken = getInviteSession(propertyId);
     if (sessionToken) {
       headers['x-kontra-session'] = sessionToken;
-    } else {
-      const ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`);
-      if (ownerToken) headers['x-owner-write-token'] = ownerToken;
     }
   } catch { /* storage unavailable */ }
   return headers;

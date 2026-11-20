@@ -566,8 +566,6 @@ const corsOptions = {
     // Kontra room-auth headers sent by getRoomAuthHeaders() in every room request
     'x-kontra-session',
     'X-Kontra-Session',
-    'x-owner-write-token',
-    'X-Owner-Write-Token',
     'Idempotency-Key',
     'idempotency-key',
     'X-Idempotency-Key',
@@ -728,6 +726,7 @@ const otpRouter = require('./routers/otp');
 const mobileRouter = require('./routers/mobile');
 const policyRouter = require('./routers/policy');
 const { requireOrgContext } = require('./src/middleware/requireOrgContext');
+const { createDeferredTask531Modules } = require('./middlewares/deferredTask531Modules');
 const { errorHandler } = require('./src/middleware/errorHandler');
 const portfolioSliceRouter = require('./src/routes/portfolio');
 const servicingSliceRouter = require('./src/routes/servicing');
@@ -923,30 +922,44 @@ const chatOpsFunctions = [
 ];
 
 // Helper implementations for those functions:
-async function get_loans() {
-   const cached = await cache.get('loans_all');
+async function get_loans(orgId) {
+  if (!orgId) return [];
+  const cacheKey = `loans:${orgId}`;
+  const cached = await cache.get(cacheKey);
   if (cached) return cached;
   const { data } = await replica
     .from('loans')
     .select('id, borrower_name, amount, status')
+    .eq('organization_id', orgId)
     .order('created_at', { ascending: false });
-   if (data) await cache.set('loans_all', data, 30);
+  if (data) await cache.set(cacheKey, data, 30);
   return data;
 }
 
-async function get_draws() {
-  const cached = await cache.get('draws_recent');
+async function get_draws(orgId) {
+  if (!orgId) return [];
+  const cacheKey = `draws:${orgId}`;
+  const cached = await cache.get(cacheKey);
   if (cached) return cached;
   const { data } = await replica
     .from('draw_requests')
     .select('id, project, amount, status')
+    .eq('org_id', orgId)
     .order('submitted_at', { ascending: false })
     .limit(5);
-   if (data) await cache.set('draws_recent', data, 30);
+  if (data) await cache.set(cacheKey, data, 30);
   return data;
 }
 
-async function get_escrow_balance({ loan_id }) {
+async function get_escrow_balance({ loan_id }, orgId) {
+  if (!orgId) return null;
+  const { data: loan } = await supabase
+    .from('loans')
+    .select('id')
+    .eq('id', loan_id)
+    .eq('organization_id', orgId)
+    .maybeSingle();
+  if (!loan) return null;
   const { data } = await supabase
     .from('escrows')
     .select('escrow_balance')
@@ -979,11 +992,13 @@ function calcNextTaxDue(startDate) {
   return due.toISOString().slice(0, 10);
 }
 
-async function get_next_insurance_due({ borrower_name }) {
+async function get_next_insurance_due({ borrower_name }, orgId) {
+  if (!orgId) return null;
   const { data: loan } = await supabase
     .from('loans')
     .select('id, start_date')
     .eq('borrower_name', borrower_name)
+    .eq('organization_id', orgId)
     .maybeSingle();
   if (!loan) return null;
   const { data: escrow } = await supabase
@@ -995,12 +1010,14 @@ async function get_next_insurance_due({ borrower_name }) {
   return { loan_id: loan.id, due_date, insurance_amount: escrow?.insurance_amount };
 }
 
-async function list_past_due_loans({ days, state }) {
+async function list_past_due_loans({ days, state }, orgId) {
+  if (!orgId) return [];
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   let query = supabase
     .from('collections')
     .select('loan_id, due_date, status, loans(id, borrower_name, amount, state)')
+    .eq('organization_id', orgId)
     .lt('due_date', cutoff.toISOString().slice(0, 10))
     .neq('status', 'paid');
   if (state) query = query.eq('loans.state', state);
@@ -1053,11 +1070,13 @@ async function get_asset_info({ asset_id }) {
   return data;
 }
 
-async function get_loan_details({ loan_id }) {
+async function get_loan_details({ loan_id }, orgId) {
+  if (!orgId) return null;
   const { data } = await supabase
     .from('loans')
     .select('*')
     .eq('id', loan_id)
+    .eq('organization_id', orgId)
     .maybeSingle();
   return data;
 }
@@ -1087,6 +1106,19 @@ app.use(
     },
   })
 );
+app.use((req, _res, next) => {
+  // Legacy owner write credentials are never valid authorization inputs.
+  // Keep the one-use exchangeToken field intact for OTP/session handoff.
+  delete req.headers['x-owner-write-token'];
+  delete req.headers['x-owner-token'];
+  if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
+    delete req.body.ownerWriteToken;
+    delete req.body.ownerToken;
+    delete req.body.owner_token;
+    delete req.body.owner_write_token;
+  }
+  next();
+});
 app.use(auditLogger);
 app.use(rateLimit);
 async function sendHealthResponse(res, extra = {}) {
@@ -1095,7 +1127,7 @@ async function sendHealthResponse(res, extra = {}) {
   const missingSchema = [];
   if (stagingEnvironment.enabled && databaseConnected) {
     const schemaChecks = [
-      ['deal_rooms', 'property_id,workflow_pack_id,checklist_items,owner_write_token,stages_config,metadata_values,jurisdiction'],
+      ['deal_rooms', 'property_id,workflow_pack_id,checklist_items,stages_config,metadata_values,jurisdiction'],
       ['deal_room_invites', 'id,property_id,role_key,status,verification_method'],
       ['deal_room_access_sessions', 'id,invite_id,session_token_hash,expires_at'],
       ['deal_analyses', 'id,property_id,section,processing_status,document_hash'],
@@ -1131,20 +1163,7 @@ app.get(['/health', '/api/health'], async (_req, res) => {
 
 // ── Public deal room routes — registered EARLY, before any org/auth middleware ──
 app.get('/api/public/my-rooms', async (req, res) => {
-  const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
-  try {
-    const { data, error } = await supabase
-      .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, created_at, activated_at')
-      .ilike('customer_email', email)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json({ rooms: data || [] });
-  } catch (err) {
-    console.error('[my-rooms-early]', err.message);
-    res.status(500).json({ error: 'Failed to fetch rooms' });
-  }
+  return res.status(401).json({ error: 'Email verification required' });
 });
 
 // Original documents are addressed by a server-resolved analysis ID. Never
@@ -1226,6 +1245,11 @@ app.get(['/api/public/document-url', '/api/public/deal-room/:propertyId/document
 app.use(verifiedAssetPackageRouter);
 
 // ── End early public routes ──────────────────────────────────────────────────
+
+// Staging isolation supports Deal Room workflows only. Keep legacy institutional
+// and lending APIs deferred there until their schema and auth bridge are ready;
+// production keeps its existing institutional API behavior.
+app.use('/api', createDeferredTask531Modules({ enabled: stagingEnvironment.enabled }));
 
 app.use('/api/auth', authBootstrapRouter);
 app.use('/api/orgs', orgDiscoveryRouter);
@@ -1910,18 +1934,18 @@ app.post('/api/public/classify-pack', async (req, res) => {
 
 // ── Public: update a deal room's workflow pack ────────────────────────────────
 // Called when the coordinator accepts an AI-suggested pack correction.
-// Requires owner_write_token (same auth contract as checklist PUT).
+// Requires a verified, room-scoped owner session.
 // Resets checklist_items to null so the next GET reseeds it from the new pack.
 app.post('/api/public/deal-room/:propertyId/repack', async (req, res) => {
   const { propertyId } = req.params;
-  const { packId, ownerWriteToken } = req.body || {};
+  const { packId } = req.body || {};
 
   // Validate pack choice
   const validPacks = ['cre_acquisition', 'business_acquisition', 'fundraising'];
   if (!validPacks.includes(packId)) {
     return res.status(400).json({ error: `Invalid packId: ${packId}` });
   }
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can change the workflow pack');
 
   try {
@@ -2282,16 +2306,11 @@ app.post('/api/checkout/guest', async (req, res) => {
       },
     };
 
-    // Generate an unforgeable owner write token for this workspace. It is
-    // embedded in the success URL so the coordinator can store it client-side
-    // and use it to authorize server-side checklist mutations later.
-    const ownerWriteToken = crypto.randomBytes(32).toString('hex');
-
     const sessionParams = {
       mode: cfg.mode,
       payment_method_types: ['card'],
       line_items: [lineItem],
-      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id={CHECKOUT_SESSION_ID}&owner_token=${ownerWriteToken}`,
+      success_url: `${origin}/checkout/success?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/checkout/cancel?plan=${plan}${propertyId ? `&property=${propertyId}` : ''}&role=${role}`,
       metadata: {
         plan,
@@ -2363,7 +2382,6 @@ app.post('/api/checkout/guest', async (req, res) => {
           custom_config_approved_at: workflowApproval.approval?.iat ? new Date(workflowApproval.approval.iat).toISOString() : '',
          workflow_pack_id: finalPackId,
          transaction_entry_mode: transactionEntryMode,
-        owner_write_token: ownerWriteToken,
         created_at: new Date().toISOString(),
       });
     }
@@ -2628,15 +2646,7 @@ const demoCheckoutHandler = async (req, res) => {
       }));
     }
 
-    // Generate owner write token and persist it — included in the redirect URL
-    // so CheckoutSuccessPage can store it in localStorage for checklist authz.
-    const demoOwnerToken = crypto.randomBytes(32).toString('hex');
-    supabase.from('deal_rooms')
-      .update({ owner_write_token: demoOwnerToken })
-      .eq('property_id', pid)
-      .then(() => {}).catch(() => {});
-
-    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&trial=${isTrial ? 'true' : 'false'}&owner_token=${demoOwnerToken}`;
+    const successUrl = `${origin}/checkout/success?plan=${plan}&property=${pid}${propertyName ? `&name=${encodeURIComponent(propertyName)}` : ''}&session_id=${fakeSessionId}&demo=true&trial=${isTrial ? 'true' : 'false'}`;
     res.json({ url: successUrl });
   } catch (err) {
     console.error('[checkout/demo]', err.message);
@@ -2777,7 +2787,6 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
       ? packId : 'business_acquisition';
 
     const initialStages = getPackStageConfig(resolvedPackId).stages.map(({ key, label }) => ({ key, label }));
-    const ownerToken    = crypto.randomBytes(32).toString('hex');
     const sessionId     = 'pilot_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
     const record = {
@@ -2795,7 +2804,6 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
       closing_date:      closingDate || '',
       workflow_pack_id:  resolvedPackId,
       stages_config:     initialStages,
-      owner_write_token: ownerToken,
       is_pilot:          true,
     };
 
@@ -2827,8 +2835,9 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
 
     console.log(`[pilot] ✅ Pilot workspace created — ${pid} for ${pilotEmail}`);
 
-    // Access URL goes through PilotAccessPage which stores token and redirects
-    const accessUrl = `${origin}/pilot/access?property=${pid}&owner_token=${ownerToken}&name=${encodeURIComponent(workspaceName)}`;
+    // Owners establish access through email OTP; never put a reusable
+    // owner credential in the pilot invitation URL.
+    const accessUrl = `${origin}/my-deal-rooms`;
 
     // Task #157 — auto-send the link to the pilot user at creation time
     let emailSent = false;
@@ -2850,7 +2859,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
               <p style="color:#555;font-size:15px;margin:0 0 6px">Hi ${firstName},</p>
               <p style="color:#555;font-size:14px;margin:0 0 24px">
                 <strong>${workspaceName}</strong> (${packLabel}) has been set up for you.
-                Click below to access your workspace — no login or payment needed.
+                Open My Deal Rooms and verify your email with a one-time code to access the workspace.
               </p>
               <a href="${accessUrl}"
                 style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
@@ -3171,13 +3180,6 @@ app.post('/api/webhook/stripe',
         // Set link_token separately (graceful — skipped if column not yet migrated)
         supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
           .eq('property_id', dealRoomRecord.property_id).is('link_token', null).then(() => {}).catch(() => {});
-        // Persist owner_write_token from the pending record (generated at Stripe session creation)
-        if (pending.owner_write_token) {
-          supabase.from('deal_rooms')
-            .update({ owner_write_token: pending.owner_write_token })
-            .eq('property_id', dealRoomRecord.property_id)
-            .then(() => {}).catch(() => {});
-        }
       } catch (dbErr) {
         console.warn('[webhook] deal_rooms upsert skipped:', dbErr.message);
         if (dbErr.code === 'HISTORICAL_ROOM_MIGRATION_REQUIRED') {
@@ -3784,17 +3786,15 @@ app.post('/api/public/my-rooms/verify-otp', async (req, res) => {
   }
 });
 
-// ── Delete deal room — owner only, verified by email match ───────────────────
-app.delete('/api/public/my-rooms/:propertyId', async (req, res) => {
+// ── Delete deal room — verified room-scoped owner session required ───────────
+app.delete('/api/public/deal-room/:propertyId', async (req, res) => {
   const { propertyId } = req.params;
-  const email = (req.body?.email || '').trim().toLowerCase();
-  if (!email || !propertyId) return res.status(400).json({ error: 'email and propertyId required' });
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can delete this room');
   try {
     const { data: room, error: findErr } = await supabase
-      .from('deal_rooms').select('id, customer_email, property_name').eq('property_id', propertyId).maybeSingle();
+      .from('deal_rooms').select('id, property_name').eq('property_id', propertyId).maybeSingle();
     if (findErr || !room) return res.status(404).json({ error: 'Room not found' });
-    if ((room.customer_email || '').toLowerCase() !== email)
-      return res.status(403).json({ error: 'Not authorized to delete this room' });
     const cleanup = await deleteDealRoomData(propertyId);
     res.json({
       ok: true,
@@ -3812,15 +3812,26 @@ app.delete('/api/public/my-rooms/:propertyId', async (req, res) => {
   }
 });
 
+app.delete('/api/public/my-rooms/:propertyId', (_req, res) =>
+  res.status(403).json({ error: 'Use the room-scoped owner session to delete a workspace' }));
+
 // ── Stripe billing portal — lets owner manage/cancel subscription ────────────
-app.post('/api/public/billing-portal', async (req, res) => {
-  const email = (req.body?.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
+app.post('/api/public/deal-room/:propertyId/billing-portal', async (req, res) => {
+  const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can manage billing');
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey || stripeKey.startsWith('placeholder')) {
     return res.status(500).json({ error: 'Billing not configured' });
   }
   try {
+    const { data: room, error: roomError } = await supabase
+      .from('deal_rooms')
+      .select('customer_email')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomError || !room?.customer_email) return res.status(404).json({ error: 'Billing account not found' });
+    const email = room.customer_email.trim().toLowerCase();
     const stripe = require('stripe')(stripeKey);
     // Find the Stripe customer by email
     const customers = await stripe.customers.list({ email, limit: 5 });
@@ -3848,15 +3859,22 @@ app.post('/api/public/billing-portal', async (req, res) => {
   }
 });
 
+app.post('/api/public/billing-portal', (_req, res) =>
+  res.status(403).json({ error: 'A verified room owner session is required' }));
+
 // ── Owner analytics dashboard ──────────────────────────────────────────────────
-app.get('/api/public/my-rooms/analytics', async (req, res) => {
-  const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
+app.get('/api/public/deal-room/:propertyId/analytics', async (req, res) => {
+  const { propertyId } = req.params;
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can view analytics');
   try {
-    const { data: rooms } = await supabase
+    const { data: room, error: roomError } = await supabase
       .from('deal_rooms')
       .select('property_id, deal_stage, status, activated_at, workflow_pack_id, deal_type, property_type, checklist_items')
-      .ilike('customer_email', email);
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomError) throw roomError;
+    const rooms = room ? [room] : [];
 
     if (!rooms?.length) {
       return res.json({
@@ -3934,7 +3952,7 @@ app.get('/api/public/my-rooms/analytics', async (req, res) => {
 
     const aiReviewsCompleted = roomStates.reduce((sum, state) => sum + state.aiReviewsCompleted, 0);
 
-    console.log(`[analytics] ${email} → ${rooms.length} deals, ${analyses.length} docs`);
+    console.log(`[analytics] owner session room ${propertyId} → ${analyses.length} docs`);
     res.json({
       totalDeals: rooms.length,
       waitingOnBorrower: activeRoomStates.filter(state => state.waitingOnBorrower).length,
@@ -3950,22 +3968,12 @@ app.get('/api/public/my-rooms/analytics', async (req, res) => {
   }
 });
 
+app.get('/api/public/my-rooms/analytics', (_req, res) =>
+  res.status(403).json({ error: 'Use room-scoped owner sessions to view analytics' }));
+
 // Legacy GET — backwards compat
 app.get('/api/public/my-rooms', async (req, res) => {
-  const email = (req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: 'email required' });
-  try {
-    const { data, error } = await supabase
-      .from('deal_rooms')
-      .select('property_id, property_name, property_type, deal_amount, deal_type, address, status, deal_stage, created_at, activated_at, workflow_pack_id')
-      .ilike('customer_email', email)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    res.json({ rooms: data || [] });
-  } catch (err) {
-    console.error('[my-rooms]', err.message);
-    res.status(500).json({ error: 'Failed to fetch rooms' });
-  }
+  return res.status(401).json({ error: 'Email verification required' });
 });
 
 // ── Document-assignment config — used for role-scoped analyses filtering ──────
@@ -4462,170 +4470,23 @@ async function scopeChecklistItemsForAccess(items, access, packId, propertyType)
 // authenticate with the short-lived session created from their invite PIN/OTP.
 // Never trust role values from query strings or request bodies for authorization.
 const {
-  resolveExplicitParticipantAccess,
-  resolveOwnerSessionAccess,
-} = require('./lib/explicitParticipantAccess');
-const OWNER_SESSION_COOKIE = 'kontra_owner_session';
+  OWNER_SESSION_COOKIE,
+  readOwnerSessionCookie,
+  resolveRoomSessionAccess,
+} = require('./lib/roomSessionAccess');
 
 function ownerSessionCookiePath(propertyId) {
   return `/api/public/deal-room/${encodeURIComponent(propertyId)}`;
 }
 
-function readOwnerSessionCookie(req) {
-  const cookieHeader = req.headers.cookie || '';
-  for (const part of cookieHeader.split(';')) {
-    const separator = part.indexOf('=');
-    if (separator < 0 || part.slice(0, separator).trim() !== OWNER_SESSION_COOKIE) continue;
-    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return ''; }
-  }
-  return '';
+async function getRoomAccessContext(req, propertyId) {
+  return resolveRoomSessionAccess(req, propertyId, supabase, {
+    ownerRoleKey: OWNER_ROLE_KEY,
+  });
 }
 
-async function getRoomAccessContext(req, propertyId, ownerTokenOverride = '') {
-  // A browser can retain a same-room owner token after opening a participant
-  // invitation. A valid participant session is the more specific credential
-  // for that request and must determine the stored role. The owner token is
-  // only a fallback when there is no valid participant session, preserving
-  // owner re-entry after a participant session is stale, expired, or revoked.
-  const sessionToken = (req.headers['x-kontra-session'] || '').trim();
-  if (sessionToken) {
-    const tokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
-    const { data: session } = await supabase
-      .from('deal_room_access_sessions')
-      .select('invite_id, expires_at, revoked_at')
-      .eq('session_token_hash', tokenHash)
-      .gt('expires_at', new Date().toISOString())
-      .is('revoked_at', null)
-      .maybeSingle();
-    let invite = null;
-    if (session?.invite_id) {
-      const result = await supabase
-        .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
-        .eq('id', session.invite_id)
-        .maybeSingle();
-      invite = result.data;
-    }
-    const participantAccess = resolveExplicitParticipantAccess({
-      sessionToken,
-      session,
-      invite,
-      propertyId,
-    });
-    if (participantAccess) return participantAccess;
-  }
-
-  const ownerCookieToken = readOwnerSessionCookie(req);
-  if (ownerCookieToken) {
-    const { data: session } = await supabase
-      .from('deal_room_access_sessions')
-      .select('invite_id, expires_at, revoked_at')
-      .eq('session_token_hash', hashOwnerSessionToken(ownerCookieToken))
-      .gt('expires_at', new Date().toISOString())
-      .is('revoked_at', null)
-      .maybeSingle();
-    let invite = null;
-    if (session?.invite_id) {
-      const result = await supabase
-        .from('deal_room_invites')
-        .select('property_id, role_key, invited_email, status, expires_at, revoked_at')
-        .eq('id', session.invite_id)
-        .maybeSingle();
-      invite = result.data;
-    }
-    const ownerAccess = resolveOwnerSessionAccess({
-      cookieToken: ownerCookieToken,
-      session,
-      invite,
-      propertyId,
-      ownerRoleKey: OWNER_ROLE_KEY,
-    });
-    if (ownerAccess) return ownerAccess;
-  }
-
-  const presentedOwnerToken = (
-    (req.headers['x-owner-write-token'] || '').trim()
-    || String(ownerTokenOverride || '').trim()
-  );
-  const ownerToken = presentedOwnerToken === 'room-owner-session'
-    ? ''
-    : presentedOwnerToken;
-  if (ownerToken) {
-    const { data: owner } = await supabase
-      .from('deal_rooms')
-      .select('id, owner_write_token, customer_email')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (owner?.owner_write_token && owner.owner_write_token === ownerToken) {
-      return {
-        mode: 'owner',
-        role: 'owner',
-        actorId: owner.customer_email || 'owner',
-        email: owner.customer_email || null,
-        roomId: owner.id || null,
-        actorType: 'owner',
-        permissions: {
-          viewOverview: true,
-          viewAssignedDocuments: true,
-          uploadAssignedDocuments: true,
-          viewAllDocuments: true,
-          manageStages: true,
-          manageParticipants: true,
-          manageSettings: true,
-          updateOwnSubmission: true,
-        },
-      };
-    }
-  }
-
-  return {
-    mode: 'anonymous',
-    role: 'guest',
-    permissions: {
-      viewOverview: true,
-      viewAssignedDocuments: false,
-      uploadAssignedDocuments: false,
-      viewAllDocuments: false,
-      manageStages: false,
-      manageParticipants: false,
-      manageSettings: false,
-      updateOwnSubmission: false,
-    },
-  };
-}
-
-async function requireRoomOwnerAccess(req, propertyId, ownerTokenOverride = '') {
-  // Staging trial owners use the secure room-scoped cookie. Outside staging,
-  // preserve the legacy body-token contract for endpoints that used to require it.
-  if (!stagingEnvironment.enabled) {
-    const token = String(ownerTokenOverride || '').trim();
-    if (!token || token === 'room-owner-session') return null;
-    const { data: owner, error } = await supabase
-      .from('deal_rooms')
-      .select('id, owner_write_token, customer_email')
-      .eq('property_id', propertyId)
-      .maybeSingle();
-    if (error || !owner?.owner_write_token || owner.owner_write_token !== token) return null;
-    return {
-      mode: 'owner',
-      role: 'owner',
-      actorId: owner.customer_email || 'owner',
-      email: owner.customer_email || null,
-      roomId: owner.id || null,
-      actorType: 'owner',
-      permissions: {
-        viewOverview: true,
-        viewAssignedDocuments: true,
-        uploadAssignedDocuments: true,
-        viewAllDocuments: true,
-        manageStages: true,
-        manageParticipants: true,
-        manageSettings: true,
-        updateOwnSubmission: true,
-      },
-    };
-  }
-  const access = await getRoomAccessContext(req, propertyId, ownerTokenOverride);
+async function requireRoomOwnerAccess(req, propertyId) {
+  const access = await getRoomAccessContext(req, propertyId);
   return access.mode === 'owner' ? access : null;
 }
 
@@ -4662,9 +4523,8 @@ function verifyPreviewToken(token, propertyId) {
 
 app.post('/api/public/deal-room/:propertyId/preview-link', async (req, res) => {
   const { propertyId } = req.params;
-  const ownerWriteToken = String(req.body?.ownerWriteToken || req.headers['x-owner-write-token'] || '').trim();
   try {
-    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can create a preview link');
     const token = createPreviewToken(propertyId);
     res.json({
@@ -4839,7 +4699,7 @@ app.get('/api/public/deal-room/:propertyId/analyses', async (req, res) => {
       }));
 
     // Role-scoped filtering applies to participants only. The owner access
-    // context is authenticated by the room's owner_write_token and carries
+    // context is authenticated by the verified room-scoped owner session and carries
     // viewAllDocuments=true, so owner visibility must not depend on a
     // participant role name or the pack's assignment map.
     // Custom sections (not in the assignments map) are always visible to all.
@@ -5799,11 +5659,11 @@ app.get('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
 
 app.put('/api/public/deal-room/:propertyId/checklist', async (req, res) => {
   const { propertyId } = req.params;
-  const { items, ownerWriteToken } = req.body || {};
+  const { items } = req.body || {};
 
   if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be an array' });
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) {
     return accessDenied(res, 'Only the deal-room owner can edit the document checklist');
   }
@@ -6737,7 +6597,7 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
   }
 });
 
-// ── List invites for a room (owner auth via ownerWriteToken) ─────────────────
+// ── List invites for a room (verified room-scoped owner session) ──────────────
 app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
   const { propertyId } = req.params;
   try {
@@ -6879,121 +6739,11 @@ app.post('/api/public/deal-room/:propertyId/participant-access/verify', async (r
   }
 });
 
-// ── Send an invite-link email (used by the per-invitation invite panel) ───────
-// This endpoint does NOT create the invite record — the client does that via
-// Supabase RPC. It only sends the email after the record is created.
-// ── Send invite-link email — owner-authenticated, content derived server-side ─
-// The client sends ONLY the raw invite token + its own Supabase Auth JWT.
-// This endpoint hashes the token to look up the invite, verifies the caller
-// owns the deal room, then derives all email content (recipient, role, property)
-// from the database.  The client is never trusted for to/url/labels.
-app.post('/api/public/deal-room/send-invite-email', async (req, res) => {
-  // 1. Accept either a Supabase Bearer JWT or a room-scoped owner_write_token.
-  //    This allows owners who are not signed in to Supabase to still trigger emails.
-  const authHeader = req.headers.authorization || '';
-  const bearerJwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-
-  // 2. Accept only the raw invite token from the client — nothing else is trusted
-  const { inviteToken, ownerWriteToken } = req.body || {};
-  if (!inviteToken || typeof inviteToken !== 'string' || inviteToken.length < 32) {
-    return res.status(400).json({ error: 'inviteToken required' });
-  }
-
-  if (!bearerJwt && !ownerWriteToken && !readOwnerSessionCookie(req)) {
-    return res.status(401).json({ error: 'Owner authentication required' });
-  }
-
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
-
-  try {
-    // 3. Look up invite by hashed token — never trust the token at face value
-    const tokenHash = crypto.createHash('sha256').update(inviteToken).digest('hex');
-    const { data: invite, error: inviteErr } = await supabase
-      .from('deal_room_invites')
-      .select('id, property_id, invited_email, role_key, status')
-      .eq('invite_token_hash', tokenHash)
-      .single();
-    if (inviteErr || !invite) return res.status(404).json({ error: 'Invite not found' });
-    if (invite.status === 'revoked') return res.status(400).json({ error: 'Invite is revoked' });
-    if (!invite.invited_email) return res.status(400).json({ error: 'This invite has no email recipient (PIN-only)' });
-    const ownerAccess = await requireRoomOwnerAccess(req, invite.property_id, ownerWriteToken);
-
-    // 4. Verify caller is the deal room owner.
-    //    Path A — Supabase JWT: caller email must match deal_rooms.customer_email.
-    //    Path B — owner_write_token: token must match deal_rooms.owner_write_token
-    //             (generated at checkout, never exposed in public GET responses).
-    const { data: room, error: roomErr } = await supabase
-      .from('deal_rooms')
-      .select('property_name, first_name, workflow_pack_id, customer_email')
-      .eq('property_id', invite.property_id)
-      .single();
-    if (roomErr || !room) return res.status(404).json({ error: 'Deal room not found' });
-
-    let authorized = false;
-
-    if (ownerAccess) {
-      authorized = true;
-    }
-
-    if (!authorized && bearerJwt) {
-      const { data: { user }, error: authErr } = await supabase.auth.getUser(bearerJwt);
-      if (!authErr && user?.email) {
-        authorized = (room.customer_email || '').toLowerCase() === user.email.toLowerCase();
-      }
-    }
-
-    if (!authorized) {
-      return res.status(403).json({ error: 'Not authorized for this deal room' });
-    }
-
-    // 5. Derive all email content from verified DB data — nothing from client
-    const packId     = room.workflow_pack_id || DEFAULT_PACK_ID;
-    const roleConfig = getPackRoleConfig(packId).roles.find(r => r.key === invite.role_key);
-    const roleLabel  = roleConfig?.label || invite.role_key;
-    const propName   = room.property_name || invite.property_id;
-    const senderName = room.first_name || 'The deal coordinator';
-    const inviteUrl  = `${FRONTEND_URL}/deal-room/${invite.property_id}?invite=${inviteToken}&role=${invite.role_key}`;
-    const to         = invite.invited_email;
-
-    await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
-      to,
-      reply_to: 'support@kontraplatform.com',
-      subject: `You've been invited to ${propName} — Kontra Deal Room`,
-      text: `${senderName} has invited you as ${roleLabel} to a deal room for ${propName} on Kontra.\n\nClick your personal invite link below:\n${inviteUrl}\n\nThis link is unique to you — do not forward it.\n\n---\nKontra is a transaction workspace platform. You received this because ${senderName} added your email. If this is a mistake, ignore this email.`,
-      html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
-        <div style="margin-bottom:24px">
-          <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
-        </div>
-        <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
-        <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${senderName}</strong> has invited you as <strong>${roleLabel}</strong> to the deal room for <strong>${propName}</strong>.</p>
-        <p style="color:#555;font-size:14px;margin:0 0 24px">Click your personal invite link below. You will be asked for a 6-digit PIN — the deal coordinator will share it with you separately (by phone, text, or in person).</p>
-        <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open my invite →</a>
-        <div style="margin-top:20px;padding:12px 16px;background:#fef9f0;border-radius:10px;border:1px solid #fde68a">
-          <p style="color:#92400e;font-size:12px;margin:0">🔒 This link is unique to you — do not forward it. Your PIN is delivered separately. Both are required to enter the deal room.</p>
-        </div>
-        <div style="margin-top:24px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
-          <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
-          <p style="color:#555;font-size:13px;margin:0">CRE deal room infrastructure. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.</p>
-        </div>
-        <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${senderName} added your email. If this is a mistake, ignore this email.</p>
-      </div>`,
-    });
-
-    logEvent(invite.property_id, 'invite_email_sent', 'owner', senderName, `Invite email sent to ${to} for role ${roleLabel}`, { role: invite.role_key });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[send-invite-email]', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
   const { propertyId } = req.params;
-  const { stage, ownerWriteToken } = req.body || {};
+  const { stage } = req.body || {};
   try {
-    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can advance stages');
     let { data: room, error: fetchError } = await supabase
       .from('deal_rooms')
@@ -7160,7 +6910,7 @@ app.post('/api/public/deal-room/:propertyId/advance', async (req, res) => {
 // GET  /api/public/deal-room/:propertyId/stages
 //   Returns the room's custom stages_config (or null if using pack defaults).
 // PATCH /api/public/deal-room/:propertyId/stages
-//   Updates the ordered stage list.  Requires owner_write_token in body.
+//   Updates the ordered stage list. Requires a verified room-scoped owner session.
 //   Validates: ≥2 stages, each has a non-empty key and label, keys are unique.
 // ----------------------------------------------------------------------------
 
@@ -7203,9 +6953,9 @@ app.get('/api/public/deal-room/:propertyId/stages', async (req, res) => {
 
 app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
   const { propertyId } = req.params;
-  const { stages, ownerWriteToken } = req.body || {};
+  const { stages } = req.body || {};
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can update stages');
   let { data: room, error: authErr } = await supabase
     .from('deal_rooms')
@@ -7284,13 +7034,12 @@ app.patch('/api/public/deal-room/:propertyId/stages', async (req, res) => {
 
 // ── Transaction metadata (pack-driven Transaction Details panel) ─────────────
 // PATCH saves the key/value form from the TransactionDetailsPanel to the
-// `metadata_values` JSONB column. Auth: owner_write_token (same pattern as
-// the stages PATCH above).
+// `metadata_values` JSONB column. Access is verified through the room session.
 app.patch('/api/public/deal-room/:propertyId/metadata', async (req, res) => {
   const { propertyId } = req.params;
-  const { values, ownerWriteToken } = req.body || {};
+  const { values } = req.body || {};
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can update transaction details');
 
   const { data: room, error: authErr } = await supabase
@@ -7376,8 +7125,8 @@ async function hasDigitalAssetReadinessHistory(propertyId) {
 // participants, stages, provenance, and verification history are preserved.
 app.patch('/api/public/deal-room/:propertyId/digital-asset-readiness', async (req, res) => {
   const { propertyId } = req.params;
-  const { enabled, ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const { enabled } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can change Digital Asset Readiness');
   if (typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'enabled must be a boolean' });
@@ -7458,9 +7207,9 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-readiness', async (re
 // unrelated keys. Digital Asset Readiness uses the dedicated route above.
 app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) => {
   const { propertyId } = req.params;
-  const { values, ownerWriteToken } = req.body || {};
+  const { values } = req.body || {};
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can update workspace details');
   if (typeof values !== 'object' || values === null || Array.isArray(values)) {
     return res.status(400).json({ error: 'values must be an object' });
@@ -7530,17 +7279,16 @@ app.patch('/api/public/deal-room/:propertyId/metadata-merge', async (req, res) =
 // Stores structured token economics + cap-table rows into metadata_values.
 // Cap table is persisted as a JSON blob so row arrays are not truncated by the
 // 500-char scalar limit applied by /metadata-merge.
-// Auth: owner_write_token in request body.
+// Access is verified through the room-scoped owner session.
 app.patch('/api/public/deal-room/:propertyId/ownership', async (req, res) => {
   const { propertyId } = req.params;
   const {
-    ownerWriteToken,
     token_name, token_symbol, total_supply, token_price,
     raise_target, asset_valuation, pct_tokenized,
     cap_table_rows,
   } = req.body || {};
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can update ownership details');
 
   const { data: room, error: authErr } = await supabase
@@ -7823,10 +7571,10 @@ app.get('/api/public/deal-room/:transactionId/settlement/readiness', async (req,
 
 app.patch('/api/public/deal-room/:transactionId/settlement/mode', async (req, res) => {
   const propertyId = req.params.transactionId;
-  const { mode, ownerWriteToken } = req.body || {};
+  const { mode } = req.body || {};
   const VALID_MODES = ['traditional', 'digital', 'tokenized'];
   try {
-    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
     if (!VALID_MODES.includes(mode)) {
       return res.status(400).json({ error: 'INVALID_MODE', message: `settlement.mode must be one of: ${VALID_MODES.join(', ')}` });
@@ -7855,9 +7603,8 @@ app.patch('/api/public/deal-room/:transactionId/settlement/mode', async (req, re
 
 app.patch('/api/public/deal-room/:transactionId/settlement/mode/lock', async (req, res) => {
   const propertyId = req.params.transactionId;
-  const { ownerWriteToken } = req.body || {};
   try {
-    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
     const { data: room } = await supabase.from('deal_rooms').select('settlement_mode, settlement_mode_locked_at, sealed_at').eq('property_id', propertyId).maybeSingle();
     if (!room?.settlement_mode) return res.status(400).json({ error: 'NO_MODE', message: 'Set a settlement mode before locking.' });
@@ -7884,9 +7631,9 @@ app.patch('/api/public/deal-room/:transactionId/settlement/mode/lock', async (re
 
 app.post('/api/public/deal-room/:transactionId/settlement/complete', async (req, res) => {
   const propertyId = req.params.transactionId;
-  const { ownerWriteToken, sealDisplayName } = req.body || {};
+  const { sealDisplayName } = req.body || {};
   try {
-    const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Coordinator access required');
 
     const { data: room, error: fetchError } = await supabase
@@ -8276,9 +8023,9 @@ app.get('/api/public/deal-room/:propertyId/stage-decision', async (req, res) => 
 const VALID_JURISDICTIONS = ['uae_adgm', 'eu_mica', 'us_reg_d', 'sg_mas', 'uk_fca'];
 app.patch('/api/public/deal-room/:propertyId/jurisdiction', async (req, res) => {
   const { propertyId } = req.params;
-  const { jurisdiction, ownerWriteToken } = req.body || {};
+  const { jurisdiction } = req.body || {};
 
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can update jurisdiction');
   if (jurisdiction && !VALID_JURISDICTIONS.includes(jurisdiction)) {
     return res.status(400).json({ error: `Invalid jurisdiction. Must be one of: ${VALID_JURISDICTIONS.join(', ')}` });
@@ -8356,8 +8103,7 @@ app.get('/api/public/deal-room/:propertyId/notifications', async (req, res) => {
 // email with "Resent from log" header to the same recipient, and logs an event.
 app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend', async (req, res) => {
   const { propertyId, notificationId } = req.params;
-  const { ownerWriteToken } = req.body || {};
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can resend notifications');
   const RESEND_KEY = process.env.RESEND_API_KEY;
   if (!RESEND_KEY) return res.status(503).json({ error: 'Email not configured (RESEND_API_KEY not set)' });
@@ -8413,13 +8159,13 @@ app.post('/api/public/deal-room/:propertyId/notifications/:notificationId/resend
 });
 
 // ── Task #143: Request a specific document from an invited participant ────────
-// Coordinator-only (ownerWriteToken required). Looks up deal_room_invites for
+// Coordinator-only owner-session action. Looks up deal_room_invites for
 // any of the assignedTo roles, sends an email asking them to upload the named
 // document, and logs the event.
 app.post('/api/public/deal-room/:propertyId/request-document', async (req, res) => {
   const { propertyId } = req.params;
-  const { ownerWriteToken, roles: assignedRoles = [], docLabel, docSection } = req.body || {};
-  const access = await requireRoomOwnerAccess(req, propertyId, ownerWriteToken);
+  const { roles: assignedRoles = [], docLabel, docSection } = req.body || {};
+  const access = await requireRoomOwnerAccess(req, propertyId);
   if (!access) return accessDenied(res, 'Only the deal-room owner can request documents');
   if (!docLabel) return res.status(400).json({ error: 'docLabel required' });
   const RESEND_KEY = process.env.RESEND_API_KEY;
@@ -8583,7 +8329,7 @@ app.post('/api/public/deal-room/:propertyId/comments', async (req, res) => {
 app.patch('/api/public/deal-room/:propertyId/comments/:commentId/resolve', async (req, res) => {
   const { propertyId, commentId } = req.params;
   try {
-    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can resolve comments');
     const { error } = await supabase.from('deal_comments').update({ resolved: true })
       .eq('id', commentId).eq('property_id', propertyId);
@@ -8622,6 +8368,7 @@ app.patch('/api/public/deal-room/:propertyId/submissions/:subRole/status', async
 
 // ── Public AI Tools — extracted to routers/aiDealReview.js ──────────────────
 app.use('/api/ai', aiDealReviewRouter);
+app.use('/api/public/deal-room/:propertyId/ai', aiDealReviewRouter);
 
 // ── Task Engine + AI Ownership Layer — PUBLIC, must stay BEFORE
 // requireOrgContext (same property-scoped access model as the other public
@@ -9068,11 +8815,13 @@ app.post('/api/workflows/ingest', upload.single('file'), async (req, res) => {
   }
 });
 
-app.get('/api/smart-recommendations', async (_req, res) => {
+app.get('/api/smart-recommendations', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   try {
     const { data: pending } = await supabase
       .from('loans')
       .select('id, borrower_name, amount, risk_score, interest_rate, status')
+      .eq('organization_id', req.orgId)
       .eq('status', 'pending')
       .order('risk_score', { ascending: true })
       .limit(5);
@@ -9080,6 +8829,7 @@ app.get('/api/smart-recommendations', async (_req, res) => {
     const { data: refinance } = await supabase
       .from('loans')
       .select('id, borrower_name, amount, interest_rate, risk_score')
+      .eq('organization_id', req.orgId)
       .eq('status', 'active')
       .gt('interest_rate', 6)
       .lt('risk_score', 0.5)
@@ -9141,9 +8891,11 @@ function requireCsrf(req, res, next) {
 }
 
 app.get('/api/tasks', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { data, error } = await supabase
     .from('underwriting_tasks')
     .select('*')
+    .eq('organization_id', req.orgId)
     .order('id');
 
   if (error) return res.status(500).json({ message: 'Failed to fetch tasks' });
@@ -9151,12 +8903,18 @@ app.get('/api/tasks', async (req, res) => {
 });
 
 app.post('/api/tasks', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { assign, comment, status } = req.body;
   if (!assign) return res.status(400).json({ message: 'Missing assign' });
 
   const { data, error } = await supabase
     .from('underwriting_tasks')
-    .insert([{ assign, comment: comment || '', status: status || 'Underwriting' }])
+    .insert([{
+      organization_id: req.orgId,
+      assign,
+      comment: comment || '',
+      status: status || 'Underwriting',
+    }])
     .select()
     .single();
 
@@ -9165,6 +8923,7 @@ app.post('/api/tasks', async (req, res) => {
 });
 
 app.put('/api/tasks/:id', authenticate, requireCsrf, async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { id } = req.params;
   const { assign, comment, status } = req.body;
   const updates = {};
@@ -9176,6 +8935,7 @@ app.put('/api/tasks/:id', authenticate, requireCsrf, async (req, res) => {
     .from('underwriting_tasks')
     .update(updates)
     .eq('id', id)
+    .eq('organization_id', req.orgId)
     .select()
     .single();
 
@@ -9184,10 +8944,12 @@ app.put('/api/tasks/:id', authenticate, requireCsrf, async (req, res) => {
 });
 
 app.get('/api/decision-history', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   try {
     const { data, error } = await supabase
       .from('underwriting_tasks')
       .select('id, assign, comment, status, created_at')
+      .eq('organization_id', req.orgId)
       .order('created_at', { ascending: false });
     if (error) throw error;
     res.json({ history: data });
@@ -9310,14 +9072,20 @@ app.post('/api/generate-tax-form', (req, res) => {
 
 // ── Portfolio Summary as PDF ───────────────────────────────────────────────
 app.post('/api/portfolio-summary', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { period } = req.body || {};
   if (!period) return res.status(400).json({ message: 'Missing period' });
 
   try {
-    const { data: loans } = await supabase.from('loans').select('id');
+    const { data: loans, error: loansError } = await supabase
+      .from('loans')
+      .select('id')
+      .eq('organization_id', req.orgId);
+    if (loansError) throw loansError;
     const { data: collections } = await supabase
       .from('collections')
-      .select('due_date, status, loan_id');
+      .select('due_date, status, loan_id')
+      .eq('organization_id', req.orgId);
     const { data: projects } = await supabase.from('projects').select('address');
 
     const now = new Date();
@@ -9375,6 +9143,7 @@ app.post('/api/portfolio-summary', async (req, res) => {
 });
 
 app.post('/api/underwriter-chat', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ message: 'Missing question' });
 
@@ -9385,7 +9154,7 @@ app.post('/api/underwriter-chat', async (req, res) => {
   }
 
   try {
-    const result = await get_next_insurance_due({ borrower_name: borrower });
+    const result = await get_next_insurance_due({ borrower_name: borrower }, req.orgId);
     if (!result) return res.status(404).json({ message: 'Borrower not found' });
     res.json({ answer: `Next insurance premium due on ${result.due_date}.`, result });
   } catch (err) {
@@ -9396,6 +9165,7 @@ app.post('/api/underwriter-chat', async (req, res) => {
 
 // ── Query Loans via LLM ─────────────────────────────────────────────────────
 app.post('/api/query-loans', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { query } = req.body || {};
   if (!query) return res.status(400).json({ message: 'Missing query' });
 
@@ -9420,7 +9190,7 @@ app.post('/api/query-loans', async (req, res) => {
   }
 
   try {
-    let sb = supabase.from('loans').select('*');
+    let sb = supabase.from('loans').select('*').eq('organization_id', req.orgId);
     if (filters.min_amount) sb = sb.gte('amount', filters.min_amount);
     if (filters.max_amount) sb = sb.lte('amount', filters.max_amount);
     if (filters.min_interest_rate)
@@ -9440,6 +9210,7 @@ app.post('/api/query-loans', async (req, res) => {
 
 // ── Virtual-Assistant Endpoint: `/api/ask` ───────────────────────────────────
 app.post('/api/ask', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { question } = req.body;
   if (!question) return res.status(400).json({ error: 'Missing question' });
 
@@ -9461,17 +9232,17 @@ app.post('/api/ask', async (req, res) => {
     if (msg.function_call) {
       let result;
       if (msg.function_call.name === 'get_loans') {
-        result = await get_loans();
+        result = await get_loans(req.orgId);
       } else if (msg.function_call.name === 'get_draws') {
-        result = await get_draws();
+        result = await get_draws(req.orgId);
         } else if (msg.function_call.name === 'get_escrow_balance') {
         const args = JSON.parse(msg.function_call.arguments || '{}');
-        result = await get_escrow_balance(args);
+        result = await get_escrow_balance(args, req.orgId);
       } else if (msg.function_call.name === 'get_payoff_instructions') {
         result = await get_payoff_instructions();
       } else if (msg.function_call.name === 'get_next_insurance_due') {
         const args = JSON.parse(msg.function_call.arguments || '{}');
-        result = await get_next_insurance_due(args);
+        result = await get_next_insurance_due(args, req.orgId);
             } else if (msg.function_call.name === 'get_troubled_assets') {
         const args =
           typeof msg.function_call.arguments === 'string'
@@ -9493,7 +9264,7 @@ app.post('/api/ask', async (req, res) => {
         result = await get_asset_info(args);
       } else if (msg.function_call.name === 'get_loan_details') {
         const args = JSON.parse(msg.function_call.arguments || '{}');
-        result = await get_loan_details(args);
+        result = await get_loan_details(args, req.orgId);
       } else if (msg.function_call.name === 'get_guest_profile') {
         const args = JSON.parse(msg.function_call.arguments || '{}');
         result = await get_guest_profile(args);
@@ -9513,6 +9284,7 @@ app.post('/api/ask', async (req, res) => {
 
 // ── ChatOps Endpoint ───────────────────────────────────────────────────────
 app.post('/api/chatops', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { question } = req.body || {};
   if (!question) return res.status(400).json({ message: 'Missing question' });
 
@@ -9532,13 +9304,13 @@ app.post('/api/chatops', async (req, res) => {
       const args = JSON.parse(msg.function_call.arguments || '{}');
       let result;
       if (msg.function_call.name === 'list_past_due_loans') {
-        result = await list_past_due_loans(args);
+        result = await list_past_due_loans(args, req.orgId);
       } else if (msg.function_call.name === 'get_overall_occupancy') {
         result = await get_overall_occupancy();
       } else if (msg.function_call.name === 'get_asset_info') {
         result = await get_asset_info(args);
       } else if (msg.function_call.name === 'get_loan_details') {
-        result = await get_loan_details(args);
+        result = await get_loan_details(args, req.orgId);
       } else if (msg.function_call.name === 'get_guest_profile') {
         result = await get_guest_profile(args);
       } else if (msg.function_call.name === 'get_hospitality_stats') {
@@ -10045,7 +9817,8 @@ app.post('/api/predict-churn', (req, res) => {
 });
 
 app.get('/api/faqs', async (req, res) => {
-  const { user_id } = req.query || {};
+  if (!req.orgId || !req.authUserId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  const user_id = req.authUserId;
   const faqs = [
     { q: 'How do I make a payment?', a: 'You can pay online or mail a check.' },
     {
@@ -10059,6 +9832,7 @@ app.get('/api/faqs', async (req, res) => {
         .from('loans')
         .select('id')
         .eq('borrower_user_id', user_id)
+        .eq('organization_id', req.orgId)
         .order('start_date')
         .limit(1)
         .maybeSingle();
@@ -10413,7 +10187,7 @@ app.post('/api/checkout', authenticate, async (req, res) => {
 // ── Link Revocation — owner regenerates invite links ──────────────────────────
 app.post('/api/public/deal-room/:propertyId/regenerate-links', async (req, res) => {
   const { propertyId } = req.params;
-  const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can regenerate links');
   try {
     const newToken = crypto.randomBytes(16).toString('hex');
@@ -10472,8 +10246,8 @@ app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/hi
 
 app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId', async (req, res) => {
   const { propertyId, fieldId } = req.params;
-  const { value_text, value_json, notes, status, ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const { value_text, value_json, notes, status } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   // Sealed workspaces: transaction_record_fields are immutable after the Transaction Seal is created.
@@ -10684,9 +10458,9 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
 
 app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/verify', async (req, res) => {
   const { propertyId, fieldId } = req.params;
-  const { ownerWriteToken, actorRole, approveProvenance = false } = req.body || {};
+  const { actorRole, approveProvenance = false } = req.body || {};
   const provenanceApprovalRequested = approveProvenance === true;
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   // Sealed workspaces: transaction_record_fields and their approvals are immutable.
@@ -10912,8 +10686,8 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
 
 app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:conflictId/resolve', async (req, res) => {
   const { propertyId, conflictId } = req.params;
-  const { value_text, note, ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const { value_text, note } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   try {
@@ -11145,7 +10919,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
 // Create or upsert a field manually (coordinator enters value before extraction)
 app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (req, res) => {
   const { propertyId } = req.params;
-  const { field_key, display_label, field_category, value_text, notes, status, ownerWriteToken } = req.body || {};
+  const { field_key, display_label, field_category, value_text, notes, status } = req.body || {};
   if (!field_key || !field_category) return res.status(400).json({ error: 'field_key and field_category required' });
   const canonicalFieldKey = canonicalizeTransactionRecordKey(String(field_key).trim(), 'generic');
   const canonicalFieldCategory = {
@@ -11153,7 +10927,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     ownership: 'beneficial_ownership',
   }[canonicalFieldKey.split('.')[0]] || canonicalFieldKey.split('.')[0] || String(field_category).trim();
   const canonicalAliases = aliasKeysForCanonical(canonicalFieldKey, 'generic');
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   // Sealed workspaces: transaction_record_fields are immutable after the Transaction Seal is created.
@@ -11453,8 +11227,7 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
 
 app.post('/api/public/deal-room/:propertyId/transaction-record/extract', async (req, res) => {
   const { propertyId } = req.params;
-  const { ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   res.json({ ok: true, message: 'Re-extraction queued' });
   // Background: re-extract from all stored documents
@@ -11728,8 +11501,7 @@ app.get('/api/public/deal-room/:propertyId/verified-asset/readiness/export', asy
 // existing version; any changed source state gets a new version.
 app.post('/api/public/deal-room/:propertyId/verified-asset/snapshots', async (req, res) => {
   const { propertyId } = req.params;
-  const { ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
   try {
     const context = await getVerifiedAssetSnapshotContext(propertyId);
@@ -12378,8 +12150,7 @@ app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/art
 
 app.post('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/revisions/:revisionId/artifacts', async (req, res) => {
   const { propertyId, packageId, revisionId } = req.params;
-  const { ownerWriteToken } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can generate a preparation PDF.');
 
   try {
@@ -12583,8 +12354,8 @@ app.get('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/art
 
 app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/preparation-fields', async (req, res) => {
   const { propertyId, packageId } = req.params;
-  const { ownerWriteToken, fields } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const { fields } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   try {
@@ -12714,8 +12485,8 @@ app.patch('/api/public/deal-room/:propertyId/digital-asset-packages/:packageId/p
 
 app.post('/api/public/deal-room/:propertyId/digital-asset-packages', async (req, res) => {
   const { propertyId } = req.params;
-  const { ownerWriteToken, snapshotId, snapshotVersion } = req.body || {};
-  const access = await getRoomAccessContext(req, propertyId, ownerWriteToken);
+  const { snapshotId, snapshotVersion } = req.body || {};
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
   try {
@@ -12787,7 +12558,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
   // handler. Without this delegation, dynamic rooms could fall through to the
   // older fact-count prompt and invent participants from generic CRE context.
   try {
-    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
     return res.json(await askQuestion(propertyId, String(question).slice(0, 2000), {
       requestId: req.get('x-kontra-request-id') || crypto.randomUUID(),
@@ -12798,7 +12569,6 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
       accessMode: access.mode,
       roomId: access.roomId || null,
       authHeaderPresence: {
-        ownerWriteToken: Boolean(req.headers['x-owner-write-token'] || req.body?.ownerWriteToken),
         session: Boolean(req.headers['x-kontra-session']),
       },
       trace: true,
@@ -12809,7 +12579,7 @@ app.post('/api/public/deal-room/:propertyId/brain/ask', async (req, res) => {
   }
 
   try {
-    const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+    const access = await getRoomAccessContext(req, propertyId);
     if (access.mode === 'anonymous') return accessDenied(res);
 
     const [
@@ -12899,7 +12669,7 @@ RULES:
 // Static demo rooms register their own routes above and override this.
 app.get('/api/public/deal-room/:propertyId/brain/facts', async (req, res) => {
   const { propertyId } = req.params;
-  const access = await getRoomAccessContext(req, propertyId, req.body?.ownerWriteToken);
+  const access = await getRoomAccessContext(req, propertyId);
   if (access.mode === 'anonymous') return accessDenied(res, 'A verified deal-room invitation or owner access token is required');
   try {
     const [transactionState, analysesResult] = await Promise.all([

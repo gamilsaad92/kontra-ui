@@ -28,7 +28,7 @@ describe('buildTrialCheckoutResponse', () => {
     });
   });
 
-  test('non-staging checkout keeps its existing owner-token URL contract', () => {
+  test('non-staging checkout does not put owner exchange credentials in its URL', () => {
     const response = buildTrialCheckoutResponse({
       origin: 'https://kontraplatform.com',
       plan: 'deal',
@@ -40,7 +40,8 @@ describe('buildTrialCheckoutResponse', () => {
     });
 
     expect(new URL(response.url).origin).toBe('https://kontraplatform.com');
-    expect(new URL(response.url).searchParams.get('owner_token')).toBe('existing-paid-owner-token');
+    expect(new URL(response.url).searchParams.has('owner_token')).toBe(false);
+    expect(new URL(response.url).searchParams.has('owner_exchange_token')).toBe(false);
     expect(response.ownerExchange).toBeUndefined();
   });
 });

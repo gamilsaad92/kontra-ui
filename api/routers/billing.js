@@ -14,9 +14,11 @@
 const express = require('express');
 const { supabase, replica } = require('../db');
 const requireOrg = require('../middlewares/requireOrg');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
 
 const router = express.Router();
 router.use(requireOrg);
+router.use(requireMembershipRole('owner', 'admin'));
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ router.get('/pricing', async (req, res) => {
 });
 
 // ─── PATCH /billing/pricing ──────────────────────────────────────────────────
-router.patch('/pricing', async (req, res) => {
+router.patch('/pricing', requireMembershipRole('owner'), async (req, res) => {
   try {
     const uuid = toUUID(req.orgId);
     const { per_loan_price, transaction_fee_pct, billing_email } = req.body ?? {};

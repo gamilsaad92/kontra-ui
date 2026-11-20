@@ -1,44 +1,29 @@
 import { useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 
-// PilotAccessPage — token-storing handoff page for pilot users.
-// The admin pastes a link like:
-//   /pilot/access?property={pid}&owner_token={token}&name={name}
-// into an email/DM. When the pilot user clicks it, this page:
-//   1. Stores the owner_token in localStorage (same mechanic as CheckoutSuccessPage)
-//   2. Redirects to the live workspace as coordinator
-// No payment, no setup, no confusion.
+// Legacy pilot links now hand off to the verified owner email OTP flow.
 export default function PilotAccessPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const stored = useRef(false);
 
-  const property   = searchParams.get("property") || "";
-  const ownerToken = searchParams.get("owner_token") || "";
   const name       = searchParams.get("name") || "your deal room";
 
   useEffect(() => {
     if (stored.current) return;
     stored.current = true;
 
-    // Store the owner token exactly as CheckoutSuccessPage does
-    if (property && ownerToken) {
-      try {
-        localStorage.setItem(`kontra_owner_token_${property}`, ownerToken);
-      } catch { /* storage unavailable */ }
+    if (window.location.search.includes("owner_token=")) {
+      const safe = new URL(window.location.href);
+      safe.searchParams.delete("owner_token");
+      window.history.replaceState(window.history.state, "", `${safe.pathname}${safe.search}${safe.hash}`);
     }
-
-    // Short delay so the user sees the loading state before redirect
     const t = setTimeout(() => {
-      if (property) {
-        navigate(`/deal-room/${property}?role=owner`, { replace: true });
-      } else {
-        navigate("/", { replace: true });
-      }
+      navigate("/my-deal-rooms", { replace: true });
     }, 1200);
 
     return () => clearTimeout(t);
-  }, [property, ownerToken, navigate]);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">

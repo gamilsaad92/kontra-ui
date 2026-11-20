@@ -11,7 +11,9 @@ const isRealSupabase = process.env.SUPABASE_URL &&
   !process.env.SUPABASE_URL.includes('placeholder') &&
   process.env.SUPABASE_URL.startsWith('https://');
 
-const hasLocalDb = !!process.env.DATABASE_URL;
+// Jest runs against mocked Supabase clients. Never let an inherited workspace
+// DATABASE_URL turn API tests into live database requests.
+const hasLocalDb = process.env.NODE_ENV !== 'test' && !!process.env.DATABASE_URL;
 
 // TEMP release diagnostic: remove when the verified release replaces this build.
 require('./lib/releaseDbDiagnostic').logReleaseDbIdentity();

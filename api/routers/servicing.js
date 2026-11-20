@@ -3,6 +3,7 @@ const multer = require('multer');
 const { buildAnalysis, summarizeStatement } = require('../services/financialsAnalysis');
 const authenticate = require('../middlewares/authenticate');
 const { orgContext } = require('../middleware/orgContext');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const {
   ingestPaymentFile,
   getCashflowHistory,
@@ -14,6 +15,7 @@ const {
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 router.use(orgContext);
 

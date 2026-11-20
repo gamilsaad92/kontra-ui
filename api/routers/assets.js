@@ -1,8 +1,10 @@
 const express = require('express');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
 const multer = require('multer');
 const OpenAI = require('openai');
 
 const router = express.Router();
+router.use(requireMembershipRole('owner', 'admin'));
 const upload = multer({ storage: multer.memoryStorage() });
 const { supabase } = require('../db');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'sk-not-configured' });
@@ -67,6 +69,7 @@ router.get('/', async (req, res) => {
   const { data, error } = await supabase
     .from('assets')
     .select('*')
+    .eq('org_id', req.orgId)
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ message: 'Failed to fetch assets' });
   res.json({ assets: data });
@@ -77,17 +80,18 @@ router.post('/', async (req, res) => {
   if (!name) return res.status(400).json({ message: 'Missing name' });
   const { data, error } = await supabase
     .from('assets')
-    .insert([{ name, value, status, occupancy }])
+    .insert([{ name, value, status, occupancy, org_id: req.orgId }])
     .select()
     .single();
   if (error) return res.status(500).json({ message: 'Failed to create asset' });
   res.status(201).json({ asset: data });
 });
 
-router.get('/troubled', async (_req, res) => {
+router.get('/troubled', async (req, res) => {
   const { data, error } = await supabase
     .from('assets')
     .select('id, name, address, status, predicted_risk')
+    .eq('org_id', req.orgId)
     .gt('predicted_risk', 0.5)
     .order('predicted_risk', { ascending: false });
   if (error) return res.status(500).json({ assets: [] });
@@ -96,7 +100,15 @@ router.get('/troubled', async (_req, res) => {
 
 router.post('/:id/upload', upload.single('file'), async (req, res) => {
   const { id } = req.params;
-   const kind = (req.query.kind || 'inspection').toLowerCase();
+  const kind = (req.query.kind || 'inspection').toLowerCase();
+  const { data: asset, error: assetError } = await supabase
+    .from('assets')
+    .select('id')
+    .eq('id', id)
+    .eq('org_id', req.orgId)
+    .maybeSingle();
+  if (assetError) return res.status(500).json({ message: 'Failed to verify asset access' });
+  if (!asset) return res.status(404).json({ message: 'Asset not found' });
   if (!req.file) return res.status(400).json({ message: 'File required' });
   const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
   if (!allowed.includes(req.file.mimetype)) {
@@ -130,6 +142,7 @@ router.post('/:id/revive', async (req, res) => {
       .from('assets')
       .select('*')
       .eq('id', id)
+      .eq('org_id', req.orgId)
       .maybeSingle();
     if (error) throw error;
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
@@ -145,6 +158,7 @@ router.post('/:id/revive', async (req, res) => {
       .from('assets')
       .update({ status: 'revived', data_json, updated_at: new Date().toISOString() })
       .eq('id', id)
+      .eq('org_id', req.orgId)
       .select()
       .single();
     if (upErr) throw upErr;
@@ -155,12 +169,13 @@ router.post('/:id/revive', async (req, res) => {
   }
 });
 
-router.get('/revived', async (_req, res) => {
+router.get('/revived', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('assets')
       .select('id, address, status, data_json')
       .eq('status', 'revived')
+      .eq('org_id', req.orgId)
       .order('updated_at', { ascending: false });
     if (error) throw error;
     const assets = (data || []).map(a => {
@@ -183,12 +198,13 @@ router.get('/revived', async (_req, res) => {
   }
 });
 
-router.get('/watchlist', async (_req, res) => {
+router.get('/watchlist', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('assets')
       .select('id, address, status, value, predicted_risk')
       .eq('status', 'watchlist')
+      .eq('org_id', req.orgId)
       .order('updated_at', { ascending: false });
     if (error) throw error;
     res.json({ assets: data || [] });
@@ -205,12 +221,14 @@ router.get('/:id', async (req, res) => {
       .from('assets')
       .select('id, address, type, value, status, predicted_risk')
       .eq('id', id)
+      .eq('org_id', req.orgId)
       .single();
     if (error || !asset) return res.status(404).json({ message: 'Asset not found' });
     const { data: loans, error: loanErr } = await supabase
       .from('loans')
       .select('id, status')
       .eq('asset_id', id)
+      .eq('organization_id', req.orgId)
       .neq('status', 'paid_off');
     if (loanErr) throw loanErr;
     res.json({ asset: { ...asset, loans: loans || [] } });

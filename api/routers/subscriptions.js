@@ -1,5 +1,6 @@
 const express = require('express');
 const requireOrg = require('../middlewares/requireOrg');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
 
 const { supabase } = require('../db');
 
@@ -27,7 +28,7 @@ router.get('/plans', (_req, res) => {
   res.json({ plans: PLANS });
 });
 
-router.get('/subscription', requireOrg, async (req, res) => {
+router.get('/subscription', requireOrg, requireMembershipRole('owner', 'admin'), async (req, res) => {
   const { data, error } = await supabase
     .from('organizations')
     .select('plan')
@@ -37,7 +38,7 @@ router.get('/subscription', requireOrg, async (req, res) => {
   res.json({ plan: data.plan || 'basic' });
 });
 
-router.post('/subscription', requireOrg, async (req, res) => {
+router.post('/subscription', requireOrg, requireMembershipRole('owner'), async (req, res) => {
   const { plan } = req.body || {};
   if (!PLANS.some(p => p.name === plan)) {
     return res.status(400).json({ message: 'Invalid plan' });

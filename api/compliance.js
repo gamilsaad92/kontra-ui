@@ -256,7 +256,17 @@ function evaluateCounterparties(counterparties = [], counterpartyProfiles = []) 
   return { valid: true, profiles, flags };
 }
 
-async function gatherEvidence(loanId) {
+async function gatherEvidence(loanId, orgId) {
+  if (!orgId) return null;
+  const { data: loan, error: loanError } = await supabase
+    .from('loans')
+    .select('id')
+    .eq('id', loanId)
+    .eq('organization_id', orgId)
+    .maybeSingle();
+  if (loanError) throw loanError;
+  if (!loan) return null;
+
   const { data: notifications } = await supabase
     .from('notifications')
     .select('*')
@@ -271,6 +281,7 @@ async function gatherEvidence(loanId) {
     .from('loan_applications')
     .select('*')
     .eq('id', loanId)
+    .eq('organization_id', orgId)
     .maybeSingle();
 
   return { notifications, waivers, application };

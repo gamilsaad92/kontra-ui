@@ -35,8 +35,10 @@ router.post('/regulatory-scan', (req, res) => {
 });
 
 router.get('/evidence-dossier/:loanId', async (req, res) => {
+  if (!req.orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   const { loanId } = req.params;
-  const evidence = await gatherEvidence(loanId);
+  const evidence = await gatherEvidence(loanId, req.orgId);
+  if (!evidence) return res.status(404).json({ message: 'Evidence not found' });
   res.json({ evidence });
 });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const { getOrders } = require('./orders');
 const { getPayments } = require('./payments');
 const requireOrg = require('../middlewares/requireOrg');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const {
   initAnalytics,
   broadcastAnalytics,
@@ -14,6 +15,7 @@ initAnalytics({ getOrders, getPayments });
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(requireOrg);
 
 router.get('/analytics/orders', (req, res) => {

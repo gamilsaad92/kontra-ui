@@ -28,7 +28,7 @@ const router = express.Router();
 
 // ── Org middleware (inherits from tokenizationApi pattern) ────────────────────
 router.use((req, res, next) => {
-  const orgId = req.headers['x-org-id'] || req.query.orgId || null;
+  const orgId = req.orgId || null;
   if (!orgId) return res.status(400).json({ code: 'ORG_CONTEXT_MISSING', message: 'Missing X-Org-Id header' });
   req.orgId = orgId;
   next();

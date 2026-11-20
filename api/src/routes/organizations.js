@@ -3,9 +3,29 @@ const { z } = require('zod');
 const { getEntity } = require('../lib/crud');
 const { supabase } = require('../../db');
 const { selectFor } = require('../lib/selectColumns');
+const requireMembershipRole = require('../../middlewares/requireMembershipRole');
 
 const router = express.Router();
 const run = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+function requireMatchingOrganization(req, res, next) {
+  const membership = req.membership;
+  if (
+    !req.authContext?.verified ||
+    !req.authUserId ||
+    !req.orgId ||
+    !membership ||
+    membership.status !== 'active' ||
+    membership.deleted_at ||
+    String(membership.org_id) !== String(req.orgId)
+  ) {
+    return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  }
+  if (String(req.params.id) !== String(req.orgId)) {
+    return res.status(404).json({ message: 'Not found' });
+  }
+  return next();
+}
+
 const withOrgTitle = (org) => {
   if (!org) return org;
   const name = org.name || 'Organization';
@@ -27,24 +47,22 @@ router.get('/', run(async (req, res) => {
  res.json({ items: (data || []).map(withOrgTitle), total: data?.length || 0 });
 }));
 
-router.post('/', run(async (req, res) => {
- const payload = z.object({ name: z.string().trim().min(1).max(120), data: z.record(z.any()).optional() }).parse(req.body);
-  const { data, error } = await supabase
-    .from('organizations')
-   .insert({ name: payload.name, created_by: req.user?.id || null, data: payload.data || {} })
-     .select(selectFor('organizations'))
-    .single();
+router.post('/', requireMembershipRole('owner', 'admin'), run(async (req, res) => {
+  const payload = z.object({
+    name: z.string().trim().min(1).max(120),
+    data: z.record(z.any()).optional(),
+    branding: z.record(z.any()).optional(),
+    parent_id: z.string().uuid().nullable().optional(),
+  }).parse(req.body);
+  const { data, error } = await supabase.rpc('create_organization_with_owner', {
+    p_name: payload.name,
+    p_owner_user_id: req.authUserId,
+    p_branding: payload.branding || {},
+    p_parent_id: payload.parent_id || null,
+    p_data: payload.data || {},
+  });
   if (error) return res.status(400).json({ message: error.message });
-  
-  const { error: membershipError } = await supabase
-    .from('org_memberships')
-    .insert({
-      org_id: data.id,
-      user_id: req.user?.id,
-      role: 'admin',
-    });
-
-  if (membershipError) return res.status(400).json({ message: membershipError.message });
+  if (!data?.id) return res.status(500).json({ message: 'Failed to create organization' });
   res.status(201).json(withOrgTitle(data));
 }));
 
@@ -55,7 +73,7 @@ router.get('/:id', run(async (req, res) => {
   res.json(withOrgTitle(org));
 }));
 
-router.get('/:id/members', run(async (req, res) => {
+router.get('/:id/members', requireMatchingOrganization, requireMembershipRole('owner', 'admin'), run(async (req, res) => {
  const id = z.string().min(1).parse(req.params.id);
   const { data, error } = await supabase
     .from('org_memberships')
@@ -66,12 +84,15 @@ router.get('/:id/members', run(async (req, res) => {
   res.json({ items: data || [], total: data?.length || 0 });
 }));
 
-router.post('/:id/members', run(async (req, res) => {
+router.post('/:id/members', requireMatchingOrganization, requireMembershipRole('owner', 'admin'), run(async (req, res) => {
  const id = z.string().min(1).parse(req.params.id);
-  const payload = z.object({ user_id: z.string(), role: z.string().optional(), data: z.record(z.any()).optional() }).parse(req.body);
-
-  if (id !== req.orgId) {
-    return res.status(404).json({ message: 'Not found' });
+  const payload = z.object({
+    user_id: z.string().uuid(),
+    role: z.enum(['owner', 'admin', 'member']).default('member'),
+    data: z.record(z.any()).optional(),
+  }).parse(req.body);
+  if (payload.role === 'owner' && req.membershipRole !== 'owner') {
+    return res.status(403).json({ code: 'ORG_ROLE_FORBIDDEN' });
   }
 
   const { data, error } = await supabase
@@ -79,8 +100,9 @@ router.post('/:id/members', run(async (req, res) => {
     .insert({
       org_id: id,
       user_id: payload.user_id,
-      role: payload.role || 'member',
+      role: payload.role,
       data: payload.data || {},
+      created_by: req.authUserId,
     })
    .select(selectFor('org_memberships'))
     .single();

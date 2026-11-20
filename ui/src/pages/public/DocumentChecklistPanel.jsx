@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { getWorkflowPack, DEFAULT_PACK_ID } from "../../lib/workflowPacks";
 import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 import { API_BASE } from "../../lib/apiBase";
+import { roomScopedAiReviewPath } from "../../lib/roomScopedRoutes.mjs";
 import {
   normalizeChecklistRoleKey as normalizeRoleKey,
   resolveDocumentChecklistView,
@@ -679,14 +680,11 @@ export default function DocumentChecklistPanel({
     if (!propertyId || isDemo) return;
     setRequestingDocSection(item.section);
     setRequestError(null);
-    let ownerToken = "";
-    try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
     try {
       const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/request-document`, {
         method: "POST",
-          headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
+        headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
         body: JSON.stringify({
-          ownerWriteToken: ownerToken,
           roles: item.assignedTo || [],
           docLabel: item.label,
           docSection: item.section,
@@ -713,8 +711,7 @@ export default function DocumentChecklistPanel({
   }
 
   // ── Persist items (debounced) ──────────────────────────────────────────────
-  // Reads the owner_write_token stored in localStorage by CheckoutSuccessPage.
-  // The token is validated server-side; requests without a valid token receive 403.
+  // Owner access is carried by the room-scoped HttpOnly cookie.
   const persistItems = useCallback((newItems) => {
     if (!propertyId || isDemo) return;
     clearTimeout(saveTimerRef.current);
@@ -722,12 +719,10 @@ export default function DocumentChecklistPanel({
       setSavingChecklist(true);
       setChecklistError("");
       try {
-        let ownerToken = "";
-        try { ownerToken = localStorage.getItem(`kontra_owner_token_${propertyId}`) || ""; } catch { /* storage unavailable */ }
         const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/checklist`, {
           method: "PUT",
           headers: getRoomAuthHeaders(propertyId, { "Content-Type": "application/json" }),
-          body: JSON.stringify({ items: newItems, ownerWriteToken: ownerToken }),
+          body: JSON.stringify({ items: newItems }),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.message || result.error || "Checklist changes could not be saved.");
@@ -843,7 +838,7 @@ export default function DocumentChecklistPanel({
     }
     try {
       const endpoint = isAiEndpoint
-        ? `${API_BASE}${AI_UPLOAD_ENDPOINTS?.[section] || "/api/ai/analyze-document"}`
+        ? `${API_BASE}${roomScopedAiReviewPath(propertyId, AI_UPLOAD_ENDPOINTS?.[section])}`
         : `${API_BASE}/api/public/deal-room/${propertyId}/track-document`;
       const res = await fetch(endpoint, {
         method: "POST",

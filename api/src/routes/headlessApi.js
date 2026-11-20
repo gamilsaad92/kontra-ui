@@ -46,7 +46,9 @@ const router = express.Router();
 // ── Middleware: org context from header or JWT ─────────────────────────────────
 
 router.use((req, res, next) => {
-  req.orgId = req.headers['x-org-id'] || req.user?.orgId || 'demo-org';
+  if (!req.authUserId || !req.orgId) {
+    return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  }
   next();
 });
 

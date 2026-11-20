@@ -1,9 +1,12 @@
 const mockOwnerToken = 'owner-token';
+const mockOwnerSessionToken = 'owner-session-token';
 const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
 const mockCanonicalRpc = jest.fn(async () => ({ data: { status: 'committed' }, error: null }));
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
+let mockOwnerSessionAvailable = true;
+let mockOwnerSessionExpired = false;
 let mockBrainAuthorizationTestsEnabled = false;
 const mockBrainReadTransactionState = jest.fn();
 const mockBrainGetBriefing = jest.fn();
@@ -35,12 +38,22 @@ jest.mock('./db', () => {
     expires_at: '2999-01-01T00:00:00.000Z',
     revoked_at: null,
   };
+  const ownerInvite = {
+    id: 'owner-invite-1',
+    property_id: 'room-1',
+    role_key: '__room_owner__',
+    invited_email: 'owner@example.com',
+    status: 'accepted',
+    expires_at: '2999-01-01T00:00:00.000Z',
+    revoked_at: null,
+  };
   const session = {
     invite_id: 'invite-1',
     expires_at: '2999-01-01T00:00:00.000Z',
     revoked_at: null,
   };
   const sessionHash = require('crypto').createHash('sha256').update(mockParticipantToken).digest('hex');
+  const ownerSessionHash = require('crypto').createHash('sha256').update(mockOwnerSessionToken).digest('hex');
   const transactionField = () => ({
     id: 'field-1',
     field_key: 'financial.borrower_funds',
@@ -81,12 +94,27 @@ jest.mock('./db', () => {
         }
         if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
         if (table === 'deal_room_access_sessions') {
-          return state.filters.session_token_hash === sessionHash
-            && mockParticipantSessionAvailable
-            ? { data: session, error: null }
-            : { data: null, error: null };
+          if (state.filters.session_token_hash === sessionHash && mockParticipantSessionAvailable) {
+            return { data: session, error: null };
+          }
+          if (state.filters.session_token_hash === ownerSessionHash && mockOwnerSessionAvailable) {
+            return {
+              data: {
+                ...session,
+                invite_id: 'owner-invite-1',
+                expires_at: mockOwnerSessionExpired ? '2000-01-01T00:00:00.000Z' : session.expires_at,
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
         }
-        if (table === 'deal_room_invites') return { data: invite, error: null };
+        if (table === 'deal_room_invites') {
+          return {
+            data: state.filters.id === 'owner-invite-1' ? ownerInvite : invite,
+            error: null,
+          };
+        }
         return { data: null, error: null };
       },
       single: async () => ({ data: owner, error: null }),
@@ -148,6 +176,8 @@ describe('room access and checklist scoping', () => {
     mockCanonicalRpc.mockReset().mockResolvedValue({ data: { status: 'committed' }, error: null });
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
+    mockOwnerSessionAvailable = true;
+    mockOwnerSessionExpired = false;
     mockBrainAuthorizationTestsEnabled = false;
     mockBrainReadTransactionState.mockReset();
     mockBrainGetBriefing.mockReset();
@@ -155,7 +185,7 @@ describe('room access and checklist scoping', () => {
     mockBrainBuildGroundedContext.mockReset();
   });
 
-  it('gives a valid participant session precedence over a valid same-room owner token', async () => {
+  it('keeps a valid participant session role-scoped even when a raw owner token is presented', async () => {
     const access = await app.getRoomAccessContext({
       headers: {
         'x-owner-write-token': mockOwnerToken,
@@ -190,10 +220,18 @@ describe('room access and checklist scoping', () => {
     }));
   });
 
-  it('resolves an owner-only direct room URL to coordinator access', async () => {
+  it('returns not found for the unused global invite-email route', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/send-invite-email')
+      .send({ inviteToken: 'unused-invite-token-that-is-long-enough' });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('resolves an owner-only direct room URL from the room-scoped owner session cookie', async () => {
     const response = await request(app)
       .get('/api/public/deal-room/room-1?role=seller')
-      .set('x-owner-write-token', mockOwnerToken);
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
 
     expect(response.status).toBe(200);
     expect(response.body.role).toBe('deal_coordinator');
@@ -204,7 +242,7 @@ describe('room access and checklist scoping', () => {
     for (let i = 0; i < 2; i += 1) {
       const response = await request(app)
         .get('/api/public/deal-room/room-1?role=seller')
-        .set('x-owner-write-token', mockOwnerToken)
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
         .set('x-kontra-session', mockParticipantToken);
 
       expect(response.status).toBe(200);
@@ -220,21 +258,44 @@ describe('room access and checklist scoping', () => {
     mockParticipantSessionAvailable = false;
     const response = await request(app)
       .get('/api/public/deal-room/room-1')
-      .set('x-owner-write-token', mockOwnerToken)
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
       .set('x-kontra-session', mockParticipantToken);
 
     expect(response.status).toBe(403);
   });
 
-  it('does not accept an owner token from a different room', async () => {
+  it('does not accept an owner session from a different room', async () => {
     const access = await app.getRoomAccessContext({
-      headers: {
-        'x-owner-write-token': mockOwnerToken,
-        'x-kontra-session': mockParticipantToken,
-      },
+      headers: { cookie: `kontra_owner_session=${mockOwnerSessionToken}` },
     }, 'room-2');
 
     expect(access.mode).toBe('anonymous');
+  });
+
+  it.each([
+    ['missing', () => { mockOwnerSessionAvailable = false; }],
+    ['expired', () => { mockOwnerSessionExpired = true; }],
+  ])('rejects a %s owner session', async (_label, configure) => {
+    configure();
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ approveProvenance: true });
+    expect(response.status).toBe(403);
+  });
+
+  it('does not allow a raw owner token in a request header or body to authorize a mutation', async () => {
+    const headerResponse = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .set('x-owner-write-token', mockOwnerToken)
+      .send({ approveProvenance: true });
+    const bodyResponse = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .send({ ownerWriteToken: mockOwnerToken, approveProvenance: true });
+
+    expect(headerResponse.status).toBe(403);
+    expect(bodyResponse.status).toBe(403);
   });
 
   it('blocks anonymous access to transaction metadata', async () => {
@@ -297,7 +358,9 @@ describe('room access and checklist scoping', () => {
   it('records owner provenance approval without changing the confirmed value or status', async () => {
     const response = await request(app)
       .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
-      .send({ ownerWriteToken: mockOwnerToken, approveProvenance: true });
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ approveProvenance: true });
 
     expect(response.status).toBe(200);
     expect(response.body.provenanceApproved).toBe(true);
@@ -324,7 +387,9 @@ describe('room access and checklist scoping', () => {
     mockFieldSourceDocId = 'source-document-1';
     const response = await request(app)
       .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
-      .send({ ownerWriteToken: mockOwnerToken, approveProvenance: true });
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ approveProvenance: true });
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe('FIELD_NOT_MISSING_PROVENANCE');
@@ -411,7 +476,7 @@ describe('room access and checklist scoping', () => {
       .set('x-kontra-session', mockParticipantToken);
     const ownerResponse = await request(app)
       .get('/api/public/deal-room/room-1/checklist')
-      .set('x-owner-write-token', mockOwnerToken);
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
 
     expect(participantResponse.status).toBe(200);
     expect(participantResponse.body.items.map(item => item.section)).toEqual(['seller_financials']);
@@ -471,6 +536,28 @@ describe('room access and checklist scoping', () => {
     expect(response.body.rooms[0]).not.toHaveProperty('owner_write_token');
   });
 
+  it('does not expose owner room lists or dashboard data based on an email address alone', async () => {
+    const roomsResponse = await request(app)
+      .get('/api/public/my-rooms?email=owner%40example.com');
+    const analyticsResponse = await request(app)
+      .get('/api/public/my-rooms/analytics?email=owner%40example.com');
+
+    expect(roomsResponse.status).toBe(401);
+    expect(analyticsResponse.status).toBe(403);
+  });
+
+  it('does not allow email-only room deletion or billing access', async () => {
+    const deleteResponse = await request(app)
+      .delete('/api/public/my-rooms/room-1')
+      .send({ email: 'owner@example.com' });
+    const billingResponse = await request(app)
+      .post('/api/public/billing-portal')
+      .send({ email: 'owner@example.com' });
+
+    expect(deleteResponse.status).toBe(403);
+    expect(billingResponse.status).toBe(403);
+  });
+
   describe('dynamic brain route authorization', () => {
     const routes = [
       {
@@ -496,6 +583,7 @@ describe('room access and checklist scoping', () => {
 
     const sendRouteRequest = route => {
       const pending = request(app)[route.method](route.path);
+      pending.set('Origin', 'https://staging.kontraplatform.com');
       return route.body ? pending.send(route.body) : pending;
     };
 
@@ -525,7 +613,7 @@ describe('room access and checklist scoping', () => {
 
     it.each(routes)('allows the owner to use $name', async route => {
       const response = await sendRouteRequest(route)
-        .set('x-owner-write-token', mockOwnerToken);
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
 
       expect(response.status).toBe(200);
       expect(route.downstream).toHaveBeenCalledTimes(1);

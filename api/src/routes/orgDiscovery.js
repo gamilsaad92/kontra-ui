@@ -1,9 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
 const { z } = require('zod');
-const { queryOne, queryRows } = require('../lib/appDb');
 const authenticate = require('../../middlewares/authenticate');
 const { supabase: supabaseAdmin } = require('../../db');
+const { resolveCanonicalIdentity } = require('../../middlewares/resolveCanonicalIdentity');
 const supabase = supabaseAdmin;
 
 /**
@@ -11,17 +11,17 @@ const supabase = supabaseAdmin;
  * Used as a fallback when the local PostgreSQL isn't available or has no records.
  */
 async function getOrgsFromSupabase(supabaseUserId) {
-  if (!supabase) return [];
-  try {
-    const { data, error } = await supabase
+  if (!supabase) throw new Error('Supabase is unavailable');
+  const { data, error } = await supabase
       .from('org_memberships')
-      .select('org_id, role, id, created_at, organizations(id, name, status, created_at)')
+      .select('org_id, role, id, created_at, organizations!inner(id, name, status, created_at)')
       .eq('user_id', supabaseUserId)
       .eq('status', 'active')
       .is('deleted_at', null)
+      .eq('organizations.status', 'active')
       .order('created_at', { ascending: true });
-    if (error || !data) return [];
-    return data.map((m) => ({
+  if (error) throw error;
+  return (data || []).map((m) => ({
       id: String(m.org_id),
       name: m.organizations?.name || 'Organization',
       role: m.role || 'member',
@@ -29,55 +29,21 @@ async function getOrgsFromSupabase(supabaseUserId) {
       created_at: m.organizations?.created_at || m.created_at,
       membership_created_at: m.created_at,
     }));
-  } catch (err) {
-    console.debug('[OrgDiscovery] Supabase org lookup failed', err?.message);
-    return [];
-  }
-}
-
-/**
- * Auto-provision a default organization in Supabase for a user who has none.
- * Mirrors what the handle_new_user trigger does for new signups.
- */
-async function provisionOrgInSupabase(identity, authUser) {
-  if (!supabase) return null;
-  try {
-    const orgName = authUser?.user_metadata?.full_name ||
-      authUser?.user_metadata?.name ||
-      (identity.email ? identity.email.split('@')[0] : null) ||
-      'My Organization';
-
-    // Create org
-    const { data: org, error: orgErr } = await supabase
-      .from('organizations')
-      .insert({ name: orgName, status: 'active', created_by: identity.supabaseUserId })
-      .select('id, name, created_at')
-      .single();
-    if (orgErr || !org) {
-      console.warn('[OrgDiscovery] org provision failed', orgErr?.message);
-      return null;
-    }
-
-    // Create membership
-    await supabase
-      .from('org_memberships')
-      .insert({ org_id: org.id, user_id: identity.supabaseUserId, role: 'admin', status: 'active' });
-
-    // Enrich JWT app_metadata so future logins include organization_id
-    await supabase.auth.admin.updateUserById(identity.supabaseUserId, {
-      app_metadata: { organization_id: String(org.id) },
-    });
-
-    console.info('[OrgDiscovery] provisioned org for existing user', { orgId: org.id, userId: identity.supabaseUserId });
-    return { id: String(org.id), name: org.name, role: 'admin', membership_id: null, created_at: org.created_at };
-  } catch (err) {
-    console.warn('[OrgDiscovery] provisionOrgInSupabase threw', err?.message);
-    return null;
-  }
 }
 
 const router = express.Router();
 router.use(authenticate);
+router.use(async (req, res, next) => {
+  try {
+    const identity = await resolveCanonicalIdentity(req, supabase);
+    if (identity.error) return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+    if (!identity.userId) return res.status(403).json({ code: 'IDENTITY_LINK_REQUIRED' });
+    return next();
+  } catch (error) {
+    console.error('[OrgDiscovery] identity resolution failed', error.message);
+    return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+  }
+});
 
 const createOrgSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -105,7 +71,7 @@ function logOrgError(req, message, error) {
 }
 
 function getAuthIdentity(req) {
-  const supabaseUserId = req.user?.supabaseUserId || req.user?.id || null;
+  const supabaseUserId = req.authUserId || null;
   const email = req.user?.email || null;
 
   if (!supabaseUserId) {
@@ -158,6 +124,11 @@ function getRequestedOrgId(req) {
   return normalizeOrgId(normalizedHeader || req.orgId || null);
 }
 
+function requestedOrgIsUnauthorized(orgRows, requestedOrgId) {
+  return Boolean(requestedOrgId) &&
+    !orgRows.some((org) => String(org.id) === String(requestedOrgId));
+}
+
 function toOrgListResponse(orgRows, requestedOrgId = null) {
   const orgs = orgRows.map((row) => ({
     id: String(row.id),
@@ -193,10 +164,13 @@ router.get('/', async (req, res) => {
   if (!identity) return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
 
   try {
-    const user = await upsertLocalUser(identity);
-    const orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
-    const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
-    return res.status(200).json({ user, ...response });
+    const orgRows = await getOrgsFromSupabase(identity.supabaseUserId);
+    const requestedOrgId = getRequestedOrgId(req);
+    if (requestedOrgIsUnauthorized(orgRows, requestedOrgId)) {
+      return res.status(403).json({ code: 'ORG_FORBIDDEN', message: 'Organization access denied' });
+    }
+    const response = toOrgListResponse(orgRows, requestedOrgId);
+    return res.status(200).json({ user: { id: identity.supabaseUserId, email: identity.email }, ...response });
   } catch (error) {
     const correlationId = logOrgError(req, 'Failed to load current user organization context', error);
     return res.status(500).json({
@@ -211,36 +185,18 @@ router.get('/bootstrap', async (req, res) => {
   const identity = getAuthIdentity(req);
   if (!identity) return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
 
-  let user = null;
-  let orgRows = [];
-
-  // Step 1: Try local PostgreSQL
   try {
-    user = await upsertLocalUser(identity);
-    orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
-  } catch (localErr) {
-    console.debug('[OrgDiscovery] local DB unavailable in bootstrap, falling back to Supabase', localErr?.message);
-  }
-
-  // Step 2: If local DB returned nothing, query Supabase org_memberships directly
-  if (!orgRows || orgRows.length === 0) {
-    const supabaseOrgs = await getOrgsFromSupabase(identity.supabaseUserId);
-    if (supabaseOrgs.length > 0) {
-      orgRows = supabaseOrgs;
+    const orgRows = await getOrgsFromSupabase(identity.supabaseUserId);
+    const requestedOrgId = getRequestedOrgId(req);
+    if (requestedOrgIsUnauthorized(orgRows, requestedOrgId)) {
+      return res.status(403).json({ code: 'ORG_FORBIDDEN', message: 'Organization access denied' });
     }
+    const response = toOrgListResponse(orgRows, requestedOrgId);
+    return res.status(200).json({ user: { id: identity.supabaseUserId }, ...response });
+  } catch (error) {
+    const correlationId = logOrgError(req, 'Failed to bootstrap organizations', error);
+    return res.status(503).json({ code: 'ORG_LOOKUP_UNAVAILABLE', correlationId });
   }
-
-  // Step 3: Still no org — auto-provision one for this existing user
-  if (!orgRows || orgRows.length === 0) {
-    const authUser = req.user || {};
-    const provisioned = await provisionOrgInSupabase(identity, authUser);
-    if (provisioned) {
-      orgRows = [provisioned];
-    }
-  }
-
-  const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
-  return res.status(200).json({ user, ...response });
 });
 
 router.get('/active', async (req, res) => {
@@ -248,9 +204,12 @@ router.get('/active', async (req, res) => {
   if (!identity) return res.status(401).json({ code: 'UNAUTHORIZED', message: 'Missing auth' });
 
   try {
-    await upsertLocalUser(identity);
-    const orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
-    const response = toOrgListResponse(orgRows, getRequestedOrgId(req));
+    const orgRows = await getOrgsFromSupabase(identity.supabaseUserId);
+    const requestedOrgId = getRequestedOrgId(req);
+    if (requestedOrgIsUnauthorized(orgRows, requestedOrgId)) {
+      return res.status(403).json({ code: 'ORG_FORBIDDEN', message: 'Organization access denied' });
+    }
+    const response = toOrgListResponse(orgRows, requestedOrgId);
     const activeOrg = response.orgs.find((org) => org.id === response.active_org_id) || null;
 
     return res.status(200).json({
@@ -274,40 +233,21 @@ router.post('/', async (req, res) => {
 
   try {
     const payload = createOrgSchema.parse(req.body || {});
-    const user = await upsertLocalUser(identity);
-
-    const created = await queryOne(
-      `WITH org AS (
-         INSERT INTO organizations (name)
-         VALUES ($1)
-         RETURNING id, name, created_at
-       ), membership AS (
-         INSERT INTO org_memberships (org_id, user_id, role)
-         SELECT org.id, $2::uuid, 'owner'
-         FROM org
-         RETURNING id, org_id, user_id, role, created_at
-       )
-       SELECT
-         org.id,
-         org.name,
-         org.created_at,
-         membership.id AS membership_id,
-         membership.role,
-         membership.user_id
-       FROM org
-       CROSS JOIN membership`,
-      [payload.name, user.id]
-    );
+    const { data: created, error } = await supabase.rpc('create_organization_with_owner', {
+      p_name: payload.name,
+      p_owner_user_id: identity.supabaseUserId,
+    });
+    if (error || !created) throw error || new Error('Organization creation returned no result');
 
     return res.status(201).json({
       org: {
         id: String(created.id),
         name: created.name,
-        title: created.name,
-        role: created.role,
+        title: created.title || created.name,
+        role: 'owner',
         membership: {
           id: String(created.membership_id),
-          role: created.role,
+          role: 'owner',
           created_at: created.created_at,
         },
       },
@@ -328,7 +268,7 @@ router.post('/select', async (req, res) => {
 
   try {
     const payload = selectOrgSchema.parse(req.body || {});
-    const orgRows = await getOrgRowsBySupabaseUserId(identity.supabaseUserId);
+    const orgRows = await getOrgsFromSupabase(identity.supabaseUserId);
     const hasOrgAccess = orgRows.some((org) => String(org.id) === payload.org_id);
 
     if (!hasOrgAccess) {
@@ -378,6 +318,8 @@ async function getOrgsForUser(userId) {
       .from('org_memberships')
       .select(`role, created_at, deleted_at, data, organizations!inner(${selectFor('organizations')})`)
       .eq('user_id', userId)
+      .eq('status', 'active')
+      .eq('organizations.status', 'active')
       .is('deleted_at', null),
     'Organization membership query'
   );
@@ -405,45 +347,22 @@ function toOrgsResponse(orgsResult, activeOrgId = null) {
 }
 
 async function createOrgForUser(userId, name) {
-   const { data: organization, error: orgError } = await withTimeout(
-    supabase
-      .from('organizations')
-      .insert({
-        name,
-        created_by: userId,
-        data: {},
-        status: 'active',
-      })
-      .select(selectFor('organizations'))
-      .single(),
-    'Organization creation'
-  );
-
-  if (orgError) {
-    throw orgError;
-  }
-
-  const { error: membershipError } = await withTimeout(
-    supabase
-      .from('org_memberships')
-      .insert({
-        org_id: organization.id,
-        user_id: userId,
-        role: 'admin',
-        data: {},
-      }),
-    'Membership creation'
-  );
-
-  if (membershipError) {
-    throw membershipError;
-  }
-
+  const { data: organization, error } = await supabase.rpc('create_organization_with_owner', {
+    p_name: name,
+    p_owner_user_id: userId,
+  });
+  if (error || !organization) throw error || new Error('Organization creation returned no result');
   return {
     org: {
       id: String(organization.id),
       name: organization.name || name,
-       title: organization.title ?? (organization.name || name),
+      title: organization.title ?? (organization.name || name),
+      role: 'owner',
+      membership: {
+        id: String(organization.membership_id),
+        role: 'owner',
+        created_at: organization.created_at,
+      },
     },
   };
 }

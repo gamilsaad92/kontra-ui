@@ -4,8 +4,10 @@ const { z, ZodError } = require('../lib/zod');
 const authenticate = require('../middlewares/authenticate');
 const { orgContext } = require('../middleware/orgContext');
 const { supabase } = require('../db');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 
 const router = express.Router();
+router.use(skipPublicDealRoomRouter);
 
 const makeReference = () => `PAY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const authenticate = require('../middlewares/authenticate');
+const skipPublicDealRoomRouter = require('../middlewares/skipPublicDealRoomRouter');
 const {
   createPool,
   recordInvestment,
@@ -12,6 +13,7 @@ const asyncHandler = require('../lib/asyncHandler');
 
 const router = express.Router();
 
+router.use(skipPublicDealRoomRouter);
 router.use(authenticate);
 
 function wrapRouter(routerInstance) {

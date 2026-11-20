@@ -8,7 +8,7 @@ jest.mock("../../lib/workflowPacks", () => ({
 }));
 
 jest.mock("../../lib/inviteUtils", () => ({
-  getRoomAuthHeaders: jest.fn(() => ({ "x-owner-write-token": "test-owner-token" })),
+  getRoomAuthHeaders: jest.fn(() => ({})),
 }));
 
 jest.mock("../../lib/apiBase", () => ({ API_BASE: "/api" }));

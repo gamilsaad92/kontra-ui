@@ -1,4 +1,4 @@
-import { resolveApiRequestCredentials } from "./apiRequestCredentials.mjs";
+import { resolveApiRequestCredentials, stripLegacyOwnerCredentials } from "./apiRequestCredentials.mjs";
 import { resolveApiBase } from "./apiBaseRouting.mjs";
 
 const env = import.meta.env || {};
@@ -18,7 +18,8 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function' && !wind
       API_BASE,
       window.location.href,
     );
-    return nativeFetch(input, credentials ? { ...init, credentials: init.credentials || credentials } : init);
+    const safeInit = stripLegacyOwnerCredentials(init);
+    return nativeFetch(input, credentials ? { ...safeInit, credentials: safeInit.credentials || credentials } : safeInit);
   };
   window.__kontraApiCredentialsFetch = true;
 }

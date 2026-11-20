@@ -14,7 +14,6 @@ const localAuth = require('../lib/localAuth');
 const isProduction = process.env.NODE_ENV === 'production';
 const devAccessToken = isProduction ? null : (process.env.DEV_ACCESS_TOKEN?.trim() || null);
 const devUserId = process.env.DEV_USER_ID?.trim() || 'dev-user';
-const devOrgId = process.env.DEV_ORG_ID?.trim() || 'a0000000-0000-0000-0000-000000000001';
 const devRole = process.env.DEV_USER_ROLE?.trim() || 'lender_admin';
 
 // Lazy-load Supabase only when needed (and only if real credentials exist)
@@ -62,17 +61,24 @@ function portalFromRole(role) {
   return 'lender';
 }
 
-function applyUser(req, { id, email, role, portal, org_id }) {
-  req.user = { id, email, supabaseUserId: id };
+function applyUser(req, { id, email, role, portal, provider, subject, authUserId }) {
+  req.authContext = { verified: true, provider, subject: String(subject || id), authUserId: authUserId || null };
+  req.authProvider = provider;
+  req.authSubject = String(subject || id);
+  req.authUserId = authUserId || null;
+  req.user = { id, email, supabaseUserId: authUserId || null, authProvider: provider };
   req.role = role || 'member';
   req.appRole = req.role;
   req.portal = portal || portalFromRole(req.role);
-  req.orgId = org_id || null;
-  req.organizationId = req.orgId;
-  req.tenant_id = req.orgId;
+  req.membership = null;
+  req.membershipRole = null;
+  req.orgId = null;
+  req.organizationId = null;
+  req.tenant_id = null;
 }
 
 module.exports = async function authenticate(req, res, next) {
+  if (req.authContext?.verified) return next();
   // Public deal-room endpoints (/api/public/...) use their own auth scheme:
   // owner write tokens and invite session tokens managed by getRoomAccessContext.
   // The JWT bearer authenticate middleware must never intercept those routes so
@@ -89,6 +95,12 @@ module.exports = async function authenticate(req, res, next) {
   req.role = 'member';
   req.appRole = 'member';
   req.portal = 'lender';
+  req.authContext = null;
+  req.authProvider = null;
+  req.authSubject = null;
+  req.authUserId = null;
+  req.membership = null;
+  req.membershipRole = null;
   req.orgId = null;
   req.organizationId = null;
   req.tenant_id = null;
@@ -101,13 +113,13 @@ module.exports = async function authenticate(req, res, next) {
 
   // ── 1. Dev bypass token ───────────────────────────────────────────────────
   if (devAccessToken && token === devAccessToken) {
-    const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'] || devOrgId;
     applyUser(req, {
       id: devUserId,
       email: 'dev@local.test',
       role: devRole,
       portal: portalFromRole(devRole),
-      org_id: Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId,
+      provider: 'dev',
+      subject: devUserId,
     });
     return next();
   }
@@ -115,15 +127,13 @@ module.exports = async function authenticate(req, res, next) {
   // ── 2. Local JWT verification (primary path) ──────────────────────────────
   try {
     const payload = localAuth.verifyAccessToken(token);
-    // Allow X-Org-Id header to override the token's org (multi-org users)
-    const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'] || null;
-    const orgId = (Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId) || payload.org_id;
     applyUser(req, {
       id: payload.sub,
       email: payload.email,
       role: payload.role,
       portal: payload.portal,
-      org_id: orgId,
+      provider: 'local',
+      subject: payload.sub,
     });
     return next();
   } catch (jwtErr) {
@@ -141,15 +151,16 @@ module.exports = async function authenticate(req, res, next) {
       if (error || !authUser) {
         return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
       }
-      const jwtClaims = authUser.app_metadata ?? authUser.user_metadata ?? {};
-      const role = jwtClaims.app_role || jwtClaims.role || 'member';
-      const headerOrgId = req.headers['x-organization-id'] || req.headers['x-org-id'];
-      const orgId = (Array.isArray(headerOrgId) ? headerOrgId[0] : headerOrgId)
-        || jwtClaims.org_id
-        || authUser.app_metadata?.organization_id
-        || authUser.user_metadata?.organization_id
-        || null;
-      applyUser(req, { id: authUser.id, email: authUser.email, role, portal: jwtClaims.portal, org_id: orgId });
+      const claims = authUser.app_metadata || {};
+      applyUser(req, {
+        id: authUser.id,
+        email: authUser.email,
+        role: claims.app_role || claims.role || 'member',
+        portal: claims.portal,
+        provider: 'supabase',
+        subject: authUser.id,
+        authUserId: authUser.id,
+      });
       return next();
     } catch (err) {
       console.error('[Auth] Supabase validation error:', err.message);

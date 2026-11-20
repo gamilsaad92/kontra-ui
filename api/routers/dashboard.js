@@ -25,45 +25,8 @@ const EMPTY_OVERVIEW = {
   },
 };
 
-const FALLBACK_OVERVIEW = {
-  totals: {
-    totalLoans: 1280,
-    delinquencyRate: 0.038,
-    avgInterestRate: 0.052,
-    outstandingPrincipal: 52_500_000,
-  },
-  riskScore: 72,
-  collections: {
-    monthToDateCollected: 1_845_000,
-    outstanding: 675_000,
-    delinquentCount: 18,
-    promisesToPay: 6,
-    lastPaymentAt: null,
-  },
-};
-
 function resolveOrgId(req) {
-  // 1. Explicit header (highest priority)
-  const header =
-    req.headers['x-organization-id'] || req.headers['X-Organization-Id'] || req.headers['x-org-id'];
-  if (header) {
-    const raw = Array.isArray(header) ? header[0] : header;
-    const parsed = parseInt(raw, 10);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  // 2. Set by authenticate middleware (may be a string like "20")
-  const middlewareOrgId = req.orgId || req.organizationId || req.tenant_id;
-  if (middlewareOrgId != null && middlewareOrgId !== '') {
-    const parsed = parseInt(String(middlewareOrgId), 10);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  // 3. JWT user metadata
-  const metaOrgId = req.user?.organization_id || req.user?.app_metadata?.organization_id;
-  if (metaOrgId != null) {
-    const parsed = parseInt(String(metaOrgId), 10);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-  return null;
+  return req.orgId || null;
 }
 
 function toNumber(value) {
@@ -85,29 +48,19 @@ function average(sum, count, precision = 3) {
 }
 
 async function fetchLoans(orgId) {
-  // First try with org filter; if it returns nothing, fall back to all loans
-  // (org IDs are not yet consistently set across all environments)
+  if (!orgId) throw new Error('Verified organization context is required');
   const baseSelect = 'id, amount, outstanding_principal, interest_rate, status, risk_score, days_late, data';
-  if (orgId) {
-    const { data: orgData, error: orgErr } = await replica
-      .from('loans')
-      .select(baseSelect)
-      .eq('organization_id', orgId);
-    if (!orgErr && orgData && orgData.length > 0) return orgData;
-  }
-  // Fall back to full portfolio
-  const { data, error } = await replica.from('loans').select(baseSelect);
+  const { data, error } = await replica.from('loans').select(baseSelect).eq('organization_id', orgId);
   if (error) throw error;
   return data || [];
 }
 
 async function fetchCollections(orgId) {
+  if (!orgId) throw new Error('Verified organization context is required');
   let query = replica
     .from('collections')
     .select('amount, status, due_date, updated_at, paid_at, promise_date');
-  if (orgId) {
-    query = query.eq('organization_id', orgId);
-  }
+  query = query.eq('organization_id', orgId);
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
@@ -115,7 +68,8 @@ async function fetchCollections(orgId) {
 
 // GET /api/dashboard-layout?key=home
 router.get('/', asyncHandler(async (req, res) => {
-  const userId = req.user.id;                        // make sure you have an auth middleware that sets req.user
+  const userId = req.authUserId;
+  if (!userId) return res.status(403).json({ code: 'AUTH_REQUIRED' });
   const key    = req.query.key || 'home';
 
   const { data, error } = await supabase
@@ -135,7 +89,8 @@ router.get('/', asyncHandler(async (req, res) => {
 
 // POST /api/dashboard-layout
 router.post('/', asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.authUserId;
+  if (!userId) return res.status(403).json({ code: 'AUTH_REQUIRED' });
   const { key, layout } = req.body;
 
   const { data, error } = await supabase
@@ -158,6 +113,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 router.get('/summary', asyncHandler(async (req, res) => {
   const orgId = req.orgId;
+  if (!orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
 
   const [paymentsCount, inspectionsCount, complianceCount, workQueueTop5Result, aiBriefResult] = await Promise.all([
     replica.from('ai_reviews').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('type', 'payment').eq('status', 'needs_review'),
@@ -219,10 +175,11 @@ router.get('/summary', asyncHandler(async (req, res) => {
 
 router.get('/overview', asyncHandler(async (req, res) => {
   const orgId = resolveOrgId(req);
-  const cacheKey = `dashboard:overview:${orgId || 'all'}`;
+  if (!orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
+  const cacheKey = `dashboard:overview:v2:${orgId}`;
   const cached = await cache.get(cacheKey);
   if (cached) return res.json(cached);
-  const overview = JSON.parse(JSON.stringify(FALLBACK_OVERVIEW));
+  const overview = JSON.parse(JSON.stringify(EMPTY_OVERVIEW));
 
   try {
     const loans = await fetchLoans(orgId);
@@ -257,6 +214,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
       return;
     }
     console.error('Dashboard overview loan query failed', error);
+    return res.status(503).json({ message: 'Dashboard overview is unavailable' });
   }
 
   try {
@@ -312,6 +270,7 @@ router.get('/overview', asyncHandler(async (req, res) => {
       return;
     }
     console.error('Dashboard overview collections query failed', error);
+    return res.status(503).json({ message: 'Dashboard overview is unavailable' });
   }
 
   const payload = { overview };
@@ -334,6 +293,7 @@ router.get('/marketplace', asyncHandler(async (req, res) => {
   }
 
   const orgId = resolveOrgId(req);
+  if (!orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
   try {
     const baseFields = [
       'id',
@@ -353,9 +313,7 @@ router.get('/marketplace', asyncHandler(async (req, res) => {
       .eq('compliance_hold', false)
       .order('updated_at', { ascending: false });
 
-    if (orgId) {
-      query = query.eq('organization_id', orgId);
-    }
+    query = query.eq('organization_id', orgId);
 
     const { data, error } = await query.limit(100);
     if (error) {

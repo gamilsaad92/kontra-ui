@@ -13,6 +13,8 @@
  */
 
 const express = require('express');
+const requireMembershipRole = require('../middlewares/requireMembershipRole');
+const { UUID_RE } = require('../middlewares/resolveCanonicalIdentity');
 
 const router = express.Router();
 
@@ -20,15 +22,7 @@ const router = express.Router();
 const { supabase: adminSupabase } = require('../db');
 
 // ── Role permission sets ───────────────────────────────────────
-const LENDER_ROLES = ['platform_admin', 'lender_admin', 'servicer', 'asset_manager'];
 const VALID_APP_ROLES = ['platform_admin', 'lender_admin', 'servicer', 'asset_manager', 'investor', 'borrower'];
-
-function requireLenderRole(req, res, next) {
-  if (!LENDER_ROLES.includes(req.role)) {
-    return res.status(403).json({ error: 'Forbidden: lender role required' });
-  }
-  next();
-}
 
 // Maps legacy role names (org_memberships.role) → new app_role values
 const LEGACY_ROLE_MAP = {
@@ -97,7 +91,7 @@ router.get('/me', async (req, res) => {
 });
 
 // ── GET /api/onboarding/members ─────────────────────────────────
-router.get('/members', requireLenderRole, async (req, res) => {
+router.get('/members', requireMembershipRole('owner', 'admin'), async (req, res) => {
   try {
     const orgId = req.orgId;
     if (!orgId) return res.status(400).json({ error: 'Org context missing' });
@@ -120,7 +114,7 @@ router.get('/members', requireLenderRole, async (req, res) => {
 // Body: { email, full_name, app_role, org_id? }
 // Creates a Supabase auth user, profile, and org membership.
 // Supabase sends the invite email automatically.
-router.post('/invite', requireLenderRole, async (req, res) => {
+router.post('/invite', requireMembershipRole('owner', 'admin'), async (req, res) => {
   try {
     const { email, full_name, app_role, org_id } = req.body;
 
@@ -131,15 +125,14 @@ router.post('/invite', requireLenderRole, async (req, res) => {
       return res.status(400).json({ error: `Invalid app_role. Valid: ${VALID_APP_ROLES.join(', ')}` });
     }
 
-    // Only lender_admin/platform_admin can create other admins
+    const targetOrgId = org_id ?? req.orgId;
+    if (!targetOrgId) return res.status(400).json({ error: 'org_id required' });
+    if (String(targetOrgId) !== String(req.orgId)) {
+      return res.status(403).json({ code: 'ORG_FORBIDDEN' });
+    }
     if (['platform_admin', 'lender_admin'].includes(app_role) && req.role !== 'platform_admin') {
       return res.status(403).json({ error: 'Only platform_admin can create admin users' });
     }
-
-    const targetOrgId = org_id ?? req.orgId;
-    if (!targetOrgId) return res.status(400).json({ error: 'org_id required' });
-    // organizations.id is BIGINT — ensure it's a number for the RPC call
-    const numericOrgId = Number(targetOrgId);
 
     // 1. Create (or invite) auth user via service role
     const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
@@ -157,7 +150,7 @@ router.post('/invite', requireLenderRole, async (req, res) => {
     if (authUserId) {
       await adminSupabase.rpc('onboard_user', {
         p_user_id:    authUserId,
-        p_org_id:     numericOrgId,
+        p_org_id:     targetOrgId,
         p_app_role:   app_role,
         p_full_name:  full_name ?? null,
         p_email:      email,
@@ -179,10 +172,10 @@ router.post('/invite', requireLenderRole, async (req, res) => {
 // ── POST /api/onboarding/assign-role ────────────────────────────
 // Body: { user_id, app_role }
 // Updates an existing org member's role and refreshes their JWT claims.
-router.post('/assign-role', requireLenderRole, async (req, res) => {
+router.post('/assign-role', requireMembershipRole('owner', 'admin'), async (req, res) => {
   try {
     const { user_id, app_role } = req.body;
-    if (!user_id || !app_role) {
+    if (!user_id || !UUID_RE.test(String(user_id)) || !app_role) {
       return res.status(400).json({ error: 'user_id and app_role are required' });
     }
     if (!VALID_APP_ROLES.includes(app_role)) {
@@ -193,19 +186,23 @@ router.post('/assign-role', requireLenderRole, async (req, res) => {
     }
 
     const orgId = req.orgId;
+    if (!orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
 
-    const { error } = await adminSupabase
+    const { data: updatedMember, error } = await adminSupabase
       .from('organization_members')
       .update({ app_role, updated_at: new Date().toISOString() })
       .eq('user_id', user_id)
-      .eq('organization_id', orgId);
+      .eq('organization_id', orgId)
+      .select('user_id, organization_id, app_role')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!updatedMember) return res.status(404).json({ error: 'Organization member not found' });
 
     // Log the role change to audit_logs
     await adminSupabase.from('audit_logs').insert({
       organization_id: orgId,
-      actor_id:        req.user?.id,
+      actor_id:        req.authUserId,
       actor_role:      req.role,
       entity_type:     'organization_members',
       entity_id:       user_id,

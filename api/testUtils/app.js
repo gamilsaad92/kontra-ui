@@ -19,6 +19,17 @@ const resetSupabase = () => {
       id: 'user-1',
       user_metadata: { organization_id: 'org-1' },
     });
+    createClient.__setTable('org_memberships', {
+      records: [{
+        id: 'membership-1',
+        org_id: '00000000-0000-0000-0000-000000000001',
+        user_id: 'user-1',
+        role: 'admin',
+        status: 'active',
+        deleted_at: null,
+        created_at: '2026-01-01T00:00:00Z',
+      }],
+    });
     createClient.__setTable('organization_members', {
       maybeSingle: { role: 'member' },
     });

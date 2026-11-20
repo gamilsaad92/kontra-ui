@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../../lib/apiBase";
+import { setOwnerSessionHint } from "../../lib/inviteUtils";
 import PublicLayout from "./PublicLayout";
 
 export default function CheckoutSuccessPage() {
   const [searchParams] = useSearchParams();
   const property   = searchParams.get("property") || "";
   const plan       = searchParams.get("plan") || "deal";
-  const ownerToken = searchParams.get("owner_token") || "";
   const isTrial = searchParams.get("trial") === "true";
   const [ownerExchangeError, setOwnerExchangeError] = useState("");
   const isStagingTrial = isTrial
@@ -18,6 +18,12 @@ export default function CheckoutSuccessPage() {
   const nameParam  = searchParams.get("name") || "";
 
   useEffect(() => {
+    if (window.location.search.includes("owner_token=") || window.location.search.includes("owner_exchange_token=")) {
+      const safe = new URL(window.location.href);
+      safe.searchParams.delete("owner_token");
+      safe.searchParams.delete("owner_exchange_token");
+      window.history.replaceState(window.history.state, "", `${safe.pathname}${safe.search}${safe.hash}`);
+    }
     if (isStagingTrial && property) {
       const key = `kontra_trial_owner_exchange_${property}`;
       let exchangeToken = "";
@@ -25,11 +31,6 @@ export default function CheckoutSuccessPage() {
         exchangeToken = sessionStorage.getItem(key) || "";
         sessionStorage.removeItem(key);
       } catch { /* token is discarded if tab storage is unavailable */ }
-      if (window.location.search.includes("owner_token=")) {
-        const safe = new URL(window.location.href);
-        safe.searchParams.delete("owner_token");
-        window.history.replaceState(window.history.state, "", `${safe.pathname}${safe.search}${safe.hash}`);
-      }
       if (!exchangeToken) {
         setOwnerExchangeError("Secure owner access could not be established. Contact support with this room name.");
         return;
@@ -42,16 +43,16 @@ export default function CheckoutSuccessPage() {
       }).then(async response => {
         if (!response.ok) throw new Error("Owner session exchange failed");
         // Non-secret UI hint only. The API verifies the HttpOnly cookie for every operation.
-        localStorage.setItem(`kontra_owner_token_${property}`, "room-owner-session");
+        setOwnerSessionHint(property);
       }).catch(() => {
         setOwnerExchangeError("Secure owner access could not be established. Contact support with this room name.");
       });
       return;
     }
-    if (property && ownerToken) {
-      try { localStorage.setItem(`kontra_owner_token_${property}`, ownerToken); } catch { /* storage unavailable */ }
+    if (property && !isStagingTrial) {
+      setOwnerExchangeError("Verify your owner email from My Deal Rooms to open this workspace.");
     }
-  }, [property, ownerToken, isStagingTrial]);
+  }, [property, isTrial, isStagingTrial]);
 
   const planLabel     = plan === "deal" ? "Deal Room" : "Kontra plan";
   const propertyLabel = nameParam
@@ -134,10 +135,10 @@ export default function CheckoutSuccessPage() {
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
             {property && (
-              <Link to={`/deal-room/${property}?role=owner`}
+              <Link to={isTrial && isStagingTrial ? `/deal-room/${property}?role=owner` : "/my-deal-rooms"}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
                 style={{ background: "#800020" }}>
-                Open My Deal Room →
+                {isTrial && isStagingTrial ? "Open My Deal Room →" : "Verify owner email →"}
               </Link>
             )}
             <a href="mailto:hello@kontraplatform.com"
