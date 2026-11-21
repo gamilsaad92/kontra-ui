@@ -119,6 +119,21 @@ function hasNewEvidenceSinceDismissal(candidate, dismissedTask) {
   return Boolean(candidate?.id && candidateAt > taskTimestamp(dismissedTask));
 }
 
+function checklistCompletionEvidence(item) {
+  const label = item.label || item.name || item.section || item.id || 'required document';
+  if (item.documentEvidenceType === 'upload_receipt') {
+    return `Required document "${label}" was stored and processed in its checklist section. Receipt satisfies this item; its contents were not AI-validated.`;
+  }
+  if (item.documentEvidenceType === 'ai_classification_match'
+    && item.documentAiClassificationValidated === true) {
+    return `Required document "${label}" matched the checklist classification and passed classification validation; this does not assert substantive content verification.`;
+  }
+  if (item.documentEvidenceType === 'legacy_classification') {
+    return `Required document "${label}" matched using legacy classification evidence; AI validation is not asserted.`;
+  }
+  return `Required document "${label}" was recorded as received by the checklist projection; AI validation is not asserted.`;
+}
+
 function buildChecklistRequirementPlan({
   room = {},
   checklist = room.checklist_items || [],
@@ -130,7 +145,7 @@ function buildChecklistRequirementPlan({
   const projectedItems = projectDocumentChecklist(checklist, documentAnalyses).items;
   const currentStage = room.deal_stage || null;
   const missing = new Map();
-  const satisfied = new Set();
+  const satisfied = new Map();
 
   for (const item of projectedItems) {
     if (!isRequired(item.required)) continue;
@@ -149,7 +164,11 @@ function buildChecklistRequirementPlan({
         candidate: latestRequirementCandidate(item, documentAnalyses),
       });
     } else if (item.documentReceived) {
-      satisfied.add(sourceId);
+      satisfied.set(sourceId, {
+        documentEvidenceType: item.documentEvidenceType || null,
+        documentAiClassificationValidated: item.documentAiClassificationValidated === true,
+        completionEvidence: checklistCompletionEvidence(item),
+      });
     }
   }
 
@@ -185,14 +204,20 @@ function buildChecklistRequirementPlan({
     const label = item.label || item.name || item.section || item.id || 'required document';
     const needsReview = item.documentState === 'needs_review';
     const evidence = [needsReview
-      ? `Current upload for "${label}" is not validated as the required document.`
+      ? item.ai === false
+        ? `The current upload for "${label}" has not been confirmed as a stored, successfully processed receipt in its required checklist section.`
+        : `Current upload for "${label}" is not validated as the required document.`
       : `Active workflow checklist item "${label}" is required but missing.`];
     if (stage) evidence.push(`Workflow stage: ${stage}.`);
     generatedTasks.push({
       taskType: 'missing_document',
-      title: needsReview ? `Review or replace ${label}` : `Upload ${label}`,
+      title: needsReview
+        ? item.ai === false ? `Complete upload: ${label}` : `Review or replace ${label}`
+        : `Upload ${label}`,
       description: needsReview
-        ? `The current upload for "${label}" has not passed document validation or its classification does not match. Review it or upload a correctly classified document.${stage ? ` It is assigned to the ${stage} stage.` : ''}`
+        ? item.ai === false
+          ? `The current upload for "${label}" has not been confirmed as a stored, successfully processed receipt in its required checklist section. Retry or replace the upload.${stage ? ` It is assigned to the ${stage} stage.` : ''}`
+          : `The current upload for "${label}" has not passed document validation or its classification does not match. Review it or upload a correctly classified document.${stage ? ` It is assigned to the ${stage} stage.` : ''}`
         : `The active workflow checklist marks "${label}" as required.${stage ? ` It is assigned to the ${stage} stage.` : ''} Upload it in the Documents tab.`,
       ownerType: 'human',
       ownerRole: assignedOwnerRole(item, roleConfig),
@@ -213,10 +238,14 @@ function buildChecklistRequirementPlan({
     .filter(task => checklistTaskBaseSourceId(task))
     .filter(task => !['dismissed', 'completed'].includes(task.status))
     .filter(task => !missingIds.has(checklistTaskBaseSourceId(task)))
-    .map(task => ({
-      task,
-      status: satisfied.has(checklistTaskBaseSourceId(task)) ? 'completed' : 'dismissed',
-    }));
+    .map(task => {
+      const evidence = satisfied.get(checklistTaskBaseSourceId(task));
+      return {
+        task,
+        status: evidence ? 'completed' : 'dismissed',
+        ...(evidence || {}),
+      };
+    });
 
   return { create: generatedTasks, resolve, missingSourceIds: [...missingIds] };
 }

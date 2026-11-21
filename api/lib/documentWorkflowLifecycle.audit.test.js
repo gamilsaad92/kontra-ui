@@ -10,7 +10,9 @@ const requirement = {
   section: 'title_report',
   label: 'Title Report',
   required: true,
+  ai: true,
 };
+const receiptRequirement = { ...requirement, ai: false };
 
 const openTask = {
   id: 'title-report-task',
@@ -30,6 +32,33 @@ function planFor(analyses, existingTasks = [openTask]) {
     documentAnalyses: analyses,
     existingTasks,
   });
+}
+
+function planForRequirement(analyses, checklistItem, existingTasks = [openTask]) {
+  return buildChecklistRequirementPlan({
+    room: { deal_stage: 'due_diligence' },
+    checklist: [checklistItem],
+    activeAnalyses: selectActiveDocumentVersions(analyses),
+    documentAnalyses: analyses,
+    existingTasks,
+  });
+}
+
+function receiptAnalysis(processingStatus, overrides = {}) {
+  return {
+    id: `receipt-title-report-${processingStatus}`,
+    section: 'title_report',
+    filename: 'Title Report.pdf',
+    storage_path: 'deal-rooms/synthetic/title-report.pdf',
+    processing_status: processingStatus,
+    is_active: true,
+    created_at: '2026-11-01T00:00:00.000Z',
+    analysis: {
+      pending: ['uploaded', 'processing', 'retrying', 'analyzing'].includes(processingStatus),
+      summary: 'Document received.',
+    },
+    ...overrides,
+  };
 }
 
 function analysis(processingStatus, overrides = {}) {
@@ -57,11 +86,14 @@ function analysis(processingStatus, overrides = {}) {
 
 describe('synthetic end-to-end document workflow audit', () => {
   test('a validated active required document completes its open missing-document task', () => {
-    const plan = planFor([analysis('extracted', {
-      analysis: { pending: false, doc_type: 'title_report' },
-    })]);
+    const plan = planFor([analysis('extracted')]);
 
-    expect(plan.resolve).toEqual([{ task: openTask, status: 'completed' }]);
+    expect(plan.resolve).toEqual([expect.objectContaining({
+      task: openTask,
+      status: 'completed',
+      documentEvidenceType: 'ai_classification_match',
+      completionEvidence: expect.stringContaining('passed classification validation'),
+    })]);
     expect(plan.create).toEqual([]);
   });
 
@@ -93,11 +125,17 @@ describe('synthetic end-to-end document workflow audit', () => {
         },
       },
     });
-    const projection = projectDocumentChecklist([requirement], [mismatchedDocument]).items[0];
+    const documentProjection = projectDocumentChecklist([requirement], [mismatchedDocument]);
+    const projection = documentProjection.items[0];
     const plan = planFor([mismatchedDocument]);
 
     expect(projection.documentReceived).toBe(false);
     expect(projection.documentState).toBe('needs_review');
+    expect(documentProjection.activeDocumentStates[0]).toMatchObject({
+      documentEvidenceType: 'classification_mismatch',
+      documentValidationStatus: 'mismatch',
+      documentAiClassificationValidated: true,
+    });
     expect(plan.resolve).toEqual([]);
     expect(plan.create).toEqual([]);
   });
@@ -178,7 +216,11 @@ describe('synthetic end-to-end document workflow audit', () => {
     const plan = planFor(versions, [openTask]);
 
     expect(plan.create).toEqual([]);
-    expect(plan.resolve).toEqual([{ task: openTask, status: 'completed' }]);
+    expect(plan.resolve).toEqual([expect.objectContaining({
+      task: openTask,
+      status: 'completed',
+      documentEvidenceType: 'ai_classification_match',
+    })]);
   });
 
   test('a successful replacement becomes the current validated evidence', () => {
@@ -205,7 +247,11 @@ describe('synthetic end-to-end document workflow audit', () => {
     ]);
     const plan = planFor(activeVersions, [openTask]);
 
-    expect(plan.resolve).toEqual([{ task: openTask, status: 'completed' }]);
+    expect(plan.resolve).toEqual([expect.objectContaining({
+      task: openTask,
+      status: 'completed',
+      documentEvidenceType: 'ai_classification_match',
+    })]);
   });
 
   test('evidence disappearance creates a new task cycle without mutating completion history', () => {
@@ -261,5 +307,157 @@ describe('synthetic end-to-end document workflow audit', () => {
     expect(plan.create).toHaveLength(1);
     expect(plan.create[0].sourceId).toBe(`${openTask.source_id}:evidence:new-failed-version`);
     expect(dismissedTask.status).toBe('dismissed');
+  });
+
+  describe.each([
+    ['AI-classified', requirement, analysis, 'ai_classification_match'],
+    ['receipt-only', receiptRequirement, receiptAnalysis, 'upload_receipt'],
+  ])('%s checklist requirement', (_label, checklistItem, makeAnalysis, expectedEvidenceType) => {
+    test('successful processing satisfies the checklist with explicit evidence provenance', () => {
+      const uploaded = makeAnalysis('extracted');
+      const documentProjection = projectDocumentChecklist([checklistItem], [uploaded]);
+      const projected = documentProjection.items[0];
+      const plan = planForRequirement([uploaded], checklistItem);
+
+      expect(projected).toMatchObject({
+        documentState: 'received',
+        documentReceived: true,
+        documentEvidenceType: expectedEvidenceType,
+        documentAiClassificationValidated: expectedEvidenceType === 'ai_classification_match',
+      });
+      expect(plan.resolve).toEqual([expect.objectContaining({
+        task: openTask,
+        status: 'completed',
+        documentEvidenceType: expectedEvidenceType,
+      })]);
+      expect(plan.resolve[0].completionEvidence).toContain(
+        expectedEvidenceType === 'upload_receipt'
+          ? 'contents were not AI-validated'
+          : 'passed classification validation',
+      );
+
+      if (expectedEvidenceType === 'upload_receipt') {
+        expect(uploaded.analysis.document_classification).toBeUndefined();
+        expect(projected.documentValidationStatus).toBe('not_required');
+        expect(documentProjection.activeDocumentStates[0]).toMatchObject({
+          documentEvidenceType: 'upload_receipt',
+          documentValidationStatus: 'not_required',
+          documentAiClassificationValidated: false,
+        });
+      } else {
+        expect(projected.documentValidationStatus).toBe('classification_validated');
+      }
+    });
+
+    test.each(['uploaded', 'processing'])(
+      '%s uploads do not satisfy the checklist or complete its task',
+      status => {
+        const uploaded = makeAnalysis(status);
+        const plan = planForRequirement([uploaded], checklistItem);
+        const projected = projectDocumentChecklist([checklistItem], [uploaded]).items[0];
+
+        expect(projected.documentReceived).toBe(false);
+        expect(plan.resolve).toEqual([]);
+      },
+    );
+
+    test('failed uploads do not satisfy the checklist or complete its task', () => {
+      const failed = makeAnalysis('failed');
+      const plan = planForRequirement([failed], checklistItem);
+      const projected = projectDocumentChecklist([checklistItem], [failed]).items[0];
+
+      expect(projected.documentReceived).toBe(false);
+      expect(projected.documentValidationStatus).toBe('failed');
+      expect(plan.resolve).toEqual([]);
+    });
+
+    test.each(['processing', 'failed'])(
+      'a %s replacement preserves the prior successful evidence',
+      replacementStatus => {
+        const prior = makeAnalysis('extracted', {
+          id: 'previous-successful-version',
+          is_active: false,
+          superseded_at: '2026-11-02T00:00:00.000Z',
+          created_at: '2026-10-31T00:00:00.000Z',
+        });
+        const replacement = makeAnalysis(replacementStatus, {
+          id: 'failed-replacement',
+          created_at: '2026-11-02T00:00:00.000Z',
+        });
+        const plan = planForRequirement([prior, replacement], checklistItem);
+        const projected = projectDocumentChecklist(
+          [checklistItem],
+          [prior, replacement],
+        ).items[0];
+
+        expect(projected).toMatchObject({
+          documentReceived: true,
+          documentEvidenceType: expectedEvidenceType,
+        });
+        expect(plan.resolve).toEqual([expect.objectContaining({
+          status: 'completed',
+          documentEvidenceType: expectedEvidenceType,
+        })]);
+      },
+    );
+
+    test('a successful replacement becomes the current checklist evidence', () => {
+      const prior = makeAnalysis('extracted', {
+        id: 'previous-successful-version',
+        is_active: false,
+        superseded_at: '2026-11-02T00:00:00.000Z',
+        created_at: '2026-10-31T00:00:00.000Z',
+      });
+      const replacement = makeAnalysis('extracted', {
+        id: 'successful-replacement',
+        created_at: '2026-11-03T00:00:00.000Z',
+      });
+      const projected = projectDocumentChecklist(
+        [checklistItem],
+        [prior, replacement],
+      );
+      const plan = planForRequirement([prior, replacement], checklistItem);
+
+      expect(projected.activeAnalyses.map(item => item.id)).toEqual(['successful-replacement']);
+      expect(projected.items[0]).toMatchObject({
+        documentReceived: true,
+        documentEvidenceType: expectedEvidenceType,
+      });
+      expect(plan.resolve).toEqual([expect.objectContaining({
+        status: 'completed',
+        documentEvidenceType: expectedEvidenceType,
+      })]);
+    });
+
+    test('evidence disappearance opens a new task cycle without changing completed history', () => {
+      const completed = { ...completedTask };
+      const failed = makeAnalysis('failed');
+      const plan = planForRequirement([failed], checklistItem, [completed]);
+
+      expect(plan.create).toHaveLength(1);
+      expect(plan.create[0].sourceId).toBe(`${openTask.source_id}:cycle:${completed.id}`);
+      expect(completed.status).toBe('completed');
+    });
+  });
+
+  test('receipt-only evidence requires storage and an exact checklist section', () => {
+    const missingStorage = receiptAnalysis('extracted', { storage_path: null });
+    const wrongSection = receiptAnalysis('extracted', { section: 'another_section' });
+
+    for (const uploaded of [missingStorage, wrongSection]) {
+      const projected = projectDocumentChecklist([receiptRequirement], [uploaded]).items[0];
+      expect(projected.documentReceived).toBe(false);
+      expect(projected.documentAiClassificationValidated).toBe(false);
+    }
+  });
+
+  test('receipt evidence does not reopen or rewrite a dismissed task', () => {
+    const dismissed = { ...openTask, status: 'dismissed' };
+    const receipt = receiptAnalysis('extracted');
+    const plan = planForRequirement([receipt], receiptRequirement, [dismissed]);
+
+    expect(plan.create).toEqual([]);
+    expect(plan.resolve).toEqual([]);
+    expect(dismissed.status).toBe('dismissed');
   });
 });

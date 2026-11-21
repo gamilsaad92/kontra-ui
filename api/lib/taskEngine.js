@@ -166,9 +166,9 @@ async function getTaskRoomContext(propertyId, includeReadinessFields = false) {
 
 async function loadTaskDocumentAnalyses(propertyId) {
   const selects = [
-    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at, superseded_by, post_completion',
-    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
-    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at, storage_path, processing_status, is_active, superseded_at, superseded_by, post_completion',
+    'id, section, filename, analysis, created_at, storage_path, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, storage_path, processing_status',
     'id, section, filename, analysis, created_at',
   ];
   let lastError = null;
@@ -328,14 +328,23 @@ async function reconcileRecordRemediationTasks(propertyId, recordState, existing
 
 async function reconcileChecklistRequirementTasks(propertyId, plan) {
   const resolved = [];
-  for (const { task, status } of plan.resolve) {
+  for (const { task, status, completionEvidence } of plan.resolve) {
     const now = new Date().toISOString();
+    const updates = {
+      status,
+      resolved_at: now,
+      updated_at: now,
+    };
+    if (status === 'completed' && typeof completionEvidence === 'string' && completionEvidence.trim()) {
+      const existingEvidence = Array.isArray(task.evidence)
+        ? task.evidence
+        : task.evidence ? [task.evidence] : [];
+      updates.evidence = existingEvidence.includes(completionEvidence)
+        ? existingEvidence
+        : [...existingEvidence, completionEvidence];
+    }
     const { data, error } = await supabase.from('deal_room_tasks')
-      .update({
-        status,
-        resolved_at: now,
-        updated_at: now,
-      })
+      .update(updates)
       .eq('id', task.id)
       .eq('property_id', propertyId)
       .eq('status', task.status)

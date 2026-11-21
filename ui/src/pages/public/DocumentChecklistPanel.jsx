@@ -1000,8 +1000,17 @@ export default function DocumentChecklistPanel({
 
     // ── Status vocabulary ────────────────────────────────────────────────
     const itemStatus = notApplicable ? "Not Applicable"
-      : done ? (isPending ? "Under Review" : hasIssues ? "Needs Attention" : "Uploaded")
-      : "Missing";
+      : done
+        ? (item.documentEvidenceType === "upload_receipt"
+          ? "Received"
+          : isPending ? "Under Review" : hasIssues ? "Needs Attention" : "Uploaded")
+        : isPending
+          ? item.documentValidationStatus === "processing"
+            ? "Processing"
+            : item.documentValidationStatus === "failed"
+              ? "Upload failed"
+              : "Needs review"
+          : "Missing";
     const statusStyle = notApplicable
       ? { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" }
       : done
@@ -1072,7 +1081,15 @@ export default function DocumentChecklistPanel({
               {item.ai && done && !isPending && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-400 font-medium">AI</span>
               )}
-              {isPending && (
+              {done && item.documentEvidenceType === "upload_receipt" && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium"
+                  title="Stored and processed in this checklist section; the contents were not AI-validated."
+                >
+                  Receipt only · not AI-verified
+                </span>
+              )}
+              {isPending && item.ai && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-medium animate-pulse">AI analyzing…</span>
               )}
               {/* Responsible party */}

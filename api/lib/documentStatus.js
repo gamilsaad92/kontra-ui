@@ -131,13 +131,118 @@ function analysisNeedsReview(analysis) {
     || analysis.analysis?.needsReview === true;
 }
 
+function hasStoredNonAiChecklistReceipt(requirement, analysis) {
+  if (requirement?.ai !== false || !isSuccessfulDocumentVersion(analysis)) return false;
+
+  const requiredSection = normalizedDocumentText(
+    requirement.section
+      || requirement.id
+      || requirement.document_id
+      || requirement.documentId,
+  );
+  const uploadedSection = normalizedDocumentText(analysis.section);
+  const storagePath = String(analysis.storage_path || analysis.storagePath || '').trim();
+  return Boolean(requiredSection && uploadedSection === requiredSection && storagePath);
+}
+
+function checklistEvidenceForRequirement(requirement, analysis) {
+  if (!isSuccessfulDocumentVersion(analysis)) return null;
+
+  if (requirement?.ai === false) {
+    return hasStoredNonAiChecklistReceipt(requirement, analysis)
+      ? {
+        evidenceType: 'upload_receipt',
+        validationStatus: 'not_required',
+        aiClassificationValidated: false,
+      }
+      : null;
+  }
+
+  if (!matchesChecklistDocumentClassification(requirement, analysis)) return null;
+  const classification = getDocumentClassification(analysis);
+  const aiClassificationValidated = classification?.source === 'ai'
+    && classification.validation_status === 'validated';
+  return {
+    evidenceType: aiClassificationValidated ? 'ai_classification_match' : 'legacy_classification',
+    validationStatus: aiClassificationValidated ? 'classification_validated' : 'legacy',
+    aiClassificationValidated,
+  };
+}
+
+function validationStatusForCandidate(analysis) {
+  const status = normalizedDocumentStatus(
+    analysis?.processing_status || analysis?.analysis?.processing_status,
+  );
+  if (status === 'failed') return 'failed';
+  if (DOCUMENT_PROCESSING_STATUSES.has(status)) return 'processing';
+  return 'unverified';
+}
+
+function activeDocumentEvidenceState(analysis, checklist = []) {
+  const matchingRequirements = (Array.isArray(checklist) ? checklist : [])
+    .filter(requirement => documentRequirementMatchesAnalysis(requirement, analysis));
+  const evidence = matchingRequirements
+    .map(requirement => checklistEvidenceForRequirement(requirement, analysis))
+    .find(Boolean);
+  const hasNonAiRequirement = matchingRequirements.some(requirement => requirement.ai === false);
+  const hasAiRequirement = matchingRequirements.some(requirement => requirement.ai !== false);
+  const classification = getDocumentClassification(analysis);
+  const classificationIsValidated = isSuccessfulDocumentVersion(analysis)
+    && classification?.source === 'ai'
+    && classification.validation_status === 'validated'
+    && classification.ambiguous !== true;
+  const legacyClassification = isSuccessfulDocumentVersion(analysis)
+    && classification?.source === 'legacy_ai';
+  const classificationMismatch = !hasNonAiRequirement
+    && hasAiRequirement
+    && isSuccessfulDocumentVersion(analysis)
+    && classificationIsValidated
+    && !matchingRequirements.some(requirement =>
+      requirement.ai !== false && matchesChecklistDocumentClassification(requirement, analysis)
+    );
+
+  if (evidence) {
+    return {
+      documentState: 'received',
+      documentEvidenceType: evidence.evidenceType,
+      documentValidationStatus: evidence.validationStatus,
+      documentAiClassificationValidated: evidence.aiClassificationValidated === true,
+    };
+  }
+
+  const documentState = matchingRequirements.length > 0 || analysisNeedsReview(analysis)
+    ? 'needs_review'
+    : 'received';
+  const exposeClassification = !hasNonAiRequirement;
+  let documentEvidenceType = 'unverified_upload';
+  if (classificationMismatch) {
+    documentEvidenceType = 'classification_mismatch';
+  } else if (exposeClassification && classificationIsValidated && !hasAiRequirement) {
+    documentEvidenceType = 'ai_classification';
+  } else if (exposeClassification && legacyClassification) {
+    documentEvidenceType = 'legacy_classification';
+  }
+
+  return {
+    documentState,
+    documentEvidenceType,
+    documentValidationStatus: classificationMismatch
+      ? 'mismatch'
+      : documentState === 'needs_review'
+        ? validationStatusForCandidate(analysis)
+        : legacyClassification
+          ? 'legacy'
+          : classificationIsValidated ? 'classification_validated' : 'unverified',
+    documentAiClassificationValidated: exposeClassification && classificationIsValidated,
+  };
+}
+
 function projectDocumentRequirement(requirement, activeAnalyses = []) {
   const requirementStatus = normalizedDocumentStatus(requirement?.status);
   const candidates = (Array.isArray(activeAnalyses) ? activeAnalyses : [])
     .filter(analysis => documentRequirementMatchesAnalysis(requirement, analysis));
   const validCandidates = candidates.filter(analysis =>
-    isSuccessfulDocumentVersion(analysis)
-      && matchesChecklistDocumentClassification(requirement, analysis)
+    checklistEvidenceForRequirement(requirement, analysis),
   );
   const currentValid = validCandidates.filter(analysis =>
     analysis.is_active !== false && !analysis.superseded_at
@@ -158,26 +263,39 @@ function projectDocumentRequirement(requirement, activeAnalyses = []) {
       status: 'not_applicable',
       received: false,
       needsReview: false,
+      evidenceType: null,
+      validationStatus: 'not_applicable',
+      aiClassificationValidated: false,
       analysis: null,
       candidateAnalysis: null,
     };
   }
 
   if (matchedAnalysis) {
+    const evidence = checklistEvidenceForRequirement(requirement, matchedAnalysis);
     return {
       status: 'received',
       received: true,
       needsReview: false,
+      evidenceType: evidence.evidenceType,
+      validationStatus: evidence.validationStatus,
+      aiClassificationValidated: evidence.aiClassificationValidated === true,
       analysis: matchedAnalysis,
       candidateAnalysis: currentCandidate,
     };
   }
 
   const needsReview = DOCUMENT_REVIEW_STATUSES.has(requirementStatus) || !!currentCandidate;
+  const candidateStatus = currentCandidate
+    ? validationStatusForCandidate(currentCandidate)
+    : needsReview ? 'needs_review' : 'missing';
   return {
     status: needsReview ? 'needs_review' : 'missing',
     received: false,
     needsReview,
+    evidenceType: currentCandidate ? 'unverified_upload' : null,
+    validationStatus: candidateStatus,
+    aiClassificationValidated: false,
     analysis: null,
     candidateAnalysis: currentCandidate,
   };
@@ -195,7 +313,7 @@ function projectDocumentChecklist(checklist = [], analyses = []) {
   const activeAnalyses = selectActiveDocumentVersions(analyses);
   const activeDocumentStates = activeAnalyses.map(analysis => ({
     ...analysis,
-    documentState: analysisNeedsReview(analysis) ? 'needs_review' : 'received',
+    ...activeDocumentEvidenceState(analysis, checklist),
   }));
   const items = (Array.isArray(checklist) ? checklist : []).map(item => {
     const state = projectDocumentRequirement(item, analyses);
@@ -204,6 +322,9 @@ function projectDocumentChecklist(checklist = [], analyses = []) {
       documentState: state.status,
       documentReceived: state.received,
       documentNeedsReview: state.needsReview,
+      documentEvidenceType: state.evidenceType,
+      documentValidationStatus: state.validationStatus,
+      documentAiClassificationValidated: state.aiClassificationValidated,
     };
   });
   const missingDocuments = items

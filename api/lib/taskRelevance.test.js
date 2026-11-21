@@ -202,10 +202,12 @@ describe('transaction-aware task relevance', () => {
       existingTasks: existing,
     });
     expect(resolved.create).toEqual([]);
-    expect(resolved.resolve).toEqual([{
+    expect(resolved.resolve).toEqual([expect.objectContaining({
       task: existing[0],
       status: 'completed',
-    }]);
+      documentEvidenceType: 'ai_classification_match',
+      completionEvidence: expect.stringContaining('passed classification validation'),
+    })]);
 
     const stillMissing = buildChecklistRequirementPlan({
       checklist: [{ ...checklist[0], status: 'pending' }],

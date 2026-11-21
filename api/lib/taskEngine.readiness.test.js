@@ -2,36 +2,57 @@
 
 jest.mock('../db', () => {
   const createdRows = [];
+  const updatedRows = [];
+  const selectedColumns = [];
   let room = {};
   let customPackConfig = null;
   let existingTasks = [];
+  let documentAnalyses = [];
   const supabase = {
-    __configure(nextRoom, nextPackConfig = null, nextExistingTasks = []) {
+    __configure(nextRoom, nextPackConfig = null, nextExistingTasks = [], nextDocumentAnalyses = []) {
       room = nextRoom;
       customPackConfig = nextPackConfig;
       existingTasks = nextExistingTasks;
+      documentAnalyses = nextDocumentAnalyses;
       createdRows.length = 0;
+      updatedRows.length = 0;
+      selectedColumns.length = 0;
     },
     __createdRows: createdRows,
+    __updatedRows: updatedRows,
+    __selectedColumns: selectedColumns,
     from(table) {
       let inserted = null;
+      let updated = null;
       const query = {
-        select: jest.fn(() => query),
+        select: jest.fn(columns => {
+          selectedColumns.push({ table, columns });
+          return query;
+        }),
         eq: jest.fn(() => query),
         order: jest.fn(() => query),
         maybeSingle: jest.fn(async () => ({
-          data: table === 'deal_rooms'
-            ? room
-            : table === 'custom_workflow_packs' ? { config: customPackConfig } : null,
+          data: updated
+            ? { ...(existingTasks[0] || {}), ...updated }
+            : table === 'deal_rooms'
+              ? room
+              : table === 'custom_workflow_packs' ? { config: customPackConfig } : null,
           error: null,
         })),
         then: (resolve, reject) => Promise.resolve({
-          data: table === 'deal_room_tasks' ? existingTasks : [],
+          data: table === 'deal_room_tasks'
+            ? existingTasks
+            : table === 'deal_analyses' ? documentAnalyses : [],
           error: null,
         }).then(resolve, reject),
         insert: jest.fn(row => {
           inserted = row;
           createdRows.push(row);
+          return query;
+        }),
+        update: jest.fn(values => {
+          updated = values;
+          updatedRows.push({ table, values });
           return query;
         }),
         single: jest.fn(async () => ({
@@ -261,6 +282,72 @@ describe('Digital Asset readiness task generation', () => {
     });
     expect(created.map(task => task.title)).not.toContain('Upload Future Stage Document');
     expect(supabase.__createdRows).toHaveLength(1);
+  });
+
+  test('completes Redwood Letter of Intent from its stored non-AI checklist receipt', async () => {
+    const requirement = {
+      id: 'letter_of_intent',
+      section: 'letter_of_intent',
+      label: 'Letter of Intent',
+      required: true,
+      ai: false,
+      assignedTo: ['buyer'],
+    };
+    const existingTask = {
+      id: 'redwood-letter-of-intent-task',
+      property_id: 'redwood-business-center-acquisition',
+      task_type: 'missing_document',
+      title: 'Upload Letter of Intent',
+      source_type: 'workflow_checklist',
+      source_id: 'workflow-checklist:letter_of_intent',
+      status: 'pending',
+      evidence: ['Active workflow checklist item "Letter of Intent" is required but missing.'],
+    };
+    const uploadedDocument = {
+      id: 'redwood-sample-letter-of-intent',
+      section: 'letter_of_intent',
+      filename: 'Redwood_SAMPLE_Letter_of_Intent.pdf',
+      storage_path: 'deal-rooms/redwood-synthetic/letter-of-intent.pdf',
+      processing_status: 'extracted',
+      is_active: true,
+      created_at: '2026-11-21T20:56:29.834Z',
+      analysis: { pending: false, documentType: 'Letter Of Intent' },
+    };
+    const customPackConfig = { roles: [], documents: [requirement] };
+    supabase.__configure(
+      {},
+      customPackConfig,
+      [existingTask],
+      [uploadedDocument],
+    );
+    getRoomPackId.mockResolvedValue(REDWOOD_PACK_ID);
+    readTransactionState.mockResolvedValue({
+      room: {
+        workflow_pack_id: REDWOOD_PACK_ID,
+        deal_stage: 'due_diligence',
+        checklist_items: null,
+      },
+      recordState: { requiredFields: [] },
+    });
+
+    const resolved = await evaluateDealRoomForTasks('redwood-business-center-acquisition');
+
+    expect(resolved).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: existingTask.id,
+        status: 'completed',
+        evidence: expect.arrayContaining([
+          expect.stringContaining('contents were not AI-validated'),
+        ]),
+      }),
+    ]));
+    expect(supabase.__createdRows).toEqual([]);
+    expect(supabase.__updatedRows).toEqual([expect.objectContaining({
+      table: 'deal_room_tasks',
+      values: expect.objectContaining({ status: 'completed' }),
+    })]);
+    expect(supabase.__selectedColumns.find(item => item.table === 'deal_analyses')?.columns)
+      .toContain('storage_path');
   });
 
   test('does not recreate an existing dismissed custom-pack task during refresh', async () => {

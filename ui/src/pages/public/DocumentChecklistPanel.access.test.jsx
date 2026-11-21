@@ -108,4 +108,29 @@ describe("Documents tab access", () => {
     expect(container.querySelectorAll("[data-document-section]")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "↑ Upload" })).toHaveLength(1);
   });
+
+  test("shows non-AI receipt completion without implying content verification", async () => {
+    checklistItems = [{
+      id: "letter_of_intent",
+      section: "letter_of_intent",
+      label: "Letter of Intent",
+      required: true,
+      ai: false,
+      assignedTo: ["buyer"],
+      documentState: "received",
+      documentReceived: true,
+      documentNeedsReview: false,
+      documentEvidenceType: "upload_receipt",
+      documentValidationStatus: "not_required",
+      documentAiClassificationValidated: false,
+    }];
+
+    renderDocumentsTab({
+      role: "deal_coordinator",
+      access: { mode: "owner" },
+    });
+
+    expect(await screen.findByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Receipt only · not AI-verified")).toBeInTheDocument();
+  });
 });

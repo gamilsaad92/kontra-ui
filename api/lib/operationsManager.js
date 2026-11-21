@@ -498,8 +498,9 @@ function buildGroundedBlockers({
 // requirement; never treat a schema mismatch as an empty live evidence set.
 async function loadGroundingAnalyses(propertyId) {
   const selects = [
-    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status, is_active, superseded_at',
-    'id, section, filename, analysis, uploaded_by_role, created_at, processing_status',
+    'id, section, filename, analysis, uploaded_by_role, created_at, storage_path, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, uploaded_by_role, created_at, storage_path, processing_status',
+    'id, section, filename, analysis, uploaded_by_role, created_at, storage_path',
     'id, section, filename, analysis, uploaded_by_role, created_at',
   ];
   let lastError = null;
@@ -552,6 +553,9 @@ function buildParticipantRequirementState(projectedChecklist, role, submission) 
       status: item.documentState,
       received: item.documentReceived === true,
       needsReview: item.documentNeedsReview === true,
+      evidenceType: item.documentEvidenceType || null,
+      validationStatus: item.documentValidationStatus || null,
+      aiClassificationValidated: item.documentAiClassificationValidated === true,
     })),
     missingRequiredDocuments: missingRequiredItems.map(item => ({
       id: item.id || item.document_id || item.documentId || null,
@@ -652,9 +656,13 @@ async function buildGroundedContext(propertyId) {
       attention: field.attention,
       required: field.required,
     }));
+  const activeDocumentStateById = new Map(
+    documentProjection.activeDocumentStates.map(item => [item.id, item]),
+  );
   const documentFindings = activeAnalyses
     .map(item => {
       const analysis = item.analysis && typeof item.analysis === 'object' ? item.analysis : {};
+      const state = activeDocumentStateById.get(item.id) || {};
       return {
         id: item.id || null,
         section: item.section || null,
@@ -662,6 +670,9 @@ async function buildGroundedContext(propertyId) {
         summary: String(analysis.summary || analysis.overview || analysis.text || '').slice(0, 1000),
         confidence: analysis.confidence ?? null,
         processingStatus: item.processing_status || (analysis.pending === true ? 'processing' : 'complete'),
+        evidenceType: state.documentEvidenceType || null,
+        validationStatus: state.documentValidationStatus || null,
+        aiClassificationValidated: state.documentAiClassificationValidated === true,
         active: true,
         createdAt: item.created_at || null,
       };
@@ -815,6 +826,9 @@ async function buildGroundedContext(propertyId) {
           filename: item.filename || null,
           processingStatus: item.processing_status || (item.analysis?.pending === true ? 'processing' : 'complete'),
           status: item.documentState,
+          evidenceType: item.documentEvidenceType || null,
+          validationStatus: item.documentValidationStatus || null,
+          aiClassificationValidated: item.documentAiClassificationValidated === true,
         })),
         missingRequirements: missingDocuments,
       },
@@ -991,10 +1005,17 @@ const GROUNDING_RULES = `You are Kontra AI Copilot inside a specific transaction
 You reason ONLY from the JSON context provided (transaction_context, closing_chain, open_tasks, recently_resolved_tasks, deal, missing_documents, active_document_state, stage_decision, transaction_record_facts, document_findings). Never invent
 facts, people, dates, or documents not present in that context. If the context does not contain
 enough information to answer, say so plainly instead of guessing.
-Treat active_document_state as the source of truth for document receipt: an active uploaded,
-processing, retrying, failed, or completed document has been received and must not be described as
-missing. A document with status "needs_review" is received evidence that needs coordinator review,
-not a missing document.
+Use missing_documents as the canonical source for required checklist gaps. An active file by itself
+does not satisfy a checklist item. In active_document_state, evidenceType "upload_receipt" means a
+required ai:false item was stored and processed in its authorized checklist section; it satisfies
+receipt, but its contents were not AI-classified or content-verified. EvidenceType
+"ai_classification_match" means the required label matched a validated AI classification; it is not
+substantive content, legal, or quality verification. "classification_mismatch" means the AI
+classification did not match the required checklist item. "ai_classification" is a classifier
+result without a matching checklist requirement and does not satisfy one. "legacy_classification"
+is not a claim of current AI classification validation. Pending, failed, unverified, or
+needs_review evidence does not satisfy a required checklist item. Cite the evidence type when
+distinguishing receipt from classification.
 Only list a document as missing when it appears in missing_documents.
 The participants array is the live People state for this room. Do not import roles from a
 generic template or from outside this room. A populated Transaction Record field with status
