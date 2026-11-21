@@ -10,7 +10,9 @@ const { resolveRoomSessionAccess } = require('../lib/roomSessionAccess');
 const router = express.Router();
 const {
   listTasksForRoom,
+  listApplicableTasksForRoom,
   evaluateDealRoomForTasks,
+  evaluateReadinessTasks,
   approveTask,
   dismissTask,
 } = require('../lib/taskEngine');
@@ -39,7 +41,7 @@ router.get('/deal-room/:propertyId/tasks', async (req, res) => {
     const propertyId = req.params.propertyId;
     const access = await getTaskAccess(req, propertyId);
     if (access.mode === 'anonymous') return deny(res);
-    const allTasks = await listTasksForRoom(propertyId);
+    const allTasks = await listApplicableTasksForRoom(propertyId);
     const tasks = access.mode === 'participant'
       ? allTasks.filter(task => task.owner_role === access.role)
       : allTasks;
@@ -55,11 +57,14 @@ router.post('/deal-room/:propertyId/tasks/refresh', async (req, res) => {
     const propertyId = req.params.propertyId;
     const access = await getTaskAccess(req, propertyId);
     if (access.mode !== 'owner') return deny(res);
-    const created = await evaluateDealRoomForTasks(propertyId, {
-      correlationId: req.headers['x-correlation-id'] || crypto.randomUUID(),
+    const correlationId = req.headers['x-correlation-id'] || crypto.randomUUID();
+    const createdTasks = await evaluateDealRoomForTasks(propertyId, {
+      correlationId,
     });
-    const tasks = await listTasksForRoom(propertyId);
-    res.json({ tasks, createdCount: created.length });
+    const existingTasks = await listTasksForRoom(propertyId);
+    const createdReadiness = await evaluateReadinessTasks(propertyId, existingTasks, { correlationId });
+    const tasks = await listApplicableTasksForRoom(propertyId);
+    res.json({ tasks, createdCount: createdTasks.length + createdReadiness.length });
   } catch (err) {
     console.error('[tasks] refresh failed:', err.message);
     res.status(500).json({ error: 'Failed to refresh tasks' });

@@ -25,6 +25,11 @@ const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
 const { resolveParticipantCompletions } = require('./participantCompletion');
+const {
+  buildChecklistRequirementPlan,
+  filterTasksForRoom,
+  isDigitalAssetReadinessApplicable,
+} = require('./taskRelevance');
 
 // ── Schema bootstrap (Replit Postgres local dev) ────────────────────────────
 // Mirrors the pattern in routers/workflowPacks.js: lazily create the table
@@ -130,6 +135,33 @@ async function getLiveRoleConfig(packId) {
   }
 }
 
+async function getTaskRoomContext(propertyId, includeReadinessFields = false) {
+  const { data: room, error } = await supabase
+    .from('deal_rooms')
+    .select(includeReadinessFields
+      ? 'workflow_pack_id, deal_type, metadata_values, jurisdiction, checklist_items, deal_stage'
+      : 'workflow_pack_id, deal_type, metadata_values')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!room) return { room: null, customPackConfig: null };
+
+  let customPackConfig = null;
+  if (String(room.workflow_pack_id || '').startsWith('ws_')) {
+    const { data, error: packError } = await supabase
+      .from('custom_workflow_packs')
+      .select('config')
+      .eq('id', room.workflow_pack_id)
+      .maybeSingle();
+    if (packError) {
+      console.warn('[taskEngine] custom pack applicability unavailable:', packError.message);
+    } else {
+      customPackConfig = data?.config || null;
+    }
+  }
+  return { room, customPackConfig };
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 async function listTasksForRoom(propertyId) {
   const { data, error } = await supabase
@@ -139,6 +171,14 @@ async function listTasksForRoom(propertyId) {
     .order('created_at', { ascending: false });
   if (error) { console.warn('[taskEngine] listTasksForRoom:', error.message); return []; }
   return data || [];
+}
+
+async function listApplicableTasksForRoom(propertyId) {
+  const [tasks, context] = await Promise.all([
+    listTasksForRoom(propertyId),
+    getTaskRoomContext(propertyId),
+  ]);
+  return filterTasksForRoom(tasks, context.room, context.customPackConfig);
 }
 
 async function createTask(propertyId, fields) {
@@ -259,6 +299,30 @@ async function reconcileRecordRemediationTasks(propertyId, recordState, existing
     if (data) reconciled.push(data);
   }
   return reconciled;
+}
+
+async function reconcileChecklistRequirementTasks(propertyId, plan) {
+  const resolved = [];
+  for (const { task, status } of plan.resolve) {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase.from('deal_room_tasks')
+      .update({
+        status,
+        resolved_at: now,
+        updated_at: now,
+      })
+      .eq('id', task.id)
+      .eq('property_id', propertyId)
+      .eq('status', task.status)
+      .select('*')
+      .maybeSingle();
+    if (error) {
+      console.warn('[taskEngine] resolve checklist task:', error.message);
+      continue;
+    }
+    if (data) resolved.push(data);
+  }
+  return resolved;
 }
 
 // ── Approve: the only place a draft_action is ever executed ────────────────
@@ -563,25 +627,33 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     if (task) created.push(task);
   }
 
+  const checklistPlan = buildChecklistRequirementPlan({
+    room: transactionState.room || {},
+    activeAnalyses: analyses,
+    existingTasks: existing,
+    roleConfig,
+  });
+  created.push(...await reconcileChecklistRequirementTasks(propertyId, checklistPlan));
+  for (const fields of checklistPlan.create) {
+    const task = await createTask(propertyId, {
+      ...fields,
+      correlationId: options.correlationId,
+    });
+    if (task) created.push(task);
+  }
+
   return created;
 }
 
 // ── Readiness task generation (spec §7) ───────────────────────────────────────
-// Auto-generates tasks for missing Digital Asset readiness requirements.
-// Only fires for tokenization packs (or when digital_asset_enabled=true).
+// Generates Digital Asset preparation tasks only for tokenization workflows or
+// rooms with the explicit digital_asset_enabled opt-in.
 // Idempotent — never creates a duplicate of an open task of the same type+sourceId.
 async function evaluateReadinessTasks(propertyId, existingTasks, options = {}) {
-  const { data: room } = await supabase
-    .from('deal_rooms')
-    .select('workflow_pack_id, metadata_values, jurisdiction, checklist_items')
-    .eq('property_id', propertyId)
-    .maybeSingle();
-
+  const { room, customPackConfig } = await getTaskRoomContext(propertyId, true);
   if (!room) return [];
 
-  const isTokenization     = room.workflow_pack_id === 'tokenization';
-  const digitalAssetEnabled = !!(room.metadata_values?.digital_asset_enabled);
-  if (!isTokenization && !digitalAssetEnabled) return [];
+  if (!isDigitalAssetReadinessApplicable(room, customPackConfig)) return [];
 
   const existing = existingTasks || [];
   const hasExistingReadinessTask = (sourceId) => existing.some(t =>
@@ -593,13 +665,16 @@ async function evaluateReadinessTasks(propertyId, existingTasks, options = {}) {
 
   // 1) Missing issuance details — each unfilled field becomes its own task
   const ISSUANCE_FIELDS = [
-    { key: 'raise_amount',   label: 'Raise Target'   },
-    { key: 'token_price',    label: 'Token Price'    },
-    { key: 'asset_type',     label: 'Asset Type'     },
-    { key: 'min_investment', label: 'Minimum Investment' },
+    { key: 'raise_amount',   valueKeys: ['raise_amount', 'raise_target'], label: 'Raise Target' },
+    { key: 'token_price',    valueKeys: ['token_price'], label: 'Token Price' },
+    { key: 'asset_type',     valueKeys: ['asset_type'], label: 'Asset Type' },
+    { key: 'min_investment', valueKeys: ['min_investment'], label: 'Minimum Investment' },
   ];
   for (const field of ISSUANCE_FIELDS) {
-    if (metaValues[field.key]) continue; // already set — no task needed
+    if (field.valueKeys.some(key => {
+      const value = metaValues[key];
+      return value !== null && value !== undefined && String(value).trim() !== '';
+    })) continue;
     const sourceId = `readiness-issuance:${field.key}`;
     if (hasExistingReadinessTask(sourceId)) continue;
     const task = await createTask(propertyId, {
@@ -608,7 +683,7 @@ async function evaluateReadinessTasks(propertyId, existingTasks, options = {}) {
       description: `${field.label} is required for a complete token offering and contributes to the Digital Asset Readiness score. Add it in Settings → Issuance Details.`,
       ownerType: 'ai',
       ownerRole: 'owner',
-      evidence: [`metadata_values.${field.key} is empty`],
+      evidence: [`metadata_values.${field.valueKeys.join(' or metadata_values.')} is empty`],
       sourceType: 'readiness',
       sourceId,
       category: 'readiness',
@@ -642,19 +717,30 @@ async function evaluateReadinessTasks(propertyId, existingTasks, options = {}) {
   } else {
     // 3) Regulatory documents not yet uploaded
     const UPLOADED = new Set(['uploaded', 'approved', 'ai_complete']);
+    const roleConfig = await getLiveRoleConfig(room.workflow_pack_id);
+    const configuredRoles = new Set((roleConfig.roles || []).map(role => role.key));
     const regItems  = checklistItems.filter(i =>
       i.category === 'Regulatory' || (i.section || '').toLowerCase().includes('regulatory')
     );
     for (const item of regItems.filter(i => !UPLOADED.has(i.status)).slice(0, 3)) {
       const itemKey  = item.id || item.section || item.label || 'doc';
       const sourceId = `readiness-regulatory:${itemKey}`;
-    if (hasExistingReadinessTask(sourceId)) continue;
+      const existingChecklistTask = existing.some(task =>
+        task.task_type === 'missing_document'
+          && task.source_type === 'workflow_checklist'
+          && (task.source_id === `workflow-checklist:${itemKey}`
+            || (item.id && task.source_document_id === item.id))
+      );
+      if (hasExistingReadinessTask(sourceId) || existingChecklistTask) continue;
+      const assignedRoles = Array.isArray(item.assignedTo) ? item.assignedTo : [];
+      const ownerRole = assignedRoles.find(role => role === 'owner' || configuredRoles.has(role)) || 'owner';
       const task = await createTask(propertyId, {
         taskType: 'readiness_document',
         title: `Upload required regulatory document: ${item.label || item.section}`,
         description: `"${item.label || item.section}" is required for ${room.jurisdiction} regulatory preparation. Upload it in the Documents tab.`,
         ownerType: 'ai',
-        ownerRole: 'owner',
+        ownerRole,
+        sourceDocumentId: item.id || item.document_id || item.documentId || null,
         evidence: [`Regulatory checklist item "${item.label || item.section}" has status "${item.status || 'pending'}"`],
         sourceType: 'readiness',
         sourceId,
@@ -672,6 +758,7 @@ async function evaluateReadinessTasks(propertyId, existingTasks, options = {}) {
 
 module.exports = {
   listTasksForRoom,
+  listApplicableTasksForRoom,
   createTask,
   updateTaskStatus,
   approveTask,
@@ -679,4 +766,6 @@ module.exports = {
   evaluateDealRoomForTasks,
   evaluateReadinessTasks,
   reconcileRecordRemediationTasks,
+  getTaskRoomContext,
+  reconcileChecklistRequirementTasks,
 };

@@ -54,7 +54,9 @@ jest.mock('../db', () => {
 
 jest.mock('../lib/taskEngine', () => ({
   listTasksForRoom: jest.fn().mockResolvedValue([]),
+  listApplicableTasksForRoom: jest.fn().mockResolvedValue([]),
   evaluateDealRoomForTasks: jest.fn().mockResolvedValue([]),
+  evaluateReadinessTasks: jest.fn().mockResolvedValue([]),
   approveTask: jest.fn(),
   dismissTask: jest.fn(),
 }));
@@ -73,7 +75,9 @@ describe('room-scoped owner task decisions', () => {
   beforeEach(() => {
     supabase.__setTask({ id: 'task-1', property_id: 'room-1' });
     taskEngine.listTasksForRoom.mockResolvedValue([]);
+    taskEngine.listApplicableTasksForRoom.mockResolvedValue([]);
     taskEngine.evaluateDealRoomForTasks.mockResolvedValue([]);
+    taskEngine.evaluateReadinessTasks.mockResolvedValue([]);
     taskEngine.approveTask.mockResolvedValue({ ok: true, task: { id: 'task-1' } });
     taskEngine.dismissTask.mockResolvedValue({ id: 'task-1' });
   });
@@ -82,7 +86,7 @@ describe('room-scoped owner task decisions', () => {
 
   test('lists room tasks for the authenticated owner', async () => {
     const roomTasks = [{ id: 'task-1', property_id: 'room-1', title: 'Review package' }];
-    taskEngine.listTasksForRoom.mockResolvedValue(roomTasks);
+    taskEngine.listApplicableTasksForRoom.mockResolvedValue(roomTasks);
 
     const response = await request(app)
       .get('/api/public/deal-room/room-1/tasks')
@@ -90,11 +94,11 @@ describe('room-scoped owner task decisions', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.tasks).toEqual(roomTasks);
-    expect(taskEngine.listTasksForRoom).toHaveBeenCalledWith('room-1');
+    expect(taskEngine.listApplicableTasksForRoom).toHaveBeenCalledWith('room-1');
   });
 
   test('limits participant task listing to the participant role', async () => {
-    taskEngine.listTasksForRoom.mockResolvedValue([
+    taskEngine.listApplicableTasksForRoom.mockResolvedValue([
       { id: 'seller-task', owner_role: 'seller' },
       { id: 'buyer-task', owner_role: 'buyer' },
     ]);
@@ -111,12 +115,13 @@ describe('room-scoped owner task decisions', () => {
     const response = await request(app).get('/api/public/deal-room/room-1/tasks');
 
     expect(response.status).toBe(403);
-    expect(taskEngine.listTasksForRoom).not.toHaveBeenCalled();
+    expect(taskEngine.listApplicableTasksForRoom).not.toHaveBeenCalled();
   });
 
   test('refreshes tasks only for the authenticated room owner', async () => {
     taskEngine.evaluateDealRoomForTasks.mockResolvedValue([{ id: 'created-task' }]);
     taskEngine.listTasksForRoom.mockResolvedValue([{ id: 'task-1', property_id: 'room-1' }]);
+    taskEngine.listApplicableTasksForRoom.mockResolvedValue([{ id: 'task-1', property_id: 'room-1' }]);
 
     const response = await request(app)
       .post('/api/public/deal-room/room-1/tasks/refresh')
@@ -130,6 +135,12 @@ describe('room-scoped owner task decisions', () => {
       expect.objectContaining({ correlationId: expect.any(String) }),
     );
     expect(taskEngine.listTasksForRoom).toHaveBeenCalledWith('room-1');
+    expect(taskEngine.evaluateReadinessTasks).toHaveBeenCalledWith(
+      'room-1',
+      [{ id: 'task-1', property_id: 'room-1' }],
+      expect.objectContaining({ correlationId: expect.any(String) }),
+    );
+    expect(taskEngine.listApplicableTasksForRoom).toHaveBeenCalledWith('room-1');
   });
 
   test('rejects participant task refresh', async () => {
@@ -149,7 +160,7 @@ describe('room-scoped owner task decisions', () => {
     const response = await builder.set('Cookie', ownerCookie);
 
     expect(response.status).toBe(403);
-    expect(taskEngine.listTasksForRoom).not.toHaveBeenCalled();
+    expect(taskEngine.listApplicableTasksForRoom).not.toHaveBeenCalled();
     expect(taskEngine.evaluateDealRoomForTasks).not.toHaveBeenCalled();
   });
 

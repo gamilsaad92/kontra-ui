@@ -75,4 +75,50 @@ describe('room-scoped task decisions', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
+  test('shows a participant their assigned required document and opens Documents', async () => {
+    const onTabChange = jest.fn();
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tasks: [{
+          id: 'missing-title',
+          status: 'pending',
+          task_type: 'missing_document',
+          owner_type: 'human',
+          owner_role: 'seller',
+          title: 'Upload Title Report',
+          evidence: ['The active workflow checklist requires this document.'],
+        }],
+      }),
+    });
+
+    render(<TasksPanel propertyId="room-1" role="seller" onTabChange={onTabChange} />);
+
+    expect(await screen.findByText('Needs your attention')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Documents' }));
+    expect(onTabChange).toHaveBeenCalledWith('documents');
+  });
+
+  test('keeps another participant role in the waiting section for the owner', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tasks: [{
+          id: 'missing-title',
+          status: 'pending',
+          task_type: 'missing_document',
+          owner_type: 'human',
+          owner_role: 'counsel',
+          title: 'Upload Title Report',
+          evidence: [],
+        }],
+      }),
+    });
+
+    render(<TasksPanel propertyId="room-1" role="owner" canManage />);
+
+    expect(await screen.findByText('Waiting on others')).toBeInTheDocument();
+    expect(screen.getByText('Upload Title Report')).toBeInTheDocument();
+  });
 });

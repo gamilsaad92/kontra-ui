@@ -122,8 +122,12 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
   }
 
   const openTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in_progress' || t.status === 'escalated');
-  const waitingTasks = openTasks.filter(t => t.owner_type !== 'ai');
-  const needsAttention = openTasks.filter(t => t.owner_type === 'ai' || t.status === 'escalated');
+  const waitingTasks = openTasks.filter(t =>
+    t.owner_type !== 'ai' && t.status !== 'escalated' && t.owner_role !== role && t.owner_role !== 'owner'
+  );
+  const needsAttention = openTasks.filter(t =>
+    t.owner_type === 'ai' || t.status === 'escalated' || t.owner_role === role || t.owner_role === 'owner'
+  );
   const doneTasks = tasks.filter(t => t.status === 'completed' || t.status === 'dismissed');
 
   return (
@@ -184,6 +188,12 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
                         </span>
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-2">{task.title}</p>
+                      {task.task_type === 'missing_document' && (
+                        <button type="button" onClick={() => onTabChange?.('documents')}
+                          className="mt-2 text-xs font-semibold text-indigo-700 hover:text-indigo-900">
+                          Open Documents
+                        </button>
+                      )}
                       {evidence.length > 0 && (
                         <ul className="mt-1.5 space-y-1">
                           {evidence.map((e, i) => (
@@ -235,6 +245,12 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
                         </span>
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-2">{task.title}</p>
+                      {task.task_type === 'missing_document' && (
+                        <button type="button" onClick={() => onTabChange?.('documents')}
+                          className="mt-2 text-xs font-semibold text-indigo-700 hover:text-indigo-900">
+                          Open Documents
+                        </button>
+                      )}
                     </li>
                   );
                 })}
