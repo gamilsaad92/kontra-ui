@@ -38,6 +38,35 @@ describe('room-scoped task decisions', () => {
     });
   });
 
+  test('loads tasks from the room-scoped list endpoint and refreshes as the owner', async () => {
+    render(<TasksPanel propertyId="room-1" role="deal_coordinator" canManage />);
+
+    await screen.findByText('Send an update');
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/public/deal-room/room-1/tasks',
+        expect.objectContaining({ headers: {} }),
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/public/deal-room/room-1/tasks/refresh',
+        expect.objectContaining({ method: 'POST', body: '{}' }),
+      );
+    });
+  });
+
+  test('renders the empty state when the room has no tasks', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ tasks: [] }),
+    });
+
+    render(<TasksPanel propertyId="room-1" role="seller" />);
+
+    expect(await screen.findByText(/No outstanding items/)).toBeInTheDocument();
+    expect(screen.getByText('Invite required participants')).toBeInTheDocument();
+  });
+
   test('does not show owner-only decision controls to participants', async () => {
     render(<TasksPanel propertyId="room-1" role="seller" />);
     await screen.findByText('Send an update');

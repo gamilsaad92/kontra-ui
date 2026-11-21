@@ -845,7 +845,7 @@ function SourceCitations({ sources }) {
 // deal_analyses (via /coordination), and the AI step from the Task Engine
 // actually having generated something. Rows link straight to the panel
 // that completes them so there's no hunting around the page. ──
-function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
+function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack, onTabChange }) {
   const [state, setState] = useState({ loading: true, invitedRoles: 0, docCount: 0, taskCount: 0 });
 
   useEffect(() => {
@@ -887,6 +887,7 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
               : step.desc,
         done: i === 0 ? state.docCount > 0 : i === 1 ? state.invitedRoles > 0 : state.taskCount > 0,
         href: i === 0 ? "#documents-panel" : i === 1 ? "#invite-panel" : "#tasks-panel",
+        tab: i === 2 ? 'tasks' : null,
       }))
     : [
         {
@@ -912,6 +913,7 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
             : "Once documents arrive, Kontra identifies approvals, requirements, and the next stage action",
           done: state.taskCount > 0,
           href: "#tasks-panel",
+          tab: 'tasks',
         },
       ];
 
@@ -919,7 +921,14 @@ function OnboardingProgress({ propertyId, accentColor, totalInvitable, pack }) {
     <ol className="space-y-2.5">
       {steps.map((s, i) => (
         <li key={s.label}>
-          <a href={s.href} className="flex items-start gap-2.5 text-sm group">
+          <a
+            href={s.href}
+            onClick={s.tab ? event => {
+              event.preventDefault();
+              onTabChange?.(s.tab);
+            } : undefined}
+            className="flex items-start gap-2.5 text-sm group"
+          >
             <span className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5 transition"
               style={s.done ? { background: "#16a34a", color: "#fff" } : { background: accentColor, color: "#fff" }}>
               {s.done ? "✓" : i + 1}
@@ -2544,12 +2553,15 @@ function AssetReadinessTab({ propertyId, property, pack, onTabChange }) {
 }
 
 // ── WorkspaceTabNav ───────────────────────────────────────────────────────────
-function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = false }) {
+export function WorkspaceTabNav({ activeTab, onChange, isCoordinator = false, isDemo = false, isCustom = false }) {
   const TABS = [
     { key: 'overview',      label: 'Overview'                 },
     { key: 'documents',     label: 'Documents'                },
     { key: 'people',        label: 'People'                   },
   ];
+  if (isCustom) {
+    TABS.push({ key: 'tasks', label: 'Tasks' });
+  }
   return (
     <div className="border-b border-gray-200 bg-white">
       <div className="max-w-5xl mx-auto px-6 flex items-center justify-between">
@@ -11390,6 +11402,7 @@ export default function DealRoomPage() {
           onChange={setActiveTab}
           isCoordinator={isCoordinator}
           isDemo={isDemo}
+          isCustom={property.isCustom}
         />
       )}
 
@@ -11468,6 +11481,18 @@ export default function DealRoomPage() {
 
             {activeTab === 'people' && !isCoordinator && (
               <ParticipantPeoplePanel pack={pack} role={role} roleConfig={roleConfig} />
+            )}
+
+            {activeTab === 'tasks' && property.isCustom && (
+              <div id="tasks-panel">
+                <TasksPanel
+                  propertyId={pid}
+                  role={role}
+                  canManage={isCoordinator}
+                  onTabChange={setActiveTab}
+                  authHeaders={getRoomAuthHeaders(pid)}
+                />
+              </div>
             )}
 
             {activeTab === 'settings' && isCoordinator && (
@@ -11593,13 +11618,6 @@ export default function DealRoomPage() {
               </div>
             )}
 
-            {/* Tasks / Today's Actions */}
-            {property.isCustom && (
-              <div id="tasks-panel">
-                <TasksPanel propertyId={pid} role={role} canManage={isCoordinator} onTabChange={setActiveTab} authHeaders={getRoomAuthHeaders(pid)} />
-              </div>
-            )}
-
             {/* Setup checklist — shown only to the managing/primary role */}
             {property.isCustom && isCoordinator && (
               <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6"
@@ -11611,6 +11629,7 @@ export default function DealRoomPage() {
                     accentColor={roleConfig.color}
                     totalInvitable={(pack.roles || []).filter(r => r.invitable).length}
                     pack={pack}
+                    onTabChange={setActiveTab}
                   />
                 ) : (
                   <ol className="space-y-2.5">

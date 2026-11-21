@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../../lib/apiBase';
 import { roomScopedTaskActionPath } from '../../lib/roomScopedRoutes.mjs';
-
-const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
 // Task Engine + AI Ownership Layer (Observe Mode).
 // Every task has an explicit owner — a human role or "ai" — and, if AI drafted
@@ -24,7 +23,7 @@ const SETUP_TASKS = [
     icon: '👥',
     title: 'Invite required participants',
     desc: 'Share secure deal room links with each deal party — no account needed for any participant.',
-    tab: 'participants',
+    tab: 'people',
   },
   {
     icon: '📄',
@@ -78,11 +77,12 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
 
   const refresh = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks/refresh`, {
+      const response = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/tasks/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authHeaders || {}) },
         body: JSON.stringify({}),
       });
+      if (!response.ok) throw new Error('Failed to refresh tasks');
       await load();
     } catch (e) {
       setError(e.message);
