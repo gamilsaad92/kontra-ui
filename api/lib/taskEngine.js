@@ -25,6 +25,7 @@ const {
   getRecordRemediationPlan,
 } = require('./recordRemediation');
 const { resolveParticipantCompletions } = require('./participantCompletion');
+const { resolveRoomChecklist } = require('./customPackChecklist');
 const {
   buildChecklistRequirementPlan,
   filterTasksForRoom,
@@ -513,10 +514,10 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   const analyses = selectActiveDocumentVersions(analysesRes.data || []);
   const transactionState = await readTransactionState(propertyId);
+  const room = transactionState.room || {};
+  const checklist = await resolveRoomChecklist(room, supabase);
   const participantCompletions = resolveParticipantCompletions(roleConfig.roles || [], {
-    checklist: Array.isArray(transactionState.room?.checklist_items)
-      ? transactionState.room.checklist_items
-      : [],
+    checklist: Array.isArray(room.checklist_items) ? room.checklist_items : [],
     invites: invitesRes.data || [],
     submissions,
   });
@@ -628,7 +629,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   }
 
   const checklistPlan = buildChecklistRequirementPlan({
-    room: transactionState.room || {},
+    room: { ...room, checklist_items: checklist },
     activeAnalyses: analyses,
     existingTasks: existing,
     roleConfig,

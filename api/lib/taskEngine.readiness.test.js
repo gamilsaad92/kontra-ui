@@ -67,6 +67,15 @@ const { supabase } = require('../db');
 const { getRoomPackId } = require('./dealRoomHelpers');
 const { loadTaskSubmissions } = require('./taskSubmissionQuery');
 const { readTransactionState } = require('./transactionState');
+const REDWOOD_PACK_ID = 'ws_redwood_business_center_acquis_mwk1m4zr';
+const REDWOOD_DOCUMENTS = [
+  { id: 'letter_of_intent', label: 'Letter of Intent', required: true, assignedTo: ['buyer'] },
+  { id: 'property_inspection_report', label: 'Property Inspection Report', required: true, assignedTo: ['buyer'] },
+  { id: 'title_report', label: 'Title Report', required: true, assignedTo: ['buyer'] },
+  { id: 'financing_documents', label: 'Financing Documents', required: true, assignedTo: ['buyer'] },
+  { id: 'closing_documents', label: 'Closing Documents', required: true, assignedTo: ['buyer'] },
+  { id: 'financial_statements', label: 'Financial Statements', required: true, assignedTo: ['financial_advisor'] },
+];
 const { evaluateDealRoomForTasks, evaluateReadinessTasks } = require('./taskEngine');
 
 describe('Digital Asset readiness task generation', () => {
@@ -80,6 +89,7 @@ describe('Digital Asset readiness task generation', () => {
     });
     getRoomPackId.mockResolvedValue('cre_acquisition');
     loadTaskSubmissions.mockResolvedValue({ data: [] });
+    readTransactionState.mockReset();
   });
 
   test('does not create token issuance tasks for an acquisition with false or false-string opt-out', async () => {
@@ -165,5 +175,117 @@ describe('Digital Asset readiness task generation', () => {
       }),
     ]));
     expect(supabase.__createdRows).toHaveLength(1);
+  });
+
+  test.each([
+    ['null', null],
+    ['empty', []],
+  ])('generates all six Redwood custom-pack document tasks when the saved checklist is %s', async (_label, checklistItems) => {
+    const customPackConfig = {
+      roles: [{ key: 'buyer' }, { key: 'financial_advisor' }],
+      documents: REDWOOD_DOCUMENTS,
+    };
+    getRoomPackId.mockResolvedValue(REDWOOD_PACK_ID);
+    supabase.__configure({}, customPackConfig);
+    readTransactionState.mockResolvedValue({
+      room: {
+        workflow_pack_id: REDWOOD_PACK_ID,
+        deal_stage: 'due_diligence',
+        checklist_items: checklistItems,
+      },
+      recordState: { requiredFields: [] },
+    });
+
+    const created = await evaluateDealRoomForTasks('redwood-business-center-acquisition');
+
+    expect(created).toHaveLength(6);
+    expect(created.map(task => task.title)).toEqual([
+      'Upload Letter of Intent',
+      'Upload Property Inspection Report',
+      'Upload Title Report',
+      'Upload Financing Documents',
+      'Upload Closing Documents',
+      'Upload Financial Statements',
+    ]);
+    expect(created.filter(task => task.owner_role === 'buyer')).toHaveLength(5);
+    expect(created.filter(task => task.owner_role === 'financial_advisor')).toHaveLength(1);
+    expect(supabase.__createdRows.map(task => task.source_id)).toEqual(
+      REDWOOD_DOCUMENTS.map(document => `workflow-checklist:${document.id}`)
+    );
+  });
+
+  test('uses explicit room checklist items and honors workflow-stage restrictions', async () => {
+    const savedChecklist = [
+      {
+        id: 'current-stage-document',
+        label: 'Current Stage Document',
+        required: true,
+        assignedTo: ['buyer'],
+        workflow_stage: 'due_diligence',
+      },
+      {
+        id: 'future-stage-document',
+        label: 'Future Stage Document',
+        required: true,
+        assignedTo: ['financial_advisor'],
+        workflow_stage: 'closing',
+      },
+    ];
+    getRoomPackId.mockResolvedValue(REDWOOD_PACK_ID);
+    supabase.__configure({
+      workflow_pack_id: REDWOOD_PACK_ID,
+      checklist_items: savedChecklist,
+    }, {
+      roles: [{ key: 'buyer' }, { key: 'financial_advisor' }],
+      documents: REDWOOD_DOCUMENTS,
+    });
+    readTransactionState.mockResolvedValue({
+      room: {
+        workflow_pack_id: REDWOOD_PACK_ID,
+        deal_stage: 'due_diligence',
+        checklist_items: savedChecklist,
+      },
+      recordState: { requiredFields: [] },
+    });
+
+    const created = await evaluateDealRoomForTasks('synthetic-stage-restrictions');
+
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      title: 'Upload Current Stage Document',
+      owner_role: 'buyer',
+      source_id: 'workflow-checklist:current-stage-document',
+    });
+    expect(created.map(task => task.title)).not.toContain('Upload Future Stage Document');
+    expect(supabase.__createdRows).toHaveLength(1);
+  });
+
+  test('does not recreate an existing dismissed custom-pack task during refresh', async () => {
+    const dismissedTask = {
+      id: 'dismissed-letter-of-intent',
+      task_type: 'missing_document',
+      source_type: 'workflow_checklist',
+      source_id: 'workflow-checklist:letter_of_intent',
+      status: 'dismissed',
+    };
+    getRoomPackId.mockResolvedValue(REDWOOD_PACK_ID);
+    supabase.__configure({}, {
+      roles: [{ key: 'buyer' }, { key: 'financial_advisor' }],
+      documents: REDWOOD_DOCUMENTS,
+    }, [dismissedTask]);
+    readTransactionState.mockResolvedValue({
+      room: {
+        workflow_pack_id: REDWOOD_PACK_ID,
+        deal_stage: 'due_diligence',
+        checklist_items: [],
+      },
+      recordState: { requiredFields: [] },
+    });
+
+    const created = await evaluateDealRoomForTasks('synthetic-dismissed-history');
+
+    expect(created).toHaveLength(5);
+    expect(created.map(task => task.source_id)).not.toContain(dismissedTask.source_id);
+    expect(supabase.__createdRows.map(task => task.source_id)).not.toContain(dismissedTask.source_id);
   });
 });
