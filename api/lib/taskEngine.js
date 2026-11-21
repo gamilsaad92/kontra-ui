@@ -26,6 +26,7 @@ const {
 } = require('./recordRemediation');
 const { resolveParticipantCompletions } = require('./participantCompletion');
 const { resolveRoomChecklist } = require('./customPackChecklist');
+const { projectDocumentChecklist } = require('./documentStatus');
 const {
   buildChecklistRequirementPlan,
   filterTasksForRoom,
@@ -161,6 +162,29 @@ async function getTaskRoomContext(propertyId, includeReadinessFields = false) {
     }
   }
   return { room, customPackConfig };
+}
+
+async function loadTaskDocumentAnalyses(propertyId) {
+  const selects = [
+    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at, superseded_by, post_completion',
+    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at',
+  ];
+  let lastError = null;
+  for (const select of selects) {
+    const result = await supabase
+      .from('deal_analyses')
+      .select(select)
+      .eq('property_id', propertyId);
+    if (!result.error) return result.data || [];
+    lastError = result.error;
+    if (!/column|schema cache|does not exist|could not find/i.test(result.error.message || '')) {
+      throw result.error;
+    }
+  }
+  if (lastError) throw lastError;
+  return [];
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────
@@ -500,10 +524,10 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const packId = await getRoomPackId(propertyId);
   const roleConfig = await getLiveRoleConfig(packId);
 
-  const [existingRes, submissionsRes, analysesRes, invitesRes] = await Promise.all([
+  const [existingRes, submissionsRes, documentAnalyses, invitesRes] = await Promise.all([
     supabase.from('deal_room_tasks').select('*').eq('property_id', propertyId),
     loadTaskSubmissions(supabase, propertyId),
-    supabase.from('deal_analyses').select('id, section, filename, analysis, created_at').eq('property_id', propertyId),
+    loadTaskDocumentAnalyses(propertyId),
     supabase.from('deal_room_invites').select('role_key, status, expires_at, revoked_at').eq('property_id', propertyId),
   ]);
 
@@ -512,12 +536,12 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const submissions = (submissionsRes.data || []).filter(submission =>
     liveRoleKeys.has(submission.role)
   );
-  const analyses = selectActiveDocumentVersions(analysesRes.data || []);
+  const analyses = selectActiveDocumentVersions(documentAnalyses);
   const transactionState = await readTransactionState(propertyId);
   const room = transactionState.room || {};
   const checklist = await resolveRoomChecklist(room, supabase);
   const participantCompletions = resolveParticipantCompletions(roleConfig.roles || [], {
-    checklist: Array.isArray(room.checklist_items) ? room.checklist_items : [],
+    checklist: projectDocumentChecklist(checklist, documentAnalyses).items,
     invites: invitesRes.data || [],
     submissions,
   });
@@ -631,6 +655,7 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   const checklistPlan = buildChecklistRequirementPlan({
     room: { ...room, checklist_items: checklist },
     activeAnalyses: analyses,
+    documentAnalyses,
     existingTasks: existing,
     roleConfig,
   });

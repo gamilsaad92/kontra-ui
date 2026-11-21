@@ -181,6 +181,22 @@ function setupCustomRoomQueries(roles, participantRows = [], invites = [], analy
   });
 }
 
+function validatedAnalysis(row, label) {
+  return {
+    ...row,
+    analysis: {
+      ...(row.analysis || {}),
+      document_classification: {
+        source: 'ai',
+        label,
+        candidates: [label],
+        ambiguous: false,
+        validation_status: 'validated',
+      },
+    },
+  };
+}
+
 function parseAskContext(messages) {
   const userMessage = messages.find(message => message.role === 'user');
   const contextText = userMessage.content
@@ -636,6 +652,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       superseded_at: null,
       created_at: '2026-09-15T12:00:00.000Z',
     };
+    const classifiedActiveAnalysis = validatedAnalysis(activeAnalysis, 'Legal Due Diligence Report');
     mockReadTransactionState.mockResolvedValue({
       packId: 'generated_ai',
       room: {
@@ -666,7 +683,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       roles,
       [],
       [{ role_key: 'attorney', status: 'active' }],
-      [{ ...activeAnalysis, uploaded_by_role: 'attorney' }],
+      [{ ...classifiedActiveAnalysis, uploaded_by_role: 'attorney' }],
     );
 
     const context = await buildGroundedContext('joined-upload-room');
@@ -674,9 +691,13 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       expect.objectContaining({
         role: 'attorney',
         label: 'Legal Advisor',
-        joined: true,
-        complete: true,
-        submissionStatus: null,
+        invited: true,
+        inviteStatus: 'active',
+        submissionStatus: 'submitted',
+        assignedRequirements: expect.objectContaining({
+          complete: true,
+          completedRequiredCount: 1,
+        }),
       }),
     ]);
     expect(context.groundedBlockers).toEqual([]);
@@ -686,8 +707,10 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       'joined-upload-room',
       'Has the Legal Advisor completed the assigned requirement?',
     );
-    expect(answer.answer).toContain('Yes — Legal Advisor is complete');
-    expect(answer.answer).toContain('All 1 assigned required document(s) are complete.');
+    expect(answer.answer).toContain(
+      'Yes — Legal Advisor has completed their currently assigned requirement',
+    );
+    expect(answer.answer).toContain('Completed assigned document: Legal Due Diligence Report.');
   });
 
   test('does not turn populated awaiting-confirmation fields into missing blockers', async () => {
@@ -809,7 +832,7 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     expect(context.transactionContext.transaction.digitalAssetEnabled).toBe(false);
   });
 
-  test('does not call an uploaded or processing active document missing', () => {
+  test('keeps uploaded, processing, or unclassified documents outstanding', () => {
     const checklist = [
       {
         id: 'damage-report',
@@ -845,13 +868,18 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
         is_active: false,
         superseded_at: '2026-08-20T00:00:00.000Z',
       },
-    ])).toEqual([
+    ])).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'damage-report',
+        label: 'Damage Assessment Report',
+        section: 'damage_assessment_report',
+      }),
       expect.objectContaining({
         id: 'policy',
         label: 'Insurance Policy',
         section: 'insurance_policy',
       }),
-    ]);
+    ]));
   });
 
   test('uses the live transaction checklist plus active analyses for briefing grounding', async () => {
@@ -906,11 +934,21 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
     });
 
     const context = await buildGroundedContext('live-evidence-room');
-    expect(context.missingDocuments).toEqual([]);
+    expect(context.missingDocuments).toEqual([
+      expect.objectContaining({
+        section: 'purchase_agreement',
+        label: 'Purchase Agreement',
+      }),
+    ]);
     expect(context.documentFindings).toEqual([
       expect.objectContaining({ filename: 'purchase-agreement.pdf' }),
     ]);
-    expect(context.transactionContext.evidence.missingDocuments).toEqual([]);
+    expect(context.transactionContext.evidence.missingDocuments).toEqual([
+      expect.objectContaining({
+        section: 'purchase_agreement',
+        label: 'Purchase Agreement',
+      }),
+    ]);
   });
 
   test('falls back to legacy analysis columns and reports only live missing documents', async () => {
@@ -922,30 +960,30 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       { id: 'claim_form', section: 'claim_form', label: 'Insurance Claim Form', required: true, status: 'missing' },
     ];
     const analyses = [
-      {
+      validatedAnalysis({
         id: 'policy-upload',
         section: 'insurance_policy',
         filename: '01_Insurance_Policy.pdf',
         processing_status: 'extracted',
         analysis: { summary: 'Insurance policy received.' },
         created_at: '2026-08-30T22:51:57.384Z',
-      },
-      {
+      }, 'Insurance Policy'),
+      validatedAnalysis({
         id: 'loss-upload',
         section: 'loss_report',
         filename: '03_Damage_Report.pdf',
         processing_status: 'extracted',
         analysis: { summary: 'Loss report received.' },
         created_at: '2026-08-30T22:53:54.623Z',
-      },
-      {
+      }, 'Loss Report'),
+      validatedAnalysis({
         id: 'repair-upload',
         section: 'repair_estimate',
         filename: '02_Repair_Invoices.pdf',
         processing_status: 'extracted',
         analysis: { summary: 'Repair estimate received.' },
         created_at: '2026-08-30T22:54:24.293Z',
-      },
+      }, 'Repair Estimate'),
       {
         id: 'cross-document-check',
         section: 'cross_document_verification',
@@ -1076,14 +1114,14 @@ describe('Ask Kontra grounding across Workflow Packs', () => {
       expect.objectContaining({ section: 'loss_report', label: 'Loss Report' }),
     ]);
 
-    analyses = [{
+    analyses = [validatedAnalysis({
       id: 'loss-upload',
       section: 'loss_report',
       filename: 'loss-report.pdf',
       processing_status: 'extracted',
       analysis: { summary: 'Loss report received.' },
       created_at: '2026-08-31T20:00:00.000Z',
-    }];
+    }, 'Loss Report')];
     expect((await getBriefing(propertyId)).missingDocuments).toHaveLength(1);
 
     clearBriefingCache(propertyId);

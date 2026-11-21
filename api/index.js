@@ -86,6 +86,7 @@ const operationsManagerRouter = require('./routers/operationsManager');
 const {
   buildReadTimeChecklistItems,
   loadCustomPackDocuments,
+  resolveRoomChecklist,
 } = require('./lib/customPackChecklist');
 const {
   clearBriefingCache,
@@ -165,6 +166,10 @@ const {
   sourceDocumentId,
 } = require('./lib/currentSourceIntegrity');
 const { projectDocumentChecklist } = require('./lib/documentStatus');
+const {
+  buildAiDocumentClassification,
+  getExpectedDocumentTypes,
+} = require('./lib/documentClassification');
 
 // Every verification write must reconcile the shared coordinator projections.
 // This is registered once at application startup so manual reruns and all
@@ -5874,22 +5879,19 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
     // like the built-in lightweight path instead of requiring a nonexistent
     // pack-specific AI endpoint.
     let customDocumentIsLightweight = false;
+    let checklistItemForUpload = null;
     if (!isPostCompletion) {
       const { data: roomPack } = await supabase
         .from('deal_rooms')
-        .select('workflow_pack_id')
+        .select('workflow_pack_id, property_type, checklist_items')
         .eq('property_id', propertyId)
         .maybeSingle();
+      const roomChecklist = await resolveRoomChecklist(roomPack || {}, supabase);
+      checklistItemForUpload = roomChecklist.find(document =>
+        document.section === section || document.id === section
+      ) || null;
       if (roomPack?.workflow_pack_id?.startsWith('ws_')) {
-        const { data: customPack } = await supabase
-          .from('custom_workflow_packs')
-          .select('config')
-          .eq('id', roomPack.workflow_pack_id)
-          .maybeSingle();
-        const customDocument = (customPack?.config?.documents || []).find(
-          (document) => (document?.section || document?.id) === section,
-        );
-        customDocumentIsLightweight = customDocument?.ai !== true;
+        customDocumentIsLightweight = checklistItemForUpload?.ai !== true;
       }
     }
 
@@ -6021,6 +6023,8 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
         replacement_of: replacement.priorIds,
         correlationId,
       }).catch(() => {});
+    evaluateDealRoomForTasks(propertyId, { source: 'document_upload_received' })
+      .catch(error => console.warn('[taskEngine] upload-state evaluation failed:', error.message));
     res.json({
       ok: true, section, filename,
       pending: hasAiPrompt || needsTransactionExtraction,
@@ -6091,23 +6095,28 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           console.warn(`[track-document] field extraction failed for ${section}:`, extractErr.message);
         }
         const outcome = await afterCanonicalCommit(extractionResult, async () => {
-          const impact = await documentImpact(propertyId, correlationId, beforeState, {
-            affectedRoles: [effectiveRole],
-            actorId: access.actorId,
-            actorType: access.actorType,
-          });
           const completedAnalysis = extractionResult.savedCount > 0
             ? { summary: `${sectionLabel} received and transaction facts extracted.`, documentType: sectionLabel, confidence: 100, pending: false }
             : { summary: `${sectionLabel} received and logged.`, documentType: sectionLabel, confidence: 100, pending: false };
           await updateDocumentProcessing(recordId, {
-            analysis: { ...completedAnalysis, processing_status: 'extracted', processing_impact: impact },
+            analysis: { ...completedAnalysis, processing_status: 'extracted' },
             storage_path: storagePath,
             processing_status: 'extracted',
             extraction_version: DOCUMENT_EXTRACTION_VERSION,
             correlation_id: correlationId,
             failure_reason: null,
             processing_completed_at: new Date().toISOString(),
-          }, { analysis: { ...completedAnalysis, processing_impact: impact }, storage_path: storagePath });
+          }, { analysis: completedAnalysis, storage_path: storagePath });
+          const impact = await documentImpact(propertyId, correlationId, beforeState, {
+            affectedRoles: [effectiveRole],
+            actorId: access.actorId,
+            actorType: access.actorType,
+          });
+          if (impact) {
+            await updateDocumentProcessing(recordId, {
+              analysis: { ...completedAnalysis, processing_status: 'extracted', processing_impact: impact },
+            });
+          }
           if (access.mode === 'participant') {
             await syncParticipantSubmissionFromDocument({
               supabase,
@@ -6148,6 +6157,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             failure_reason: outcome === 'failed' ? message : null,
             processing_completed_at: new Date().toISOString(),
           });
+          await evaluateDealRoomForTasks(propertyId, { source: 'document_processing_failed' });
           clearBriefingCache(propertyId);
           if (outcome === 'failed') {
             emitInternalEvent('document.failed', {
@@ -6165,20 +6175,31 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
       const bgJob = (async () => {
         const clearPending = async (analysis) => {
           if (!recordId) return;
-          const impact = await documentImpact(propertyId, correlationId, beforeState, {
-            affectedRoles: [effectiveRole],
-            actorId: access.actorId,
-            actorType: access.actorType,
-          });
+          const classifiedAnalysis = {
+            ...analysis,
+            pending: false,
+            processing_status: 'extracted',
+            document_classification: buildAiDocumentClassification(analysis, 'validated'),
+          };
           await updateDocumentProcessing(recordId, {
-            analysis: { ...analysis, pending: false, processing_status: 'extracted', processing_impact: impact },
+            analysis: classifiedAnalysis,
             storage_path: storagePath,
             processing_status: 'extracted',
             extraction_version: DOCUMENT_EXTRACTION_VERSION,
             correlation_id: correlationId,
             failure_reason: null,
             processing_completed_at: new Date().toISOString(),
-          }, { analysis: { ...analysis, pending: false, processing_impact: impact }, storage_path: storagePath });
+          }, { analysis: { ...analysis, pending: false }, storage_path: storagePath });
+          const impact = await documentImpact(propertyId, correlationId, beforeState, {
+            affectedRoles: [effectiveRole],
+            actorId: access.actorId,
+            actorType: access.actorType,
+          });
+          if (impact) {
+            await updateDocumentProcessing(recordId, {
+              analysis: { ...classifiedAnalysis, processing_impact: impact },
+            });
+          }
           if (access.mode === 'participant') {
             await syncParticipantSubmissionFromDocument({
               supabase,
@@ -6237,6 +6258,11 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
           }
 
           const prompt = LIGHTWEIGHT_AI_PROMPTS[section];
+          const expectedDocumentTypes = getExpectedDocumentTypes(checklistItemForUpload);
+          if (expectedDocumentTypes.length === 0) expectedDocumentTypes.push(sectionLabel);
+          const classificationInstruction = `Classify the actual document contents. Include a top-level "doc_type" string using exactly one of these checklist-approved types: ${JSON.stringify(expectedDocumentTypes)}. If the contents do not clearly match one, use "Other". Do not infer the type from the filename or upload section.`;
+          const systemPrompt = `${prompt.system}\n\n${classificationInstruction}`;
+          const withClassificationInstruction = content => `${content}\n\n${classificationInstruction}`;
           // Some scanned PDFs still produce "text" from pdf-parse — but it's just
           // page-separator noise (e.g. "-- 1 of 62 --") with no real body content.
           // Strip that noise before judging whether we actually got usable text.
@@ -6256,12 +6282,12 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             completion = await openai.chat.completions.create({
               model: 'gpt-4o-mini',
               messages: [
-                { role: 'system', content: prompt.system },
+                { role: 'system', content: systemPrompt },
                 {
                   role: 'user',
                   content: [
                     { type: 'file', file: { filename, file_data: `data:application/pdf;base64,${buf.toString('base64')}` } },
-                    { type: 'text', text: prompt.user('(This PDF has no selectable text layer — it is a scanned document. Read the page images directly.)') },
+                    { type: 'text', text: withClassificationInstruction(prompt.user('(This PDF has no selectable text layer — it is a scanned document. Read the page images directly.)')) },
                   ],
                 },
               ],
@@ -6275,8 +6301,8 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
             completion = await openai.chat.completions.create({
               model: 'gpt-4o-mini',
               messages: [
-                { role: 'system', content: prompt.system },
-                { role: 'user', content: prompt.user(text) },
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: withClassificationInstruction(prompt.user(text)) },
               ],
               response_format: { type: 'json_object' },
               temperature: 0.3,
@@ -6334,6 +6360,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
              failure_reason: aiErr.message,
              processing_completed_at: new Date().toISOString(),
            }, { analysis: { summary, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath });
+            await evaluateDealRoomForTasks(propertyId, { source: 'document_processing_failed' });
            clearBriefingCache(propertyId);
            emitInternalEvent('document.failed', {
              propertyId, documentId: recordId, section, filename,
@@ -6363,6 +6390,7 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               failure_reason: err.message,
               processing_completed_at: new Date().toISOString(),
             }, { analysis: { summary: `${SECTION_LABELS[section]} uploaded. Analysis timed out — try re-uploading.`, documentType: SECTION_LABELS[section], confidence: 0, pending: false }, storage_path: storagePath }).catch(() => {});
+            await evaluateDealRoomForTasks(propertyId, { source: 'document_processing_timeout' });
             clearBriefingCache(propertyId);
             emitInternalEvent('document.failed', {
               propertyId, documentId: recordId, section, filename,

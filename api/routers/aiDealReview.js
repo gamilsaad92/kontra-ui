@@ -34,6 +34,11 @@ const {
 const {
   syncParticipantSubmissionFromDocument,
 } = require('../lib/participantSubmissionState');
+const { resolveRoomChecklist } = require('../lib/customPackChecklist');
+const {
+  buildAiDocumentClassification,
+  getExpectedDocumentTypes,
+} = require('../lib/documentClassification');
 
 const router = express.Router({ mergeParams: true });
 let transactionFieldExtractor = null;
@@ -85,6 +90,10 @@ function buildDocumentVersionInsertPayloads({
 // uploads: an earlier version remains auditable but cannot remain live evidence.
 async function persistAiDocumentVersion({ propertyId, section, filename, analysis, role, storagePath, fileBuffer, extractedText }) {
   const sourceHash = fileBuffer ? crypto.createHash('sha256').update(fileBuffer).digest('hex') : null;
+  const pendingAnalysis = {
+    ...analysis,
+    document_classification: buildAiDocumentClassification(analysis, 'processing'),
+  };
   let existingRecordId = null;
   if (sourceHash) {
     let { data: existing, error: existingError } = await supabase.from('deal_analyses')
@@ -114,7 +123,7 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
     existingDocumentId: existingRecordId,
     document: {
       filename,
-      analysis: { ...analysis, pending: true, processing_status: 'processing' },
+      analysis: { ...pendingAnalysis, pending: true, processing_status: 'processing' },
       uploaded_by_role: role || 'unknown',
       storage_path: storagePath,
       document_hash: sourceHash,
@@ -147,11 +156,17 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   if (!transactionFieldExtractor) {
     const message = 'Canonical document extraction is unavailable.';
     await supabase.from('deal_analyses').update({
-      analysis: { ...analysis, pending: false, processing_status: 'failed' },
+      analysis: {
+        ...analysis,
+        pending: false,
+        processing_status: 'failed',
+        document_classification: buildAiDocumentClassification(analysis, 'failed'),
+      },
       processing_status: 'failed',
       failure_reason: message,
       processing_completed_at: new Date().toISOString(),
     }).eq('id', recordId);
+    await evaluateDealRoomForTasks(propertyId, { source: 'document_processing_failed' });
     throw new Error(message);
   }
   const extractionResult = await transactionFieldExtractor(
@@ -161,8 +176,14 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
     section,
   );
   const outcome = await afterCanonicalCommit(extractionResult, async () => {
+    const validatedAnalysis = {
+      ...analysis,
+      pending: false,
+      processing_status: 'extracted',
+      document_classification: buildAiDocumentClassification(analysis, 'validated'),
+    };
     const { error } = await supabase.from('deal_analyses').update({
-      analysis: { ...analysis, pending: false, processing_status: 'extracted' },
+      analysis: validatedAnalysis,
       processing_status: 'extracted',
       failure_reason: null,
       processing_completed_at: new Date().toISOString(),
@@ -178,13 +199,19 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   if (outcome === 'stale_source') {
     const message = 'This document version was superseded before extraction could commit.';
     const { error } = await supabase.from('deal_analyses').update({
-      analysis: { ...analysis, pending: false, processing_status: 'superseded' },
+      analysis: {
+        ...analysis,
+        pending: false,
+        processing_status: 'superseded',
+        document_classification: buildAiDocumentClassification(analysis, 'superseded'),
+      },
       processing_status: 'superseded',
       failure_reason: null,
       processing_completed_at: new Date().toISOString(),
     }).eq('id', recordId);
     if (error) throw error;
     clearBriefingCache(propertyId);
+    await evaluateDealRoomForTasks(propertyId, { source: 'document_version_superseded' });
     const staleError = new Error(message);
     staleError.status = 409;
     throw staleError;
@@ -192,18 +219,46 @@ async function persistAiDocumentVersion({ propertyId, section, filename, analysi
   if (outcome !== 'committed') {
     const message = extractionResult?.error || 'Canonical document extraction failed.';
     const { error } = await supabase.from('deal_analyses').update({
-      analysis: { ...analysis, pending: false, processing_status: 'failed' },
+      analysis: {
+        ...analysis,
+        pending: false,
+        processing_status: 'failed',
+        document_classification: buildAiDocumentClassification(analysis, 'failed'),
+      },
       processing_status: 'failed',
       failure_reason: message,
       processing_completed_at: new Date().toISOString(),
     }).eq('id', recordId);
     if (error) throw error;
+    await evaluateDealRoomForTasks(propertyId, { source: 'document_processing_failed' });
     throw extractionResult?.error instanceof Error
       ? extractionResult.error
       : new Error(message);
   }
   clearBriefingCache(propertyId);
   return recordId;
+}
+
+async function getRoomChecklistItem(propertyId, section) {
+  try {
+    const { data: room, error } = await supabase
+      .from('deal_rooms')
+      .select('workflow_pack_id, property_type, checklist_items')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (error) throw error;
+    const checklist = await resolveRoomChecklist(room || {}, supabase);
+    const normalizedSection = section === 'brand-standards' ? 'brand_standards' : section;
+    return checklist.find(item =>
+      item.section === section
+        || item.section === normalizedSection
+        || item.id === section
+        || item.id === normalizedSection
+    ) || null;
+  } catch (error) {
+    console.warn('[analyze-document] checklist metadata unavailable:', error.message);
+    return null;
+  }
 }
 
 async function persistUploadedAiDocument({ propertyId, section, filename, analysis, role, fileBuffer, mimetype, extractedText }) {
@@ -768,10 +823,12 @@ Document:\n${text}` }
 // Acquisition) use this one.
 router.post('/analyze-document', aiRateLimit, upload.single('file'), rejectSpreadsheetParsing, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const { property_id, section } = req.body;
+  const { section } = req.body;
   const uploadAccess = await authorizeDocumentUpload(req, res, section);
   if (!uploadAccess) return;
+  const propertyId = uploadAccess.propertyId;
   const role = uploadAccess.role;
+  const checklistItem = await getRoomChecklistItem(propertyId, section);
   const extension = (req.file.originalname || '').split('.').pop()?.toLowerCase() || '';
   const isDocx = req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     || extension === 'docx';
@@ -804,13 +861,13 @@ router.post('/analyze-document', aiRateLimit, upload.single('file'), rejectSprea
     }
 
     let metricsSchema = {};
-    let docTypes = ['Other'];
+    let docTypes = getExpectedDocumentTypes(checklistItem);
     let analystRole = 'senior financial analyst';
     try {
       if (req.body.metricsSchema) metricsSchema = JSON.parse(req.body.metricsSchema);
-      if (req.body.docTypes) docTypes = JSON.parse(req.body.docTypes);
       if (req.body.analystRole) analystRole = String(req.body.analystRole).slice(0, 300);
     } catch { /* fall back to defaults below */ }
+    if (docTypes.length === 0) docTypes = ['Other'];
 
     const metricsBlock = Object.entries(metricsSchema)
       .map(([key, desc]) => `    "${key}": number | null  (${desc})`)
@@ -840,22 +897,22 @@ Return only valid JSON. No extra text.`;
       temperature: 0.2,
     });
     const result = JSON.parse(completion.choices[0].message.content);
-    if (property_id && section) {
+    if (propertyId && section) {
       const _buf = req.file.buffer, _mime = req.file.mimetype, _name = req.file.originalname;
       await persistUploadedAiDocument({
-        propertyId: property_id, section, filename: _name, analysis: result,
+        propertyId, section, filename: _name, analysis: result,
         role: role || 'unknown', fileBuffer: _buf, mimetype: _mime, extractedText: text,
       });
       if (uploadAccess.mode === 'participant') {
         await syncParticipantSubmissionFromDocument({
           supabase,
-          propertyId: property_id,
+          propertyId,
           role,
           email: uploadAccess.email,
         });
       }
       console.log(`[deal_analyses] ${section} saved (analyze-document) — fresh content analysis persisted`);
-      logEvent(property_id, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
+      logEvent(propertyId, 'document_analyzed', role || 'unknown', null, `${section} analyzed by AI`, { section, filename: req.file.originalname });
     }
     res.json({ success: true, analysis: result });
   } catch (err) {

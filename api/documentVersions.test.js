@@ -1,5 +1,6 @@
 const {
   selectActiveDocumentVersions,
+  isSuccessfulDocumentVersion,
   isActiveDocumentVersion,
   replacementHistoryBySection,
 } = require('./lib/documentVersions');
@@ -185,5 +186,26 @@ describe('document version selection', () => {
     ]);
     expect(active).toHaveLength(1);
     expect(active[0].id).toBe('insurance-success');
+  });
+
+  it.each(['uploaded', 'processing', 'retrying', 'failed'])(
+    'does not treat a %s document as successfully validated evidence',
+    processing_status => {
+      expect(isSuccessfulDocumentVersion({
+        processing_status,
+        analysis: { pending: processing_status !== 'failed' },
+      })).toBe(false);
+    },
+  );
+
+  it('accepts extracted evidence only when it is not marked pending or under review', () => {
+    expect(isSuccessfulDocumentVersion({
+      processing_status: 'extracted',
+      analysis: { pending: false },
+    })).toBe(true);
+    expect(isSuccessfulDocumentVersion({
+      processing_status: 'extracted',
+      analysis: { pending: true },
+    })).toBe(false);
   });
 });

@@ -1,7 +1,10 @@
 'use strict';
 
 const { getChecklistItemAssignedRoles } = require('./documentAssignmentAccess');
-const { projectDocumentChecklist } = require('./documentStatus');
+const {
+  documentRequirementMatchesAnalysis,
+  projectDocumentChecklist,
+} = require('./documentStatus');
 
 const TOKENIZATION_TYPES = new Set([
   'tokenization',
@@ -69,14 +72,62 @@ function assignedOwnerRole(item, roleConfig) {
     .find(role => role === 'owner' || validRoles.has(role)) || 'owner';
 }
 
+function checklistSourceId(identity) {
+  return `workflow-checklist:${identity}`;
+}
+
+function checklistTaskBaseSourceId(task) {
+  if (task?.task_type !== 'missing_document' || task?.source_type !== 'workflow_checklist') {
+    return null;
+  }
+  const sourceId = String(task.source_id || '');
+  const match = sourceId.match(/^(workflow-checklist:.+?)(?::(?:cycle|evidence):.*)?$/);
+  return match?.[1] || null;
+}
+
+function taskTimestamp(task) {
+  const timestamp = Date.parse(task?.updated_at || task?.resolved_at || task?.created_at || '');
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function analysisTimestamp(analysis) {
+  const timestamp = Date.parse(analysis?.created_at || '');
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function latestByTimestamp(rows = []) {
+  return [...rows].sort((a, b) => taskTimestamp(b) - taskTimestamp(a))[0] || null;
+}
+
+function latestAnalysisByTimestamp(rows = []) {
+  return [...rows].sort((a, b) => analysisTimestamp(b) - analysisTimestamp(a))[0] || null;
+}
+
+function evidenceTaskToken(analysis) {
+  const token = String(analysis?.id || analysis?.created_at || '').trim();
+  return token.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+}
+
+function latestRequirementCandidate(item, documentAnalyses) {
+  const candidates = (Array.isArray(documentAnalyses) ? documentAnalyses : [])
+    .filter(analysis => documentRequirementMatchesAnalysis(item, analysis));
+  return latestAnalysisByTimestamp(candidates);
+}
+
+function hasNewEvidenceSinceDismissal(candidate, dismissedTask) {
+  const candidateAt = analysisTimestamp(candidate);
+  return Boolean(candidate?.id && candidateAt > taskTimestamp(dismissedTask));
+}
+
 function buildChecklistRequirementPlan({
   room = {},
   checklist = room.checklist_items || [],
   activeAnalyses = [],
+  documentAnalyses = activeAnalyses,
   existingTasks = [],
   roleConfig = { roles: [] },
 } = {}) {
-  const projectedItems = projectDocumentChecklist(checklist, activeAnalyses).items;
+  const projectedItems = projectDocumentChecklist(checklist, documentAnalyses).items;
   const currentStage = room.deal_stage || null;
   const missing = new Map();
   const satisfied = new Set();
@@ -88,38 +139,66 @@ function buildChecklistRequirementPlan({
 
     const identity = stableChecklistIdentity(item);
     if (!identity) continue;
-    const sourceId = `workflow-checklist:${identity}`;
-    if (item.documentState === 'missing') {
-      missing.set(sourceId, { item, sourceId, stage: stage || currentStage });
+    const sourceId = checklistSourceId(identity);
+    if (item.documentState === 'missing'
+      || (item.documentState === 'needs_review' && item.documentReceived !== true)) {
+      missing.set(sourceId, {
+        item,
+        sourceId,
+        stage: stage || currentStage,
+        candidate: latestRequirementCandidate(item, documentAnalyses),
+      });
     } else if (item.documentReceived) {
       satisfied.add(sourceId);
     }
   }
 
   const generatedTasks = [];
-  for (const { item, sourceId, stage } of missing.values()) {
-    const alreadyExists = existingTasks.some(task =>
-      (task.task_type === 'missing_document'
-        && task.source_type === 'workflow_checklist'
-        && task.source_id === sourceId)
-        || (task.task_type === 'readiness_document'
-          && item.id
-          && task.source_document_id === item.id)
+  for (const { item, sourceId, stage, candidate } of missing.values()) {
+    if (existingTasks.some(task =>
+      task.task_type === 'readiness_document'
+        && item.id
+        && task.source_document_id === item.id
+    )) continue;
+    const relatedTasks = existingTasks.filter(task =>
+      checklistTaskBaseSourceId(task) === sourceId
     );
-    if (alreadyExists) continue;
+    if (relatedTasks.some(task => !['dismissed', 'completed'].includes(task.status))) continue;
+
+    const terminal = latestByTimestamp(
+      relatedTasks.filter(task => ['dismissed', 'completed'].includes(task.status)),
+    );
+    let taskSourceId = sourceId;
+    if (terminal?.status === 'dismissed') {
+      // Keep a dismissal intact unless a new document version arrived after it.
+      // A new invalid version is a new evidence event and deserves a new task.
+      if (!hasNewEvidenceSinceDismissal(candidate, terminal)) continue;
+      const token = evidenceTaskToken(candidate);
+      if (!token) continue;
+      taskSourceId = `${sourceId}:evidence:${token}`;
+    } else if (terminal?.status === 'completed') {
+      // Preserve the historical completed row; use a new idempotent source key
+      // for the next actionable cycle if its evidence is no longer valid.
+      taskSourceId = `${sourceId}:cycle:${evidenceTaskToken({ id: terminal.id })}`;
+    }
 
     const label = item.label || item.name || item.section || item.id || 'required document';
-    const evidence = [`Active workflow checklist item "${label}" is required but missing.`];
+    const needsReview = item.documentState === 'needs_review';
+    const evidence = [needsReview
+      ? `Current upload for "${label}" is not validated as the required document.`
+      : `Active workflow checklist item "${label}" is required but missing.`];
     if (stage) evidence.push(`Workflow stage: ${stage}.`);
     generatedTasks.push({
       taskType: 'missing_document',
-      title: `Upload ${label}`,
-      description: `The active workflow checklist marks "${label}" as required.${stage ? ` It is assigned to the ${stage} stage.` : ''} Upload it in the Documents tab.`,
+      title: needsReview ? `Review or replace ${label}` : `Upload ${label}`,
+      description: needsReview
+        ? `The current upload for "${label}" has not passed document validation or its classification does not match. Review it or upload a correctly classified document.${stage ? ` It is assigned to the ${stage} stage.` : ''}`
+        : `The active workflow checklist marks "${label}" as required.${stage ? ` It is assigned to the ${stage} stage.` : ''} Upload it in the Documents tab.`,
       ownerType: 'human',
       ownerRole: assignedOwnerRole(item, roleConfig),
       evidence,
       sourceType: 'workflow_checklist',
-      sourceId,
+      sourceId: taskSourceId,
       sourceDocumentId: item.id || item.document_id || item.documentId || null,
       category: 'document',
       blocking: item.blocking === true,
@@ -131,12 +210,12 @@ function buildChecklistRequirementPlan({
 
   const missingIds = new Set(missing.keys());
   const resolve = existingTasks
-    .filter(task => task.task_type === 'missing_document' && task.source_type === 'workflow_checklist')
+    .filter(task => checklistTaskBaseSourceId(task))
     .filter(task => !['dismissed', 'completed'].includes(task.status))
-    .filter(task => !missingIds.has(task.source_id))
+    .filter(task => !missingIds.has(checklistTaskBaseSourceId(task)))
     .map(task => ({
       task,
-      status: satisfied.has(task.source_id) ? 'completed' : 'dismissed',
+      status: satisfied.has(checklistTaskBaseSourceId(task)) ? 'completed' : 'dismissed',
     }));
 
   return { create: generatedTasks, resolve, missingSourceIds: [...missingIds] };

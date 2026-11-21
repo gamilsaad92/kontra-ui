@@ -6,6 +6,11 @@ const mockCompletionCreate = jest.fn();
 const mockRows = [];
 const mockOwnerSessionToken = 'docx-owner-session';
 const mockOwnerSessionHash = crypto.createHash('sha256').update(mockOwnerSessionToken).digest('hex');
+const EXPECTED_TYPES = {
+  insurance_claim_documentation: 'Insurance Claim Documentation',
+  insurance_coverage: 'Insurance Coverage',
+  repair_estimate: 'Repair Estimate',
+};
 
 jest.mock('openai', () => jest.fn().mockImplementation(() => ({
   chat: { completions: { create: mockCompletionCreate } },
@@ -53,9 +58,26 @@ jest.mock('./db', () => {
         data: {
           property_id: 'hazard-room',
           owner_write_token: 'hazard-owner-token',
-          workflow_pack_id: 'custom_hazard_loss',
+          workflow_pack_id: 'ws_custom_hazard_loss',
           property_type: 'Hazard Loss',
           checklist_items: [],
+        },
+        error: null,
+      };
+    }
+    if (table === 'custom_workflow_packs') {
+      return {
+        data: {
+          config: {
+            documents: Object.entries(EXPECTED_TYPES).map(([section, label]) => ({
+              id: section,
+              section,
+              label,
+              required: true,
+              ai: true,
+              aiExtraction: { docTypes: [label] },
+            })),
+          },
         },
         error: null,
       };
@@ -151,18 +173,23 @@ describe('Deal Room generic AI DOCX upload route', () => {
   beforeEach(() => {
     mockRows.length = 0;
     mockCompletionCreate.mockReset();
-    mockCompletionCreate.mockResolvedValue({
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            doc_type: 'Repair Estimate',
-            summary: 'The repair estimate records a total repair cost of $96,480.00 and references a $2,500,000.00 property damage policy limit.',
-            metrics: { total_repair_cost: 96480, policy_limit: 2500000 },
-            risk_flags: [],
-            recommendations: ['Confirm the estimate against the insurance claim file.'],
-          }),
-        },
-      }],
+    mockCompletionCreate.mockImplementation(async completionRequest => {
+      const systemPrompt = completionRequest.messages.find(message => message.role === 'system')?.content || '';
+      const typeList = systemPrompt.match(/"doc_type": string \(one of: ([^)]+)\)/)?.[1] || '';
+      const docType = typeList.match(/"([^"]+)"/)?.[1] || 'Other';
+      return {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              doc_type: docType,
+              summary: 'The repair estimate records a total repair cost of $96,480.00 and references a $2,500,000.00 property damage policy limit.',
+              metrics: { total_repair_cost: 96480, policy_limit: 2500000 },
+              risk_flags: [],
+              recommendations: ['Confirm the estimate against the insurance claim file.'],
+            }),
+          },
+        }],
+      };
     });
   });
 
@@ -191,6 +218,7 @@ describe('Deal Room generic AI DOCX upload route', () => {
       .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
       .field('property_id', 'hazard-room')
       .field('section', section)
+      .field('docTypes', '["Caller Chosen Type"]')
       .attach('file', DOCX_FIXTURE, {
         filename,
         contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -202,7 +230,10 @@ describe('Deal Room generic AI DOCX upload route', () => {
     expect(mockCompletionCreate).toHaveBeenCalledTimes(1);
 
     const completionRequest = mockCompletionCreate.mock.calls[0][0];
+    const systemMessage = completionRequest.messages.find(message => message.role === 'system');
     const userMessage = completionRequest.messages.find(message => message.role === 'user');
+    expect(systemMessage.content).toContain(EXPECTED_TYPES[section]);
+    expect(systemMessage.content).not.toContain('Caller Chosen Type');
     expect(userMessage.content).toContain('Repair Estimate');
     expect(userMessage.content).toContain('Total repair cost: $96,480.00');
     expect(userMessage.content).not.toContain('PK');
@@ -214,6 +245,11 @@ describe('Deal Room generic AI DOCX upload route', () => {
       is_active: true,
       analysis: expect.objectContaining({
         summary: expect.stringContaining('$96,480.00'),
+        document_classification: expect.objectContaining({
+          source: 'ai',
+          label: EXPECTED_TYPES[section],
+          validation_status: 'validated',
+        }),
       }),
     }));
   });

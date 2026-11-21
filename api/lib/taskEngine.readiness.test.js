@@ -55,7 +55,10 @@ jest.mock('./dealRoomHelpers', () => ({
 }));
 jest.mock('./emailConfig', () => ({ TRANSACTION_NOTIFICATION_FROM: 'test@example.invalid' }));
 jest.mock('./eventBus', () => ({ emit: jest.fn() }));
-jest.mock('./documentVersions', () => ({ selectActiveDocumentVersions: rows => rows }));
+jest.mock('./documentVersions', () => ({
+  ...jest.requireActual('./documentVersions'),
+  selectActiveDocumentVersions: rows => rows,
+}));
 jest.mock('./taskSubmissionQuery', () => ({ loadTaskSubmissions: jest.fn() }));
 jest.mock('./recordRemediation', () => ({
   getRecordRemediationPlan: jest.fn(() => ({ upsert: [], dismiss: [] })),

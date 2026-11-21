@@ -1,5 +1,15 @@
 'use strict';
 
+const SUCCESSFUL_DOCUMENT_STATUSES = new Set([
+  'ai_complete',
+  'analyzed',
+  'approved',
+  'complete',
+  'completed',
+  'extracted',
+  'received',
+]);
+
 /**
  * Returns the single authoritative document version for each requirement
  * section. Superseded records remain in the input for audit/history callers,
@@ -21,8 +31,8 @@ function selectActiveDocumentVersions(analyses = []) {
     // During rollout, some databases expose the processing columns but not
     // the version columns. A failed or still-pending row must not hide the
     // previously successful version in that legacy projection. If there is no
-    // prior successful version, however, the upload is still live evidence
-    // and must remain visible as received rather than appearing missing.
+    // prior successful version, keep the upload visible for review; checklist
+    // validity is decided separately from its processing and classification.
     if (!hasExplicitVersionState && !isSuccessfulDocumentVersion(analysis)) {
       const existingFallback = fallbackBySection.get(analysis.section);
       const currentTime = new Date(analysis.created_at || 0).getTime();
@@ -49,9 +59,15 @@ function selectActiveDocumentVersions(analyses = []) {
 
 function isSuccessfulDocumentVersion(analysis) {
   if (!analysis) return false;
-  const status = String(analysis.processing_status || '').toLowerCase();
-  if (status === 'failed' || status === 'uploaded' || status === 'processing' || status === 'retrying') return false;
-  if (analysis.analysis?.pending === true) return false;
+  const status = String(
+    analysis.processing_status || analysis.analysis?.processing_status || '',
+  ).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!SUCCESSFUL_DOCUMENT_STATUSES.has(status)) return false;
+  if (analysis.analysis?.pending === true
+    || analysis.analysis?.needs_review === true
+    || analysis.analysis?.needsReview === true) return false;
+  const classificationStatus = analysis.analysis?.document_classification?.validation_status;
+  if (classificationStatus && classificationStatus !== 'validated') return false;
   return true;
 }
 
@@ -85,6 +101,7 @@ function replacementHistoryBySection(analyses = []) {
 
 module.exports = {
   selectActiveDocumentVersions,
+  SUCCESSFUL_DOCUMENT_STATUSES,
   isSuccessfulDocumentVersion,
   isActiveDocumentVersion,
   replacementHistoryBySection,

@@ -6,7 +6,14 @@ const { resolveRoomChecklist } = require('./customPackChecklist');
 const REDWOOD_PACK_ID = 'ws_redwood_business_center_acquis_mwk1m4zr';
 const REDWOOD_DOCUMENTS = [
   { id: 'letter_of_intent', label: 'Letter of Intent', required: true, assignedTo: ['buyer'] },
-  { id: 'property_inspection_report', label: 'Property Inspection Report', required: true, ai: true, assignedTo: ['buyer'] },
+  {
+    id: 'property_inspection_report',
+    label: 'Property Inspection Report',
+    required: true,
+    ai: true,
+    aiExtraction: { docTypes: ['Property Inspection Report', 'Phase I Inspection'] },
+    assignedTo: ['buyer'],
+  },
   { id: 'title_report', label: 'Title Report', required: true, ai: true, assignedTo: ['buyer'] },
   { id: 'financing_documents', label: 'Financing Documents', required: true, ai: true, assignedTo: ['buyer'] },
   { id: 'closing_documents', label: 'Closing Documents', required: true, assignedTo: ['buyer'] },
@@ -57,6 +64,10 @@ describe('custom workflow pack checklist fallback', () => {
       'Closing Documents',
       'Financial Statements',
     ]);
+    expect(checklist[1].aiExtraction.docTypes).toEqual([
+      'Property Inspection Report',
+      'Phase I Inspection',
+    ]);
     expect(calls).toEqual([
       ['from', 'custom_workflow_packs'],
       ['select', 'config'],
@@ -65,7 +76,7 @@ describe('custom workflow pack checklist fallback', () => {
     ]);
   });
 
-  test('keeps a nonempty saved checklist authoritative without loading pack defaults', async () => {
+  test('keeps a nonempty saved checklist authoritative but does not trust its received status without evidence', async () => {
     const savedChecklist = [{
       id: 'saved-requirement',
       section: 'saved-requirement',
@@ -85,9 +96,12 @@ describe('custom workflow pack checklist fallback', () => {
     expect(projection.items[0]).toMatchObject({
       id: 'saved-requirement',
       label: 'Saved Room Requirement',
-      documentState: 'received',
+      documentState: 'missing',
+      documentReceived: false,
     });
-    expect(projection.missingDocuments).toEqual([]);
+    expect(projection.missingDocuments).toEqual([
+      expect.objectContaining({ label: 'Saved Room Requirement' }),
+    ]);
     expect(calls).toEqual([]);
   });
 });

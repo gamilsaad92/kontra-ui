@@ -39,6 +39,7 @@ async function loadCustomPackDocuments(supabase, packId) {
 function buildReadTimeChecklistItems(canonical) {
   if (!Array.isArray(canonical)) return null;
   return canonical.map((document, index) => ({
+    ...document,
     id: document.id || document.section,
     section: document.section,
     label: document.label,

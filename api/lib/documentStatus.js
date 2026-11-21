@@ -1,6 +1,14 @@
 'use strict';
 
-const { selectActiveDocumentVersions } = require('./documentVersions');
+const {
+  selectActiveDocumentVersions,
+  isSuccessfulDocumentVersion,
+} = require('./documentVersions');
+const {
+  getDocumentClassification,
+  matchesChecklistDocumentClassification,
+  normalizeDocumentClassification,
+} = require('./documentClassification');
 
 const DOCUMENT_RECEIVED_STATUSES = new Set([
   'uploaded',
@@ -31,11 +39,7 @@ const DOCUMENT_PROCESSING_STATUSES = new Set([
 ]);
 
 function normalizedDocumentText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ');
+  return normalizeDocumentClassification(value);
 }
 
 function normalizedDocumentStatus(value) {
@@ -105,9 +109,23 @@ function analysisNeedsReview(analysis) {
   const reviewStatus = normalizedDocumentStatus(
     analysis.review_status || analysis.document_status || analysis.status,
   );
+  const classification = getDocumentClassification(analysis);
+  const classificationLabel = normalizeDocumentClassification(classification?.label);
+  const classificationCandidates = Array.isArray(classification?.candidates)
+    ? [...new Set(classification.candidates.map(normalizeDocumentClassification).filter(Boolean))]
+    : [];
+  const classificationNeedsReview = !classification
+    || classification.ambiguous === true
+    || !classificationLabel
+    || ['ambiguous', 'other', 'unknown', 'unclassified', 'unclear'].includes(classificationLabel)
+    || (classification.source === 'ai' && classification.validation_status !== 'validated')
+    || classificationCandidates.length > 1
+    || (classificationCandidates.length === 1 && classificationCandidates[0] !== classificationLabel);
   return analysis.analysis?.pending === true
     || DOCUMENT_PROCESSING_STATUSES.has(processingStatus)
     || processingStatus === 'failed'
+    || !isSuccessfulDocumentVersion(analysis)
+    || classificationNeedsReview
     || DOCUMENT_REVIEW_STATUSES.has(reviewStatus)
     || analysis.analysis?.needs_review === true
     || analysis.analysis?.needsReview === true;
@@ -115,14 +133,23 @@ function analysisNeedsReview(analysis) {
 
 function projectDocumentRequirement(requirement, activeAnalyses = []) {
   const requirementStatus = normalizedDocumentStatus(requirement?.status);
-  const matchedAnalysis = activeAnalyses.find(analysis =>
-    documentRequirementMatchesAnalysis(requirement, analysis)
-  ) || null;
-  const received = requirement?.uploaded === true
-    || requirement?.uploaded === 'true'
-    || DOCUMENT_RECEIVED_STATUSES.has(requirementStatus)
-    || DOCUMENT_REVIEW_STATUSES.has(requirementStatus)
-    || !!matchedAnalysis;
+  const candidates = (Array.isArray(activeAnalyses) ? activeAnalyses : [])
+    .filter(analysis => documentRequirementMatchesAnalysis(requirement, analysis));
+  const validCandidates = candidates.filter(analysis =>
+    isSuccessfulDocumentVersion(analysis)
+      && matchesChecklistDocumentClassification(requirement, analysis)
+  );
+  const currentValid = validCandidates.filter(analysis =>
+    analysis.is_active !== false && !analysis.superseded_at
+  );
+  const evidenceCandidates = currentValid.length > 0 ? currentValid : validCandidates;
+  const matchedAnalysis = evidenceCandidates
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+  const currentCandidate = candidates
+    .filter(analysis => analysis.is_active !== false && !analysis.superseded_at)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0]
+    || [...candidates].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0]
+    || null;
   const notApplicable = ['not_applicable', 'na', 'n_a'].includes(requirementStatus)
     || requirement?.notApplicable === true;
 
@@ -132,25 +159,27 @@ function projectDocumentRequirement(requirement, activeAnalyses = []) {
       received: false,
       needsReview: false,
       analysis: null,
+      candidateAnalysis: null,
     };
   }
 
-  if (!received) {
+  if (matchedAnalysis) {
     return {
-      status: 'missing',
-      received: false,
+      status: 'received',
+      received: true,
       needsReview: false,
-      analysis: null,
+      analysis: matchedAnalysis,
+      candidateAnalysis: currentCandidate,
     };
   }
 
-  const needsReview = DOCUMENT_REVIEW_STATUSES.has(requirementStatus)
-    || analysisNeedsReview(matchedAnalysis);
+  const needsReview = DOCUMENT_REVIEW_STATUSES.has(requirementStatus) || !!currentCandidate;
   return {
-    status: needsReview ? 'needs_review' : 'received',
-    received: true,
+    status: needsReview ? 'needs_review' : 'missing',
+    received: false,
     needsReview,
-    analysis: matchedAnalysis,
+    analysis: null,
+    candidateAnalysis: currentCandidate,
   };
 }
 
@@ -158,8 +187,9 @@ function projectDocumentRequirement(requirement, activeAnalyses = []) {
  * The coordinator and AI must make document-status decisions from this
  * projection, not from independent template or checklist heuristics.
  *
- * `analyses` may contain historical rows; only the active version for each
- * section is allowed to satisfy a current checklist requirement.
+ * `analyses` may contain historical rows. A validated current version can
+ * satisfy a requirement; a previously validated version remains valid while
+ * its replacement is still pending or has failed.
  */
 function projectDocumentChecklist(checklist = [], analyses = []) {
   const activeAnalyses = selectActiveDocumentVersions(analyses);
@@ -168,7 +198,7 @@ function projectDocumentChecklist(checklist = [], analyses = []) {
     documentState: analysisNeedsReview(analysis) ? 'needs_review' : 'received',
   }));
   const items = (Array.isArray(checklist) ? checklist : []).map(item => {
-    const state = projectDocumentRequirement(item, activeAnalyses);
+    const state = projectDocumentRequirement(item, analyses);
     return {
       ...item,
       documentState: state.status,
@@ -177,7 +207,9 @@ function projectDocumentChecklist(checklist = [], analyses = []) {
     };
   });
   const missingDocuments = items
-    .filter(item => item.required && item.documentState === 'missing')
+    .filter(item => item.required
+      && (item.documentState === 'missing'
+        || (item.documentState === 'needs_review' && item.documentReceived !== true)))
     .slice(0, 30)
     .map(item => ({
       id: item.id || item.document_id || item.documentId || null,
@@ -200,6 +232,7 @@ module.exports = {
   normalizedDocumentStatus,
   documentRequirementMatchesAnalysis,
   analysisNeedsReview,
+  normalizeDocumentClassification,
   projectDocumentRequirement,
   projectDocumentChecklist,
 };

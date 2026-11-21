@@ -6,6 +6,26 @@ const {
   isDigitalAssetReadinessApplicable,
 } = require('./taskRelevance');
 
+function validatedAnalysis(section, documentType) {
+  return {
+    id: `validated-${section}`,
+    section,
+    processing_status: 'extracted',
+    is_active: true,
+    created_at: '2026-11-01T00:00:00.000Z',
+    analysis: {
+      doc_type: documentType,
+      document_classification: {
+        source: 'ai',
+        label: documentType,
+        candidates: [documentType],
+        ambiguous: false,
+        validation_status: 'validated',
+      },
+    },
+  };
+}
+
 describe('transaction-aware task relevance', () => {
   test('does not infer tokenization for an acquisition room without an explicit digital-asset opt-in', () => {
     expect(isDigitalAssetReadinessApplicable({
@@ -117,10 +137,17 @@ describe('transaction-aware task relevance', () => {
     const plan = buildChecklistRequirementPlan({
       room: { deal_stage: 'due_diligence' },
       checklist: [
-        { id: 'uploaded', label: 'Purchase Agreement', required: true, status: 'uploaded' },
+        {
+          id: 'uploaded',
+          section: 'purchase_agreement',
+          label: 'Purchase Agreement',
+          required: true,
+          status: 'uploaded',
+        },
         { id: 'future', label: 'Closing Certificate', required: true, status: 'pending', workflow_stage: 'closing' },
         { id: 'dismissed', label: 'Survey', required: true, status: 'pending' },
       ],
+      activeAnalyses: [validatedAnalysis('purchase_agreement', 'Purchase Agreement')],
       existingTasks: [{
         id: 'dismissed-task',
         task_type: 'missing_document',
@@ -169,7 +196,11 @@ describe('transaction-aware task relevance', () => {
       source_id: 'workflow-checklist:inspection',
       status: 'pending',
     }];
-    const resolved = buildChecklistRequirementPlan({ checklist, existingTasks: existing });
+    const resolved = buildChecklistRequirementPlan({
+      checklist,
+      activeAnalyses: [validatedAnalysis('inspection', 'Inspection Report')],
+      existingTasks: existing,
+    });
     expect(resolved.create).toEqual([]);
     expect(resolved.resolve).toEqual([{
       task: existing[0],

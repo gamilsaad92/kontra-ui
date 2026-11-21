@@ -32,8 +32,11 @@ function participantDocumentsForRole(role, checklist = []) {
 }
 
 function isCompletedDocument(item) {
+  if (typeof item?.documentReceived === 'boolean') return item.documentReceived;
+  const projectedState = normalizeParticipantRole(item?.documentState || item?.document_state);
+  if (projectedState) return projectedState === 'received';
   const status = normalizeParticipantRole(
-    item?.status || item?.documentStatus || item?.document_state || item?.documentState,
+    item?.status || item?.documentStatus,
   );
   return item?.uploaded === true
     || item?.uploaded === 'true'
