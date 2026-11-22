@@ -429,15 +429,15 @@ function ItemEditor({ item, roles, onSave, onCancel }) {
 // Splits the checklist into Core (required) and Additional (optional).
 // Additional documents are collapsed by default — the user reveals them on
 // demand once the room feels useful after the first meaningful upload.
-function CoordinatorDocumentGroups({ template, allItems, uploadedSections, buildCategoryGroups, renderItem }) {
+function CoordinatorDocumentGroups({ template, allItems, isDocumentReceived, buildCategoryGroups, renderItem }) {
   const [showAdditional, setShowAdditional] = useState(false);
 
   const coreItems       = template.filter(i => i.required && !i.notApplicable);
   const additionalItems = template.filter(i => !i.required && !i.notApplicable);
   const naItems         = template.filter(i => i.notApplicable);
 
-  const coreDone       = coreItems.filter(i => uploadedSections.has(i.section)).length;
-  const additionalDone = additionalItems.filter(i => uploadedSections.has(i.section)).length;
+  const coreDone       = coreItems.filter(isDocumentReceived).length;
+  const additionalDone = additionalItems.filter(isDocumentReceived).length;
 
   // Build category map so additional items still group by category
   const allGroups = buildCategoryGroups();
@@ -451,7 +451,7 @@ function CoordinatorDocumentGroups({ template, allItems, uploadedSections, build
   const additionalGroups = filterGroups(i => !i.required && !i.notApplicable);
 
   function renderGroup(group) {
-    const groupDone  = group.items.filter(i => uploadedSections.has(i.section)).length;
+    const groupDone  = group.items.filter(isDocumentReceived).length;
     const groupTotal = group.items.length;
     return (
       <div key={group.key}>
@@ -916,14 +916,13 @@ export default function DocumentChecklistPanel({
   }
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  const uploadedSections = new Set(analyses.map(a => a.section));
   const analysisBySection = Object.fromEntries(analyses.map(a => [a.section, a.analysis]));
   const analysisRecordBySection = Object.fromEntries(analyses.map(a => [a.section, a]));
   const hasCanonicalDocumentState = Array.isArray(items)
     && items.some(item => Object.prototype.hasOwnProperty.call(item, "documentState"));
   const isDocumentReceived = item => hasCanonicalDocumentState
     ? item.documentReceived === true
-    : uploadedSections.has(item.section);
+    : analyses.some(analysis => analysis.section === item.section);
   const isDocumentUnderReview = item => hasCanonicalDocumentState
     ? item.documentState === "needs_review"
     : analysisBySection[item.section]?.pending === true;
@@ -1437,7 +1436,7 @@ export default function DocumentChecklistPanel({
                   <CoordinatorDocumentGroups
                     template={template}
                     allItems={allItems}
-                    uploadedSections={uploadedSections}
+                    isDocumentReceived={isDocumentReceived}
                     buildCategoryGroups={buildCategoryGroups}
                     renderItem={renderItem}
                   />

@@ -5596,8 +5596,12 @@ async function getCanonicalChecklist(packId, propertyType) {
 
 async function loadChecklistAnalyses(propertyId) {
   const selects = [
-    'id, section, filename, analysis, created_at, processing_status, is_active, superseded_at',
-    'id, section, filename, analysis, created_at, processing_status',
+    'id, section, filename, analysis, created_at, storage_path, processing_status, is_active, superseded_at',
+    'id, section, filename, analysis, created_at, storage_path, processing_status',
+    'id, section, filename, analysis, created_at, storage_path',
+    // Preserve legacy AI-classification projections when storage_path is not
+    // available in an older schema. Receipt-only evidence will still fail
+    // closed because it cannot be proven without the stored path.
     'id, section, filename, analysis, created_at',
   ];
   let lastError = null;

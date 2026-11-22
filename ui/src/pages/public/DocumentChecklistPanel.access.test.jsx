@@ -109,7 +109,15 @@ describe("Documents tab access", () => {
     expect(screen.getAllByRole("button", { name: "↑ Upload" })).toHaveLength(1);
   });
 
-  test("shows non-AI receipt completion without implying content verification", async () => {
+  test("restores non-AI receipt completion and keeps progress counters consistent after refresh", async () => {
+    const receiptAnalysis = {
+      id: "letter-of-intent-upload",
+      section: "letter_of_intent",
+      filename: "Letter of Intent.pdf",
+      processing_status: "extracted",
+      storage_path: "deal-rooms/synthetic/letter-of-intent.pdf",
+      analysis: { pending: false },
+    };
     checklistItems = [{
       id: "letter_of_intent",
       section: "letter_of_intent",
@@ -124,7 +132,24 @@ describe("Documents tab access", () => {
       documentValidationStatus: "not_required",
       documentAiClassificationValidated: false,
     }];
+    global.fetch = jest.fn(async url => {
+      if (String(url).includes("/analyses")) return response({ analyses: [receiptAnalysis] });
+      if (String(url).includes("/checklist")) return response({ items: checklistItems });
+      return response({});
+    });
 
+    const firstRender = renderDocumentsTab({
+      role: "deal_coordinator",
+      access: { mode: "owner" },
+    });
+
+    expect(await screen.findByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Receipt only · not AI-verified")).toBeInTheDocument();
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 1 uploaded")).toBeInTheDocument();
+    expect(screen.getByText("1/1 uploaded")).toBeInTheDocument();
+
+    firstRender.unmount();
     renderDocumentsTab({
       role: "deal_coordinator",
       access: { mode: "owner" },
@@ -132,5 +157,48 @@ describe("Documents tab access", () => {
 
     expect(await screen.findByText("Received")).toBeInTheDocument();
     expect(screen.getByText("Receipt only · not AI-verified")).toBeInTheDocument();
+    expect(screen.getByText("Complete")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 1 uploaded")).toBeInTheDocument();
+    expect(screen.getByText("1/1 uploaded")).toBeInTheDocument();
+  });
+
+  test("uses canonical receipt status rather than raw section presence for all progress counters", async () => {
+    checklistItems = [{
+      id: "letter_of_intent",
+      section: "letter_of_intent",
+      label: "Letter of Intent",
+      required: true,
+      ai: false,
+      assignedTo: ["buyer"],
+      documentState: "needs_review",
+      documentReceived: false,
+      documentNeedsReview: true,
+      documentEvidenceType: "unverified_upload",
+      documentValidationStatus: "unverified",
+      documentAiClassificationValidated: false,
+    }];
+    global.fetch = jest.fn(async url => {
+      if (String(url).includes("/analyses")) {
+        return response({
+          analyses: [{
+            id: "pending-letter-of-intent",
+            section: "letter_of_intent",
+            analysis: { pending: true },
+          }],
+        });
+      }
+      if (String(url).includes("/checklist")) return response({ items: checklistItems });
+      return response({});
+    });
+
+    renderDocumentsTab({
+      role: "deal_coordinator",
+      access: { mode: "owner" },
+    });
+
+    expect(await screen.findByText("Needs review")).toBeInTheDocument();
+    expect(await screen.findAllByText("0 of 1 uploaded")).toHaveLength(2);
+    expect(screen.getByText("0/1 uploaded")).toBeInTheDocument();
+    expect(screen.queryByText("1 of 1 uploaded")).not.toBeInTheDocument();
   });
 });

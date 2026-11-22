@@ -2,6 +2,13 @@ const mockOwnerToken = 'owner-token';
 const mockOwnerSessionToken = 'owner-session-token';
 const mockParticipantToken = 'participant-session';
 const mockInsertedRows = [];
+const mockChecklistDefaults = [
+  { section: 'seller_financials', assignedTo: ['seller'] },
+  { section: 'legal_review', assignedTo: ['counsel'] },
+];
+const mockChecklistItems = mockChecklistDefaults.map(item => ({ ...item }));
+const mockDocumentAnalyses = [];
+const mockChecklistSelections = [];
 const mockCanonicalRpc = jest.fn(async () => ({ data: { status: 'committed' }, error: null }));
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
@@ -20,10 +27,7 @@ jest.mock('./db', () => {
     property_name: 'Owner Room',
     owner_write_token: mockOwnerToken,
     customer_email: 'owner@example.com',
-    checklist_items: [
-      { section: 'seller_financials', assignedTo: ['seller'] },
-      { section: 'legal_review', assignedTo: ['counsel'] },
-    ],
+    checklist_items: mockChecklistItems,
     workflow_pack_id: 'business_acquisition',
     property_type: 'Business',
     status: 'active',
@@ -68,7 +72,11 @@ jest.mock('./db', () => {
   function builder(table) {
     const state = { filters: {} };
     const chain = {
-      select: () => chain,
+      select: (columns) => {
+        state.selectedColumns = columns;
+        if (table === 'deal_analyses') mockChecklistSelections.push(columns);
+        return chain;
+      },
       insert: (values) => {
         mockInsertedRows.push({ table, values });
         return chain;
@@ -118,12 +126,24 @@ jest.mock('./db', () => {
         return { data: null, error: null };
       },
       single: async () => ({ data: owner, error: null }),
-      then: (resolve) => resolve({
-        data: table === 'deal_rooms' && state.filters.customer_email
-          ? [(({ owner_write_token, ...room }) => room)(owner)]
-          : table === 'transaction_record_fields' ? [transactionField()] : [],
-        error: null,
-      }),
+      then: (resolve) => {
+        let data = [];
+        if (table === 'deal_rooms' && state.filters.customer_email) {
+          data = [(({ owner_write_token, ...room }) => room)(owner)];
+        } else if (table === 'transaction_record_fields') {
+          data = [transactionField()];
+        } else if (table === 'deal_analyses') {
+          const selectedColumns = state.selectedColumns === '*'
+            ? null
+            : String(state.selectedColumns || '').split(',').map(column => column.trim()).filter(Boolean);
+          data = mockDocumentAnalyses.map(analysis => selectedColumns
+            ? Object.fromEntries(selectedColumns
+              .filter(column => Object.prototype.hasOwnProperty.call(analysis, column))
+              .map(column => [column, analysis[column]]))
+            : { ...analysis });
+        }
+        return resolve({ data, error: null });
+      },
     };
     return chain;
   }
@@ -173,6 +193,13 @@ const request = require('supertest');
 describe('room access and checklist scoping', () => {
   beforeEach(() => {
     mockInsertedRows.length = 0;
+    mockChecklistItems.splice(
+      0,
+      mockChecklistItems.length,
+      ...mockChecklistDefaults.map(item => ({ ...item })),
+    );
+    mockDocumentAnalyses.length = 0;
+    mockChecklistSelections.length = 0;
     mockCanonicalRpc.mockReset().mockResolvedValue({ data: { status: 'committed' }, error: null });
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
@@ -485,6 +512,50 @@ describe('room access and checklist scoping', () => {
       'seller_financials',
       'legal_review',
     ]);
+  });
+
+  it('rehydrates receipt-only checklist completion after refresh using stored-path evidence', async () => {
+    mockChecklistItems.splice(0, mockChecklistItems.length, {
+      id: 'letter_of_intent',
+      section: 'letter_of_intent',
+      label: 'Letter of Intent',
+      required: true,
+      ai: false,
+      assignedTo: [],
+    });
+    mockDocumentAnalyses.push({
+      id: 'loi-upload',
+      section: 'letter_of_intent',
+      filename: 'Letter of Intent.pdf',
+      analysis: { pending: false, summary: 'Document received.' },
+      created_at: '2026-11-21T12:00:00.000Z',
+      processing_status: 'extracted',
+      storage_path: 'deal-rooms/room-1/letter-of-intent.pdf',
+      is_active: true,
+    });
+
+    const fetchChecklist = () => request(app)
+      .get('/api/public/deal-room/room-1/checklist')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
+    const [firstRefresh, secondRefresh] = await Promise.all([
+      fetchChecklist(),
+      fetchChecklist(),
+    ]);
+
+    expect(firstRefresh.status).toBe(200);
+    expect(secondRefresh.status).toBe(200);
+    expect(mockChecklistSelections).toHaveLength(2);
+    expect(mockChecklistSelections.every(columns => columns.includes('storage_path'))).toBe(true);
+    for (const response of [firstRefresh, secondRefresh]) {
+      expect(response.body.items).toEqual([expect.objectContaining({
+        section: 'letter_of_intent',
+        documentState: 'received',
+        documentReceived: true,
+        documentEvidenceType: 'upload_receipt',
+        documentValidationStatus: 'not_required',
+        documentAiClassificationValidated: false,
+      })]);
+    }
   });
 
   it('keeps checklist visibility and upload authorization aligned', async () => {
