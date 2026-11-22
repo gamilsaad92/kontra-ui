@@ -48,6 +48,25 @@ const {
 // never calls an LLM.
 const MONEY_PATTERN = /\$\s*([\d,]+(?:\.\d+)?)/g;
 const REPAIR_CONTEXT = /repair|contractor|invoice|restoration|loss\s+proceeds|hazard/i;
+const MAX_TRANSACTION_RECORD_NORMALIZATION_ATTEMPTS = 3;
+const TRANSACTION_RECORD_FIELD_SELECTS = [
+  'id, field_key, definition_key, field_category, display_label, value_text, value_json, status, is_required, source_type, conflict_candidates, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, extraction_timestamp, extracted_by, verified_by, verified_role, verified_at, notes, confidence, updated_at, created_at',
+  '*',
+];
+
+async function loadTransactionRecordFields(propertyId) {
+  let lastError = null;
+  for (const columns of TRANSACTION_RECORD_FIELD_SELECTS) {
+    const { data, error } = await supabase
+      .from('transaction_record_fields')
+      .select(columns)
+      .eq('property_id', propertyId);
+    if (!error) return data || [];
+    lastError = error;
+    if (!/column|schema cache/i.test(error.message || '')) throw error;
+  }
+  throw lastError || new Error('Failed to load Transaction Record fields');
+}
 
 function parseAmount(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
@@ -696,7 +715,10 @@ function buildCanonicalizedDuplicateConflict(winner, duplicate, key, existingCon
   return payload;
 }
 
-async function normalizeStoredTransactionRecord(propertyId, room, recordFields, schemaKey, proposal) {
+async function normalizeStoredTransactionRecord(propertyId, room, recordFields, schemaKey, proposal, options = {}) {
+  const snapshotAttempt = Number.isInteger(options.snapshotAttempt)
+    ? options.snapshotAttempt
+    : 0;
   const fields = Array.isArray(recordFields) ? recordFields.map(field => ({ ...field })) : [];
   const { data: openConflicts, error: conflictLookupError } = await supabase
     .from('transaction_record_conflicts').select('*')
@@ -868,7 +890,25 @@ async function normalizeStoredTransactionRecord(propertyId, room, recordFields, 
       },
     });
     if (result.status !== 'committed') {
-      throw result.error || new Error(`Transaction Record normalization did not commit (${result.status || 'unknown'})`);
+      if (
+        result.status === 'retry_snapshot'
+        && typeof options.loadFreshFields === 'function'
+        && snapshotAttempt + 1 < MAX_TRANSACTION_RECORD_NORMALIZATION_ATTEMPTS
+      ) {
+        const freshFields = await options.loadFreshFields();
+        return normalizeStoredTransactionRecord(
+          propertyId,
+          room,
+          freshFields,
+          schemaKey,
+          proposal,
+          { ...options, snapshotAttempt: snapshotAttempt + 1 },
+        );
+      }
+      const error = result.error
+        || new Error(`Transaction Record normalization did not commit (${result.status || 'unknown'})`);
+      error.canonicalStatus = result.status || 'unknown';
+      throw error;
     }
   }
   return { fields: canonical, conflicts: persistedConflicts };
@@ -1522,12 +1562,9 @@ async function readTransactionState(propertyId) {
      .select('id, property_id, property_name, deal_amount, closing_date, workflow_pack_id, base_pack, transaction_type, transaction_subtype, transaction_context, generated_proposal, deal_type, deal_stage, transaction_entry_mode, stages_config, jurisdiction, metadata_values, checklist_items, settlement_mode, settlement_readiness_pct, settlement_mode_locked_at, sealed_at, completed_at')
     .eq('property_id', propertyId)
     .maybeSingle();
-  const [{ data: initialRoom, error: initialRoomError }, fieldsResult, conflictsResult] = await Promise.all([
+  const [{ data: initialRoom, error: initialRoomError }, loadedRecordFields, conflictsResult] = await Promise.all([
     roomQuery,
-    supabase
-      .from('transaction_record_fields')
-       .select('id, field_key, definition_key, field_category, display_label, value_text, value_json, status, is_required, source_type, conflict_candidates, source_doc_id, source_doc_version, source_file_hash, source_page, source_excerpt, extraction_timestamp, extracted_by, verified_by, verified_role, verified_at, confidence, updated_at, created_at')
-      .eq('property_id', propertyId),
+    loadTransactionRecordFields(propertyId),
     supabase
       .from('transaction_record_conflicts')
       .select('*')
@@ -1535,16 +1572,7 @@ async function readTransactionState(propertyId) {
       .eq('status', 'unresolved')
       .order('updated_at', { ascending: false }),
   ]);
-  let recordFields = fieldsResult.data;
-  let fieldsError = fieldsResult.error;
-  if (fieldsError && /column|schema cache/i.test(fieldsError.message || '')) {
-    const legacyFields = await supabase
-      .from('transaction_record_fields')
-       .select('id, field_key, field_category, display_label, value_text, status, source_doc_id, source_page, source_excerpt, extracted_by, confidence, updated_at, created_at')
-      .eq('property_id', propertyId);
-    recordFields = legacyFields.data;
-    fieldsError = legacyFields.error;
-  }
+  let recordFields = loadedRecordFields;
   let room = initialRoom;
   let roomError = initialRoomError;
    if (roomError && /column|schema cache|base_pack|generated_proposal|transaction_entry_mode/i.test(roomError.message || '')) {
@@ -1557,7 +1585,6 @@ async function readTransactionState(propertyId) {
     roomError = legacy.error;
   }
   if (roomError) throw roomError;
-  if (fieldsError) throw fieldsError;
   recordFields = clearRetiredTransactionConflictFields(
     recordFields || [],
     conflictReconciliation,
@@ -1598,6 +1625,15 @@ async function readTransactionState(propertyId) {
   }
   const normalizedRecord = await normalizeStoredTransactionRecord(
     propertyId, room, recordFields || [], schemaKey, generatedProposal,
+    {
+      loadFreshFields: async () => {
+        const freshFields = await loadTransactionRecordFields(propertyId);
+        return clearRetiredTransactionConflictFields(
+          freshFields,
+          conflictReconciliation,
+        ).map(field => projectCurrentSourceField(field, activeSourceDocuments));
+      },
+    },
   );
   recordFields = (normalizedRecord.fields || []).map(field =>
     projectCurrentSourceField(field, activeSourceDocuments)
@@ -1706,6 +1742,7 @@ module.exports = {
   computeTransactionReadiness,
   computeTransactionRecordState,
   normalizeStoredTransactionRecord,
+  loadTransactionRecordFields,
   isConflictSupportedByActiveEvidence,
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,

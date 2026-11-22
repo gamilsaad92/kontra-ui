@@ -2,6 +2,7 @@ const {
   computeTransactionReadiness,
   computeTransactionRecordState,
   normalizeStoredTransactionRecord,
+  loadTransactionRecordFields,
   getHazardLossRepairGate,
   isImmediateLifecycleAdvance,
   latestEvidenceTimestamp,
@@ -12,6 +13,7 @@ const {
   verificationStatusForConflict,
 } = require('./lib/transactionState');
 
+const { expectedFieldSnapshot } = require('./lib/canonicalPersistence');
 const requirements = require('../shared/transaction_record_requirements.json');
 const {
   canonicalizeTransactionRecordKey,
@@ -20,6 +22,74 @@ const {
 const { supabase } = require('./db');
 
 describe('transaction state recalculation', () => {
+  it('loads notes with fields used for canonical optimistic snapshots', async () => {
+    const originalFrom = supabase.from;
+    const selectedColumns = [];
+    const field = {
+      id: 'field-1',
+      field_key: 'transaction.purchase_price',
+      notes: 'Coordinator note',
+    };
+    supabase.from = table => {
+      expect(table).toBe('transaction_record_fields');
+      const query = {
+        select(columns) {
+          selectedColumns.push(columns);
+          return query;
+        },
+        eq() { return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: [field], error: null }).then(resolve, reject);
+        },
+      };
+      return query;
+    };
+
+    try {
+      await expect(loadTransactionRecordFields('room-1')).resolves.toEqual([field]);
+      expect(selectedColumns[0]).toContain('notes');
+    } finally {
+      supabase.from = originalFrom;
+    }
+  });
+
+  it('falls back to all available field columns when a legacy schema rejects the full projection', async () => {
+    const originalFrom = supabase.from;
+    const selectedColumns = [];
+    const field = {
+      id: 'field-legacy',
+      field_key: 'transaction.purchase_price',
+      notes: 'Coordinator note',
+    };
+    supabase.from = table => {
+      expect(table).toBe('transaction_record_fields');
+      const query = {
+        columns: null,
+        select(columns) {
+          query.columns = columns;
+          selectedColumns.push(columns);
+          return query;
+        },
+        eq() { return query; },
+        then(resolve, reject) {
+          const result = query.columns === '*'
+            ? { data: [field], error: null }
+            : { data: null, error: { message: 'column is missing from schema cache' } };
+          return Promise.resolve(result).then(resolve, reject);
+        },
+      };
+      return query;
+    };
+
+    try {
+      await expect(loadTransactionRecordFields('room-1')).resolves.toEqual([field]);
+      expect(selectedColumns).toHaveLength(2);
+      expect(selectedColumns[1]).toBe('*');
+    } finally {
+      supabase.from = originalFrom;
+    }
+  });
+
   it('accepts only the next persisted lifecycle stage, plus legacy funded settlement migration', () => {
     const stages = [
       { key: 'claim_review' },
@@ -391,6 +461,132 @@ describe('transaction state recalculation', () => {
           }),
         }),
       ]));
+    } finally {
+      supabase.from = originalFrom;
+      supabase.rpc = originalRpc;
+    }
+  });
+
+  it('rebuilds normalization from a fresh field snapshot after a concurrent change', async () => {
+    const originalFrom = supabase.from;
+    const originalRpc = supabase.rpc;
+    const staleField = {
+      id: 'field-1',
+      field_key: 'target_closing_date',
+      field_category: 'timeline',
+      display_label: 'Target closing date',
+      value_text: '$10,000',
+      status: 'extracted',
+      notes: 'Coordinator note',
+      updated_at: '2026-10-04T10:00:00.000Z',
+    };
+    const freshField = {
+      ...staleField,
+      value_text: '$12,000',
+      updated_at: '2026-10-04T10:00:01.000Z',
+    };
+    const loadFreshFields = jest.fn().mockResolvedValue([freshField]);
+    let rpcCalls = 0;
+    supabase.from = table => {
+      expect(table).toBe('transaction_record_conflicts');
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+        },
+      };
+      return query;
+    };
+    supabase.rpc = jest.fn(async (functionName, args) => {
+      expect(functionName).toBe('kontra_commit_canonical_change_set');
+      rpcCalls += 1;
+      const snapshot = args.p_change_set.expected_fields[0];
+      expect(snapshot.notes).toBe('Coordinator note');
+      if (rpcCalls === 1) {
+        expect(snapshot.value_text).toBe('$10,000');
+        return { data: { status: 'retry_snapshot', field_id: staleField.id }, error: null };
+      }
+      expect(snapshot).toEqual(expectedFieldSnapshot(freshField));
+      return { data: { status: 'committed', field_ids: [freshField.id] }, error: null };
+    });
+
+    try {
+      const normalized = await normalizeStoredTransactionRecord(
+        'room-1',
+        { workflow_pack_id: 'generated_ai' },
+        [staleField],
+        'generated_ai',
+        {
+          transaction_record_fields: [
+            { key: 'target_closing_date', label: 'Target closing date', required: true },
+          ],
+        },
+        { loadFreshFields },
+      );
+
+      expect(normalized.fields[0]).toEqual(expect.objectContaining({
+        field_key: 'transaction.closing_date',
+        value_text: '$12,000',
+      }));
+      expect(rpcCalls).toBe(2);
+      expect(loadFreshFields).toHaveBeenCalledTimes(1);
+    } finally {
+      supabase.from = originalFrom;
+      supabase.rpc = originalRpc;
+    }
+  });
+
+  it('fails closed after repeated snapshot conflicts instead of using stale normalization', async () => {
+    const originalFrom = supabase.from;
+    const originalRpc = supabase.rpc;
+    const field = {
+      id: 'field-2',
+      field_key: 'target_closing_date',
+      field_category: 'timeline',
+      display_label: 'Target closing date',
+      value_text: '$10,000',
+      status: 'extracted',
+      notes: 'Coordinator note',
+      updated_at: '2026-10-04T10:00:00.000Z',
+    };
+    const loadFreshFields = jest.fn().mockResolvedValue([field]);
+    let rpcCalls = 0;
+    supabase.from = table => {
+      expect(table).toBe('transaction_record_conflicts');
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        then(resolve, reject) {
+          return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+        },
+      };
+      return query;
+    };
+    supabase.rpc = jest.fn(async () => {
+      rpcCalls += 1;
+      return { data: { status: 'retry_snapshot', field_id: field.id }, error: null };
+    });
+
+    try {
+      await expect(normalizeStoredTransactionRecord(
+        'room-1',
+        { workflow_pack_id: 'generated_ai' },
+        [field],
+        'generated_ai',
+        {
+          transaction_record_fields: [
+            { key: 'target_closing_date', label: 'Target closing date', required: true },
+          ],
+        },
+        { loadFreshFields },
+      )).rejects.toMatchObject({
+        canonicalStatus: 'retry_snapshot',
+        message: 'Transaction Record normalization did not commit (retry_snapshot)',
+      });
+
+      expect(rpcCalls).toBe(3);
+      expect(loadFreshFields).toHaveBeenCalledTimes(2);
     } finally {
       supabase.from = originalFrom;
       supabase.rpc = originalRpc;
