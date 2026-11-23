@@ -4,9 +4,13 @@ jest.mock('./supabaseClient', () => ({
 }));
 
 const {
+  buildInviteLink,
+  clearInviteCredentialsFromUrl,
   clearInviteSession,
   getRoomAuthHeaders,
+  revokeInvite,
   storeInviteSession,
+  verifyInviteLink,
   verifyParticipantAccess,
 } = require('./inviteUtils');
 
@@ -103,6 +107,57 @@ describe('room authorization header precedence', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ accessToken: 'signed-capability' }),
+      }),
+    );
+  });
+
+  it('builds a room invitation URL and removes its credentials after exchange', () => {
+    expect(buildInviteLink('room/a', 'raw-token', 'seller', 'https://example.test'))
+      .toBe('https://example.test/deal-room/room%2Fa?invite=raw-token&role=seller');
+
+    window.history.replaceState({}, '', '/deal-room/room-1?invite=raw-token&role=seller&participant_access=signed-capability');
+    expect(clearInviteCredentialsFromUrl({ verificationPath: '/deal-room/room-1/verify' })).toBe(true);
+    expect(window.location.pathname).toBe('/deal-room/room-1/verify');
+    expect(window.location.search).toBe('?role=seller');
+    expect(window.location.href).not.toContain('raw-token');
+    expect(window.location.href).not.toContain('signed-capability');
+  });
+
+  it('uses the V1 verify endpoint without caching or referrer leakage', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, role_key: 'seller', session_token: 'session' }),
+    });
+    await expect(verifyInviteLink(propertyId, 'raw-invite-token')).resolves.toMatchObject({
+      success: true,
+      role_key: 'seller',
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/public/deal-room/room-1/invite/verify-link',
+      expect.objectContaining({ cache: 'no-store', referrerPolicy: 'no-referrer' }),
+    );
+  });
+
+  it('revokes through the room-scoped owner-session endpoint and reports failure', async () => {
+    storeInviteSession(propertyId, 'participant-session', '2999-01-01T00:00:00.000Z');
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'forbidden' }),
+    });
+
+    await expect(revokeInvite(propertyId, 'invite-1')).resolves.toMatchObject({
+      success: false,
+      error: 'forbidden',
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/public/deal-room/room-1/invites/invite-1/revoke',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'x-kontra-session': 'participant-session' }),
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        credentials: 'include',
       }),
     );
   });

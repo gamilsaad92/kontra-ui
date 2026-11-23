@@ -94,6 +94,33 @@ export function clearInviteSession(propertyId) {
   try { sessionStorage.removeItem(SESSION_KEY(propertyId)); } catch { /* ignore */ }
 }
 
+export function buildInviteLink(
+  propertyId,
+  inviteToken,
+  roleKey,
+  origin = typeof window === 'undefined' ? '' : window.location.origin,
+) {
+  if (!propertyId || !inviteToken || !roleKey) return '';
+  const url = new URL(`/deal-room/${encodeURIComponent(propertyId)}`, origin);
+  url.searchParams.set('invite', inviteToken);
+  url.searchParams.set('role', roleKey);
+  return url.toString();
+}
+
+export function clearInviteCredentialsFromUrl({ verificationPath } = {}) {
+  if (typeof window === 'undefined') return false;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite');
+    url.searchParams.delete('participant_access');
+    if (verificationPath) url.pathname = verificationPath;
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Session-aware Supabase client ─────────────────────────────────────────────
 
 /**
@@ -146,10 +173,13 @@ export async function getInviteStatus(inviteToken) {
 export async function verifyInviteLink(propertyId, inviteToken) {
   const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
   try {
-    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/invite/verify-link`, {
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(propertyId)}/invite/verify-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inviteToken }),
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      credentials: 'include',
     });
     const data = await res.json();
     if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}`, requires_pin: data.error === 'requires_pin', locked_until: data.locked_until };
@@ -163,10 +193,13 @@ export async function verifyInviteLink(propertyId, inviteToken) {
 export async function verifyParticipantAccess(propertyId, accessToken) {
   const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
   try {
-    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/participant-access/verify`, {
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(propertyId)}/participant-access/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accessToken }),
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      credentials: 'include',
     });
     const data = await res.json();
     if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}` };
@@ -271,14 +304,22 @@ export async function createInvite({
   const token = generateInviteToken();
   const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
   try {
-    const res = await fetch(`${API_BASE}/api/public/deal-room/${propertyId}/create-invite`, {
+    const res = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(propertyId)}/create-invite`, {
       method: 'POST',
       headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ roleKey, invitedEmail, inviteToken: token, pin, verificationMethod }),
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      credentials: 'include',
     });
     const data = await res.json();
     if (!res.ok) return { success: false, error: data.error || `Server error ${res.status}` };
-    return { success: true, invite_token: token, emailSent: data.emailSent };
+    return {
+      success: true,
+      invite_token: token,
+      emailSent: data.emailSent === true,
+      deliveryReason: data.deliveryReason || null,
+    };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -301,14 +342,29 @@ export async function getRoomInvites(propertyId) {
 }
 
 /** Revoke a single invite (owner only). */
-export async function revokeInvite(inviteId) {
-  if (!supabase) return { success: false, error: 'not_configured' };
+export async function revokeInvite(propertyId, inviteId) {
+  if (!propertyId || !inviteId) return { success: false, error: 'invalid_request' };
   try {
-    const { data, error } = await supabase.rpc('revoke_deal_room_invite', {
-      p_invite_id: inviteId,
-    });
-    if (error) return { success: false, error: error.message };
-    return data || { success: false };
+    const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
+    const res = await fetch(
+      `${API_BASE}/api/public/deal-room/${encodeURIComponent(propertyId)}/invites/${encodeURIComponent(inviteId)}/revoke`,
+      {
+        method: 'POST',
+        headers: getRoomAuthHeaders(propertyId, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        credentials: 'include',
+      },
+    );
+    const data = await res.json();
+    if (!res.ok || data.ok !== true) {
+      return { success: false, error: data.error || `Server error ${res.status}`, inviteRevoked: data.inviteRevoked === true };
+    }
+    return {
+      success: true,
+      sessionsRevoked: Number(data.sessionsRevoked) || 0,
+    };
   } catch (e) {
     return { success: false, error: e.message };
   }

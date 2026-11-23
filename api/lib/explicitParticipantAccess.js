@@ -22,6 +22,22 @@ const OWNER_PERMISSIONS = Object.freeze({
   updateOwnSubmission: true,
 });
 
+const RESERVED_PARTICIPANT_ROLE_KEYS = new Set([
+  '__room_owner__',
+  '__owner__',
+  'owner',
+  'workspace_owner',
+  'room_owner',
+  'admin',
+  'administrator',
+  'workspace_admin',
+  'room_admin',
+  'deal_owner',
+  'coordinator',
+  'deal_coordinator',
+  'transaction_coordinator',
+]);
+
 function anonymousAccess(propertyId) {
   return {
     mode: 'anonymous',
@@ -46,6 +62,7 @@ function resolveExplicitParticipantAccess({
   session,
   invite,
   propertyId,
+  ownerRoleKey = '__room_owner__',
   now = new Date(),
 }) {
   if (!sessionToken) return null;
@@ -53,6 +70,9 @@ function resolveExplicitParticipantAccess({
   const invalidSession = !session?.invite_id || session.revoked_at || !session.expires_at
     || new Date(session.expires_at) <= nowDate;
   const invalidInvite = !invite || invite.property_id !== propertyId
+    || invite.role_key === ownerRoleKey
+    || RESERVED_PARTICIPANT_ROLE_KEYS.has(String(invite.role_key || '').toLowerCase())
+    || invite.status !== 'accepted'
     || invite.revoked_at || ['revoked', 'expired'].includes(invite.status)
     || (invite.expires_at && new Date(invite.expires_at) <= nowDate);
   if (invalidSession || invalidInvite) return anonymousAccess(propertyId);

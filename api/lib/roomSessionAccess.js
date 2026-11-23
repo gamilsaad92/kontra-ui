@@ -58,6 +58,7 @@ async function resolveRoomSessionAccess(req, propertyId, client, {
       session,
       invite,
       propertyId,
+      ownerRoleKey,
     });
     if (participantAccess) return participantAccess;
   }

@@ -20,6 +20,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { clearInviteCredentialsFromUrl } from '../../lib/inviteUtils';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
 
@@ -28,6 +29,8 @@ async function apiPost(path, body, authToken) {
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST', headers, body: JSON.stringify(body),
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
   });
   return res.json();
 }
@@ -83,10 +86,11 @@ export default function DealRoomGateV2({ roomId, inviteToken, onVerified }) {
   // Phases: resolving | invalid | request_otp | sending_otp | enter_otp
   //         verifying_otp | accepting | error
   const [phase,       setPhase]       = useState('resolving');
-  const [inviteInfo,  setInviteInfo]  = useState(null);  // { masked_email, role_key, room_name }
+  const [inviteInfo,  setInviteInfo]  = useState(null);  // { masked_email }
   const [_rawToken,   setRawToken]    = useState(inviteToken);
+  const [emailInput,  setEmailInput]  = useState('');
   const [otpValue,    setOtpValue]    = useState('');
-  const [otpEmail,    setOtpEmail]    = useState('');   // full email from resolve (for verifyOtp)
+  const [otpEmail,    setOtpEmail]    = useState('');   // recipient-entered email for Supabase OTP verification
   const [errMsg,      setErrMsg]      = useState('');
 
   // Step 1+2: Resolve invite token, then immediately replace URL
@@ -95,34 +99,46 @@ export default function DealRoomGateV2({ roomId, inviteToken, onVerified }) {
 
     apiPost('/api/v2/deal-room/invite/resolve', { token: inviteToken })
       .then(data => {
+        clearInviteCredentialsFromUrl({
+          verificationPath: `/deal-room/${encodeURIComponent(roomId)}/verify`,
+        });
         if (!data.valid) {
           setPhase('invalid');
           return;
         }
-        // Store full email for OTP verification (needed by supabase.auth.verifyOtp)
-        setOtpEmail(data._invited_email || '');
         setInviteInfo({
-          masked_email: data.masked_email,
-          role_key:     data.role_key,
-          room_name:    data.room_name,
+          masked_email: typeof data.masked_email === 'string' ? data.masked_email : '',
         });
-        // Replace URL immediately — remove token from browser history and Referer
-        const currentUrl = new URL(window.location.href);
-        currentUrl.pathname = `/deal-room/${roomId}/verify`;
-        window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
         setRawToken(inviteToken); // keep in state (not URL) for subsequent calls
         setPhase('request_otp');
       })
-      .catch(() => setPhase('error'));
+      .catch(() => {
+        clearInviteCredentialsFromUrl({
+          verificationPath: `/deal-room/${encodeURIComponent(roomId)}/verify`,
+        });
+        setPhase('error');
+      });
   }, [inviteToken, roomId]);
 
   // Step 3: Request OTP
   async function handleRequestOtp() {
+    const normalizedEmail = emailInput.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setErrMsg('Enter the full email address this invitation was sent to.');
+      return;
+    }
+    setOtpEmail(normalizedEmail);
     setPhase('sending_otp');
     setErrMsg('');
-    await apiPost('/api/v2/deal-room/invite/request-otp', { token: _rawToken });
-    // Always advance — endpoint always returns { ok: true } for security
-    setPhase('enter_otp');
+    try {
+      await apiPost('/api/v2/deal-room/invite/request-otp', { token: _rawToken });
+      // Always advance — endpoint always returns { ok: true } for security.
+      // The server sends the code only to the invitation's stored address.
+      setPhase('enter_otp');
+    } catch {
+      setPhase('request_otp');
+      setErrMsg('Could not start verification. Please try again.');
+    }
   }
 
   // Steps 5-7: Verify OTP → create session → accept invite
@@ -206,31 +222,53 @@ export default function DealRoomGateV2({ roomId, inviteToken, onVerified }) {
       )}
 
       {phase === 'request_otp' && inviteInfo && (
-        <div className="text-center">
+        <form
+          className="text-center"
+          onSubmit={event => {
+            event.preventDefault();
+            handleRequestOtp();
+          }}
+        >
           <div className="w-12 h-12 rounded-full bg-[#800020]/10 border border-[#800020]/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-2xl">🔐</span>
           </div>
           <h2 className="text-base font-bold text-gray-900 mb-1">
             You've been invited
           </h2>
-          <p className="text-xs text-gray-500 mb-1">
-            to <strong>{inviteInfo.room_name}</strong>
-            {inviteInfo.role_key && ` as ${inviteInfo.role_key.replace(/_/g, ' ')}`}
-          </p>
           <p className="text-[11px] text-gray-400 mb-6">
-            We'll send a verification code to{' '}
-            <span className="font-mono font-semibold text-gray-700">{inviteInfo.masked_email}</span>
+            Enter the email address this invitation was sent to.
           </p>
+          {inviteInfo.masked_email && (
+            <p className="text-[11px] text-gray-400 mb-3">
+              The code will go to{' '}
+              <span className="font-mono font-semibold text-gray-700">{inviteInfo.masked_email}</span>
+            </p>
+          )}
+          <label className="block text-left text-xs font-medium text-gray-600 mb-4">
+            Email address
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              value={emailInput}
+              onChange={event => {
+                setEmailInput(event.target.value);
+                setErrMsg('');
+              }}
+              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#800020]/20 focus:border-[#800020]/40"
+            />
+          </label>
+          {errMsg && <p className="text-xs text-red-500 mb-3">{errMsg}</p>}
           <button
-            onClick={handleRequestOtp}
+            type="submit"
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white bg-[#800020] hover:opacity-90 transition"
           >
             Send verification code →
           </button>
           <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
-            Can't access that email? Contact the deal coordinator to update your invitation.
+            The invitation server verifies that the email matches before granting access.
           </p>
-        </div>
+        </form>
       )}
 
       {phase === 'enter_otp' && inviteInfo && (

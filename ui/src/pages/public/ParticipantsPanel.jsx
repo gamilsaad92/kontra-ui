@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { getWorkflowPack, DEFAULT_PACK_ID } from '../../lib/workflowPacks';
-import { createInvite, generatePin, getRoomInvites, revokeInvite } from '../../lib/inviteUtils';
+import { buildInviteLink, createInvite, revokeInvite } from '../../lib/inviteUtils';
 import {
   getCoordinatorRoleKeys,
   getExternalParticipantRoles,
@@ -47,8 +47,11 @@ async function v2Api(method, path, body, token) {
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}${path}`, {
     method, headers, body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
   });
-  return res.json();
+  const data = await res.json();
+  return { ...data, ok: res.ok && data?.ok !== false };
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -65,7 +68,7 @@ function StatusBadge({ status }) {
 
 // ── Invite modal ──────────────────────────────────────────────────────────────
 
-function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
+export function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
   const [email,      setEmail]      = useState('');
   const [name,       setName]       = useState('');
   const [roleKey,    setRoleKey]    = useState('');
@@ -74,12 +77,14 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
   const [isCustom,   setIsCustom]   = useState(false);
   const [status,     setStatus]     = useState('idle'); // idle | loading | done
   const [errMsg,     setErrMsg]     = useState('');
+  const [inviteResult, setInviteResult] = useState(null);
+  const [copyState, setCopyState] = useState('idle');
 
   useEffect(() => {
     if (open) {
       setEmail(''); setName(''); setMessage('');
       setCustomRole(''); setIsCustom(false);
-      setStatus('idle'); setErrMsg('');
+      setStatus('idle'); setErrMsg(''); setInviteResult(null); setCopyState('idle');
       setRoleKey(prefilledRoleKey || roles[0]?.key || '');
     }
   }, [open, prefilledRoleKey, roles]);
@@ -96,7 +101,13 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
     if (isCustom && !customRole.trim())         { setErrMsg('Enter a role name');           return; }
     setStatus('loading'); setErrMsg('');
     try {
-      await onSend({ email: email.trim(), name: name.trim(), roleKey: effectiveRoleKey, message: message.trim() });
+      const result = await onSend({
+        email: email.trim(),
+        name: name.trim(),
+        roleKey: effectiveRoleKey,
+        message: message.trim(),
+      });
+      setInviteResult(result || null);
       setStatus('done');
     } catch (err) {
       setErrMsg(err.message || 'Failed to send invitation');
@@ -104,17 +115,62 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
     }
   }
 
+  async function handleCopyLink() {
+    if (!inviteResult?.inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteResult.inviteUrl);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+  }
+
+  function handleClose() {
+    setInviteResult(null);
+    setCopyState('idle');
+    onClose();
+  }
+
   if (status === 'done') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+        <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
         <div className="relative bg-white rounded-2xl shadow-xl border border-gray-200 p-6 w-full max-w-sm text-center">
           <div className="w-12 h-12 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-xl mx-auto mb-3">✓</div>
-          <p className="text-sm font-bold text-gray-900 mb-1">Invitation sent</p>
-          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-            Kontra emailed the secure invite link to <strong>{email}</strong>.
+          <p className="text-sm font-bold text-gray-900 mb-1">Invitation created</p>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+            {inviteResult?.emailSent
+              ? <>Kontra sent the invite email to <strong>{email}</strong>.</>
+              : <>The invitation was created, but Kontra did not send an email to <strong>{email}</strong>.</>}
           </p>
-          <button onClick={onClose}
+          {!inviteResult?.emailSent && (
+            <p className="text-[11px] text-amber-700 mb-3">
+              {inviteResult?.deliveryReason === 'email_send_failed'
+                ? 'Email delivery failed. Copy the link and share it securely.'
+                : inviteResult?.deliveryReason === 'no_recipient'
+                  ? 'No email recipient was provided. Copy the link to share it securely.'
+                  : 'Email delivery is not configured. Copy the link and share it securely.'}
+            </p>
+          )}
+          {inviteResult?.inviteUrl && (
+            <>
+              <p className="text-[10px] text-gray-500 mb-2">
+                This link grants access to anyone who has it; it does not verify email identity.
+              </p>
+              <input
+                aria-label="New invitation link"
+                readOnly
+                value={inviteResult.inviteUrl}
+                className="w-full text-[10px] px-2 py-2 border border-gray-200 rounded-lg mb-2"
+              />
+              <button
+                onClick={handleCopyLink}
+                className="w-full py-2 rounded-xl text-xs font-bold border border-gray-200 text-gray-700 mb-3">
+                {copyState === 'copied' ? 'Link copied' : copyState === 'failed' ? 'Copy failed — select the link above' : 'Copy invitation link'}
+              </button>
+            </>
+          )}
+          <button onClick={handleClose}
             className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition hover:opacity-90"
             style={{ background: '#800020' }}>
             Done
@@ -126,13 +182,13 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div className="relative bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md">
 
         {/* Modal header */}
         <div className="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-sm font-bold text-gray-900">Invite Participant</h2>
-          <button onClick={onClose}
+          <button onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition text-lg leading-none w-6 h-6 flex items-center justify-center">
             ✕
           </button>
@@ -207,10 +263,9 @@ function InviteModal({ open, onClose, prefilledRoleKey, roles, isV2, onSend }) {
             {status === 'loading' ? 'Sending…' : 'Send Invitation'}
           </button>
           <p className="text-[10px] text-gray-400 text-center -mt-1 pb-1">
-            Kontra emails a secure invite link.{' '}
             {isV2
-              ? 'Participant verifies with a code sent to their email.'
-              : 'No sign-in required.'}
+              ? 'Participants verify their invited email with a code.'
+              : 'A V1 link grants access to its holder and does not verify email identity.'}
           </p>
         </form>
       </div>
@@ -262,7 +317,9 @@ export default function ParticipantsPanel({
   const [modalRole,   setModalRole]   = useState(null);
   const [revoking,    setRevoking]    = useState(null);
   const [resending,   setResending]   = useState(null);
-  const [copiedId,    setCopiedId]    = useState(null);
+  const [actionError, setActionError] = useState('');
+  const [inviteNotice, setInviteNotice] = useState(null);
+  const [noticeCopied, setNoticeCopied] = useState(false);
 
   // Owner token for v2
   useEffect(() => {
@@ -274,8 +331,8 @@ export default function ParticipantsPanel({
     });
   }, [isV2]);
 
-  // Load invites — v1 uses the REST endpoint (owner-write-token auth) so it
-  // always returns the current DB state without depending on Supabase JWT auth.
+  // V1 invitation management uses the API's verified HttpOnly owner session.
+  // Participant capability headers remain limited to participant operations.
   const loadInvites = useCallback(async () => {
     setLoading(true);
     try {
@@ -285,8 +342,11 @@ export default function ParticipantsPanel({
       } else {
         const API_BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '');
         const { getRoomAuthHeaders } = await import('../../lib/inviteUtils');
-        const res  = await fetch(`${API_BASE}/api/public/deal-room/${roomId}/invites`, {
+        const res  = await fetch(`${API_BASE}/api/public/deal-room/${encodeURIComponent(roomId)}/invites`, {
           headers: getRoomAuthHeaders(roomId),
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          credentials: 'include',
         });
         const data = res.ok ? await res.json() : { invites: [] };
         setInvites(Array.isArray(data.invites) ? data.invites : []);
@@ -301,59 +361,101 @@ export default function ParticipantsPanel({
 
   // ── Send invite ────────────────────────────────────────────────────────────
   async function handleSend({ email, roleKey }) {
+    let emailSent = false;
+    let deliveryReason = null;
+    let inviteToken = null;
     if (isV2) {
       const result = await v2Api('POST', '/api/v2/deal-room/invite/create', {
         roomId, roleKey, invitedEmail: email,
       }, ownerToken);
       if (!result.ok) throw new Error(result.error || 'Failed to send invitation');
+      emailSent = result.emailSent === true;
+      deliveryReason = result.deliveryReason || null;
+      inviteToken = result.invite_token || null;
     } else {
-      // Use link-only auth — participant clicks the link in their email and
-      // the token IS the credential. No PIN is generated, stored, or distributed.
+      // V1 link possession grants the assigned role but does not authenticate
+      // the recipient's email identity. The token is never returned by invite
+      // list endpoints; keep the copyable URL only in the modal's memory.
       const result = await createInvite({
         propertyId: roomId, roleKey, invitedEmail: email,
         verificationMethod: 'link',
       });
       if (!result.success) throw new Error(result.error || 'Failed to send invitation');
+      emailSent = result.emailSent;
+      deliveryReason = result.deliveryReason;
+      inviteToken = result.invite_token;
     }
     // Immediately refresh so the People tab reflects the new invite from the DB
     await loadInvites().catch(() => {});
+    return {
+      emailSent,
+      deliveryReason,
+      inviteUrl: buildInviteLink(roomId, inviteToken, roleKey),
+    };
   }
 
   // ── Revoke ─────────────────────────────────────────────────────────────────
   async function handleRevoke(inviteId) {
     setRevoking(inviteId);
-    if (isV2) {
-      await v2Api('POST', '/api/v2/deal-room/invite/revoke', { roomId, inviteId }, ownerToken);
-    } else {
-      await revokeInvite(inviteId);
+    setActionError('');
+    try {
+      if (isV2) {
+        const result = await v2Api('POST', '/api/v2/deal-room/invite/revoke', { roomId, inviteId }, ownerToken);
+        if (!result.ok) throw new Error(result.error || 'revocation_failed');
+      } else {
+        const result = await revokeInvite(roomId, inviteId);
+        if (!result.success && result.inviteRevoked) {
+          await loadInvites();
+          setActionError('The invitation is revoked, but session cleanup needs retry. The server rejects sessions linked to revoked invitations.');
+          setOpenMenuId(null);
+          return;
+        }
+        if (!result.success) throw new Error(result.error || 'revocation_failed');
+      }
+      await loadInvites();
+      setOpenMenuId(null);
+    } catch {
+      setActionError('Could not revoke this invitation. Its current access state is unchanged; retry or contact support.');
+    } finally {
+      setRevoking(null);
     }
-    await loadInvites();
-    setRevoking(null);
-    setOpenMenuId(null);
   }
 
   // ── Reissue (resend) ───────────────────────────────────────────────────────
-  async function handleReissue(inviteId) {
+  async function handleReissue(inviteId, roleKey) {
     setResending(inviteId);
-    if (isV2) {
-      await v2Api('POST', '/api/v2/deal-room/invite/reissue', { roomId, inviteId }, ownerToken);
-      await loadInvites();
-    } else {
-      // v1: just open the invite modal to create a new invite for the same role
+    setActionError('');
+    try {
+      if (isV2) {
+        const result = await v2Api('POST', '/api/v2/deal-room/invite/reissue', { roomId, inviteId }, ownerToken);
+        if (!result.ok) throw new Error(result.error || 'Failed to reissue invitation');
+        setInviteNotice({
+          emailSent: result.emailSent === true,
+          deliveryReason: result.deliveryReason || null,
+          inviteUrl: buildInviteLink(roomId, result.invite_token, roleKey),
+        });
+        setNoticeCopied(false);
+        await loadInvites();
+      } else {
+        const revoked = await revokeInvite(roomId, inviteId);
+        if (!revoked.success && revoked.inviteRevoked) {
+          setActionError('The previous invitation is revoked; session cleanup needs retry, and the server rejects its sessions. You can create a replacement now.');
+          await loadInvites();
+          setModalRole(roleKey);
+          setShowModal(true);
+          setOpenMenuId(null);
+          return;
+        }
+        if (!revoked.success) throw new Error(revoked.error || 'Failed to retire the previous invitation');
+        setModalRole(roleKey);
+        setShowModal(true);
+      }
+      setOpenMenuId(null);
+    } catch {
+      setActionError('Could not reissue this invitation. The previous invitation was not replaced; retry or contact support.');
+    } finally {
+      setResending(null);
     }
-    setResending(null);
-    setOpenMenuId(null);
-  }
-
-  // ── Copy secure link ───────────────────────────────────────────────────────
-  function handleCopyLink(inv) {
-    const token = inv.invite_token || '';
-    const url = `${window.location.origin}/deal-room/${roomId}${token ? `?invite=${token}&role=${inv.role_key}` : ''}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopiedId(inv.id);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
-    setOpenMenuId(null);
   }
 
   // ── Build rows ─────────────────────────────────────────────────────────────
@@ -432,6 +534,48 @@ export default function ParticipantsPanel({
           + Invite Participant
         </button>
       </div>
+
+      {actionError && (
+        <div role="alert" className="px-5 py-3 text-xs text-red-700 bg-red-50 border-b border-red-100">
+          {actionError}
+        </div>
+      )}
+      {inviteNotice && (
+        <div role="status" className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+          <p className="text-xs font-semibold text-gray-800">
+            {inviteNotice.emailSent ? 'Replacement invitation email sent.' : 'Replacement invitation was created, but email was not sent.'}
+          </p>
+          {!inviteNotice.emailSent && (
+            <p className="text-[11px] text-amber-800 mt-1">
+              {inviteNotice.deliveryReason === 'email_send_failed'
+                ? 'Email delivery failed. Copy the replacement link and share it securely.'
+                : 'Email delivery is not configured. Copy the replacement link and share it securely.'}
+            </p>
+          )}
+          {inviteNotice.inviteUrl && (
+            <div className="flex gap-2 mt-2">
+              <input aria-label="Replacement invitation link" readOnly value={inviteNotice.inviteUrl}
+                className="min-w-0 flex-1 text-[10px] px-2 py-1.5 border border-amber-200 rounded-lg bg-white" />
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(inviteNotice.inviteUrl);
+                    setNoticeCopied(true);
+                  } catch {
+                    setActionError('Copy failed. Select the replacement invitation link and copy it manually.');
+                  }
+                }}
+                className="px-3 py-1.5 text-[10px] font-bold border border-amber-200 rounded-lg bg-white">
+                {noticeCopied ? 'Copied' : 'Copy link'}
+              </button>
+              <button onClick={() => setInviteNotice(null)} className="px-2 text-gray-500" aria-label="Dismiss replacement link">
+                ×
+              </button>
+            </div>
+          )}
+          <p className="text-[10px] text-gray-500 mt-1">The V2 link does not replace the invited-email code verification.</p>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -560,7 +704,7 @@ export default function ParticipantsPanel({
                                 )}
                                 {isInactive && (
                                   <button
-                                    onClick={() => handleReissue(invite.id)}
+                                    onClick={() => handleReissue(invite.id, role.key)}
                                     disabled={resending === invite.id}
                                     className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2 disabled:opacity-40">
                                     ↩ {resending === invite.id ? 'Reissuing…' : 'Reissue invitation'}
@@ -571,15 +715,6 @@ export default function ParticipantsPanel({
                                     onClick={() => { setOpenMenuId(null); setModalRole(role.key); setShowModal(true); }}
                                     className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
                                     + Send new invitation
-                                  </button>
-                                )}
-
-                                {/* Copy link */}
-                                {invite && (
-                                  <button
-                                    onClick={() => handleCopyLink(invite)}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition flex items-center gap-2">
-                                    {copiedId === invite.id ? '✓ Copied!' : '🔗 Copy secure link'}
                                   </button>
                                 )}
 
@@ -629,7 +764,7 @@ export default function ParticipantsPanel({
           🔒 Each participant receives a unique secure link scoped to their role.{' '}
           {isV2
             ? 'Participants verify with a code sent to their email — no PIN to share manually.'
-            : 'Kontra emails the invite link directly.'}
+            : 'V1 invitation links grant access to anyone holding them and do not verify email identity.'}
         </p>
       </div>
 

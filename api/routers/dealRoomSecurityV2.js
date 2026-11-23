@@ -29,6 +29,10 @@ const { createClient } = require('@supabase/supabase-js');
 const { supabase: fallbackSupabase } = require('../db');
 const { callPrivate }  = require('../lib/privateDb');
 const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
+const {
+  loadInviteRoleDefinitions,
+  validateParticipantInviteRole,
+} = require('../lib/roomInvitationSecurity');
 
 const router = express.Router();
 const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -113,7 +117,7 @@ async function requireAuthUser(req) {
 async function requireRoomOwner(userEmail, roomId) {
   const { data: room, error } = await supabaseAdmin
     .from('deal_rooms')
-    .select('property_id, property_name, customer_email, first_name, auth_v2_enabled')
+    .select('property_id, property_name, customer_email, first_name, auth_v2_enabled, workflow_pack_id')
     .eq('property_id', roomId)
     .single();
 
@@ -137,20 +141,24 @@ async function requireRoomOwner(userEmail, roomId) {
  * Auth: Bearer <owner JWT>
  */
 router.post('/invite/create', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   try {
     const user = await requireAuthUser(req);
     const { roomId, roleKey, invitedEmail } = req.body || {};
 
-    if (!roomId || !roleKey || !invitedEmail) {
+    if (!roomId || typeof roleKey !== 'string' || typeof invitedEmail !== 'string') {
       return res.status(400).json({ error: 'roomId, roleKey, invitedEmail required' });
     }
 
     const normalizedEmail = invitedEmail.toLowerCase().trim();
-    if (!normalizedEmail.includes('@')) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({ error: 'Invalid email address' });
     }
 
     const room = await requireRoomOwner(user.email, roomId);
+    const roleDefinitions = await loadInviteRoleDefinitions(supabaseAdmin, room.workflow_pack_id);
+    const validatedRole = validateParticipantInviteRole(roleKey, roleDefinitions);
+    if (!validatedRole.ok) return res.status(400).json({ error: validatedRole.error });
 
     // Generate token — raw token goes in invite URL; only hash stored in DB
     const rawToken  = generateToken();
@@ -162,7 +170,7 @@ router.post('/invite/create', async (req, res) => {
       .from('deal_room_invites_v2')
       .insert({
         room_id:          roomId,
-        role_key:         roleKey,
+        role_key:         validatedRole.roleKey,
         invited_email:    normalizedEmail,
         token_hash:       tokenHash,
         expires_at:       expiresAt,
@@ -182,17 +190,19 @@ router.post('/invite/create', async (req, res) => {
       user.id, user.email.toLowerCase().trim(),
       null, normalizedEmail,
       invite.id, null, getClientIp(req),
-      JSON.stringify({ role_key: roleKey }),
+      JSON.stringify({ role_key: validatedRole.roleKey }),
     );
 
     // Send invite link email (link only — no OTP in this email)
     // ?role= must be in the URL so DealRoomPage knows to show the participant
     // gate rather than defaulting to the owner bypass.
-    const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${rawToken}&role=${encodeURIComponent(roleKey)}`;
-    const roleName  = roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const inviteUrl = `${BASE_URL}/deal-room/${encodeURIComponent(roomId)}?invite=${encodeURIComponent(rawToken)}&role=${encodeURIComponent(validatedRole.roleKey)}`;
+    const roleName  = validatedRole.roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const roomName  = room.property_name || roomId;
     const senderName = room.first_name || 'The deal coordinator';
 
+    let emailSent = false;
+    let deliveryReason = RESEND_KEY ? 'email_send_failed' : 'email_not_configured';
     try {
       await sendResendEmail({
         to:      normalizedEmail,
@@ -240,18 +250,26 @@ router.post('/invite/create', async (req, res) => {
   </p>
 </div>`,
       });
+      emailSent = true;
+      deliveryReason = null;
     } catch (emailErr) {
-      console.error('[invite/create] email send failed:', emailErr.message);
+      console.error('[invite/create] email send failed');
       // Don't fail the request — invite was created; log the email failure
       await logAuditSafe(
         roomId, 'security', 'invite_created',
         user.id, user.email.toLowerCase(),
         null, normalizedEmail, invite.id, null, getClientIp(req),
-        JSON.stringify({ email_error: emailErr.message }),
+        JSON.stringify({ reason: deliveryReason }),
       );
     }
 
-    res.json({ ok: true, invite_id: invite.id });
+    res.json({
+      ok: true,
+      invite_id: invite.id,
+      emailSent,
+      deliveryReason,
+      invite_token: rawToken,
+    });
   } catch (err) {
     console.error('[invite/create]', err.message);
     res.status(err.status || 500).json({ error: err.message });
@@ -282,33 +300,33 @@ router.post('/invite/resolve', async (req, res) => {
     const tokenHash = sha256(token);
     const result    = await callPrivate('resolve_invite_token', [tokenHash]);
 
-    if (!result) return res.status(404).json({ valid: false, reason: 'not_found' });
+    if (!result || !result.valid) {
+      if (result) {
+        await logAuditSafe(
+          result.room_id, 'authorization', 'token_invalid',
+          null, null, null, null, result.invite_id || null,
+          null, getClientIp(req), null,
+        );
+      }
+      return res.json({ valid: false });
+    }
 
     await logAuditSafe(
-      result.room_id, 'authorization',
-      result.valid ? 'token_resolved' : 'token_invalid',
+      result.room_id, 'authorization', 'token_resolved',
       null, null, null, null, result.invite_id || null,
       null, getClientIp(req), null,
     );
 
-    // Return only safe fields — never invite_id or room_id to anonymous caller
-    if (!result.valid) {
-      return res.json({ valid: false, reason: result.reason });
-    }
-
-    res.json({
-      valid:        true,
-      masked_email: result.masked_email,
-      role_key:     result.role_key,
-      room_name:    result.room_name,
-      // _internal fields used by request-otp — not forwarded to browser UI
-      _invite_id:   result.invite_id,
-      _invited_email: result.invited_email,
+    // The bearer link is not proof of mailbox ownership. Return only the hint
+    // needed to help the recipient identify which address should receive OTP.
+    return res.json({
+      valid: true,
+      masked_email: typeof result.masked_email === 'string' ? result.masked_email : null,
     });
   } catch (err) {
     console.error('[invite/resolve]', err.message);
-    // Generic error — do not reveal whether token exists
-    res.status(200).json({ valid: false, reason: 'error' });
+    // Generic response — do not reveal whether the token or invite exists.
+    res.status(200).json({ valid: false });
   }
 });
 
@@ -320,7 +338,7 @@ router.post('/invite/resolve', async (req, res) => {
  * Body: { token }
  */
 router.post('/invite/request-otp', async (req, res) => {
-  res.set({ 'Cache-Control': 'no-store' });
+  res.set({ 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Referrer-Policy': 'no-referrer' });
 
   try {
     const { token } = req.body || {};
@@ -415,6 +433,7 @@ router.post('/invite/request-otp', async (req, res) => {
  * Auth: Bearer <participant JWT from supabase.auth.verifyOtp()>
  */
 router.post('/invite/accept', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Referrer-Policy': 'no-referrer' });
   try {
     const user = await requireAuthUser(req);
     const { token } = req.body || {};
@@ -424,6 +443,20 @@ router.post('/invite/accept', async (req, res) => {
     }
 
     const tokenHash = sha256(token);
+    const inviteForRole = await callPrivate('resolve_invite_token', [tokenHash]);
+    if (inviteForRole?.valid) {
+      const { data: inviteRoom, error: inviteRoomError } = await supabaseAdmin
+        .from('deal_rooms')
+        .select('workflow_pack_id')
+        .eq('property_id', inviteForRole.room_id)
+        .maybeSingle();
+      if (inviteRoomError || !inviteRoom) {
+        return res.status(403).json({ error: 'invite_unavailable' });
+      }
+      const roleDefinitions = await loadInviteRoleDefinitions(supabaseAdmin, inviteRoom.workflow_pack_id);
+      const validatedRole = validateParticipantInviteRole(inviteForRole.role_key, roleDefinitions);
+      if (!validatedRole.ok) return res.status(403).json({ error: 'reserved_role' });
+    }
 
     // Atomic acceptance in private schema (advisory lock, email check, insert)
     const result = await callPrivate('accept_invite', [
@@ -470,6 +503,7 @@ router.post('/invite/accept', async (req, res) => {
  * Auth: Bearer <owner JWT>
  */
 router.post('/invite/revoke', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   try {
     const user = await requireAuthUser(req);
     const { roomId, inviteId, participantId } = req.body || {};
@@ -480,6 +514,28 @@ router.post('/invite/revoke', async (req, res) => {
     }
 
     await requireRoomOwner(user.email, roomId);
+
+    if (inviteId) {
+      const { data: scopedInvite, error } = await supabaseAdmin
+        .from('deal_room_invites_v2')
+        .select('id')
+        .eq('id', inviteId)
+        .eq('room_id', roomId)
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: 'invite_lookup_failed' });
+      if (!scopedInvite) return res.status(404).json({ error: 'invite_not_found' });
+    }
+
+    if (participantId) {
+      const { data: scopedParticipant, error } = await supabaseAdmin
+        .from('deal_room_participants')
+        .select('id')
+        .eq('id', participantId)
+        .eq('room_id', roomId)
+        .maybeSingle();
+      if (error) return res.status(500).json({ error: 'participant_lookup_failed' });
+      if (!scopedParticipant) return res.status(404).json({ error: 'participant_not_found' });
+    }
 
     const result = await callPrivate('revoke_participant', [
       inviteId    || null,
@@ -505,6 +561,7 @@ router.post('/invite/revoke', async (req, res) => {
  * Auth: Bearer <owner JWT>
  */
 router.post('/invite/reissue', async (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   try {
     const user = await requireAuthUser(req);
     const { roomId, inviteId } = req.body || {};
@@ -514,6 +571,17 @@ router.post('/invite/reissue', async (req, res) => {
     }
 
     const room = await requireRoomOwner(user.email, roomId);
+    const { data: existingInvite, error: existingInviteError } = await supabaseAdmin
+      .from('deal_room_invites_v2')
+      .select('id, role_key, invited_email')
+      .eq('id', inviteId)
+      .eq('room_id', roomId)
+      .maybeSingle();
+    if (existingInviteError) return res.status(500).json({ error: 'invite_lookup_failed' });
+    if (!existingInvite) return res.status(404).json({ error: 'invite_not_found' });
+    const roleDefinitions = await loadInviteRoleDefinitions(supabaseAdmin, room.workflow_pack_id);
+    const validatedRole = validateParticipantInviteRole(existingInvite.role_key, roleDefinitions);
+    if (!validatedRole.ok) return res.status(409).json({ error: 'reserved_role' });
 
     const newRawToken  = generateToken();
     const newTokenHash = sha256(newRawToken);
@@ -527,31 +595,47 @@ router.post('/invite/reissue', async (req, res) => {
       getClientIp(req),
     ]);
 
-    // Fetch the new invite to get the email for re-sending
-    const { data: newInvite } = await supabaseAdmin
-      .from('deal_room_invites_v2')
-      .select('invited_email, role_key')
-      .eq('id', newInviteId)
-      .single();
-
-    if (newInvite) {
-      const inviteUrl = `${BASE_URL}/deal-room/${roomId}?invite=${newRawToken}&role=${encodeURIComponent(newInvite.role_key)}`;
-      const roleName  = newInvite.role_key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-      await sendResendEmail({
-        to:      newInvite.invited_email,
-        subject: `Updated invite: ${room.property_name || roomId} — Kontra Deal Room`,
-        text: `Your invite link to the deal room for ${room.property_name || roomId} has been updated.\n\nUse this new link:\n${inviteUrl}\n\nYour previous link is no longer valid.`,
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
+    const inviteUrl = `${BASE_URL}/deal-room/${encodeURIComponent(roomId)}?invite=${encodeURIComponent(newRawToken)}&role=${encodeURIComponent(existingInvite.role_key)}`;
+    let emailSent = false;
+    let deliveryReason = !existingInvite.invited_email
+      ? 'no_recipient'
+      : (RESEND_KEY ? 'email_send_failed' : 'email_not_configured');
+    if (existingInvite.invited_email) {
+      try {
+        await sendResendEmail({
+          to:      existingInvite.invited_email,
+          subject: `Updated invite: ${room.property_name || roomId} — Kontra Deal Room`,
+          text: [
+            `Your invite link to the deal room for ${room.property_name || roomId} has been updated.`,
+            '',
+            'Use this new link:',
+            inviteUrl,
+            '',
+            'You must verify your invited email with a one-time code before entering.',
+            'Your previous link is no longer valid.',
+          ].join('\n'),
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px 24px">
   <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:14px;padding:5px 12px;border-radius:6px;margin-bottom:20px">Kontra</span>
   <h2 style="color:#111;font-size:20px;font-weight:800;margin:0 0 12px">Your invite link has been updated</h2>
-  <p style="color:#555;font-size:14px;margin:0 0 20px">Your previous link to <strong>${room.property_name || roomId}</strong> is no longer valid. Use the link below:</p>
+  <p style="color:#555;font-size:14px;margin:0 0 20px">Your previous link to <strong>${room.property_name || roomId}</strong> is no longer valid. Use this new link, then verify your invited email with a one-time code:</p>
   <a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#800020;color:white;border-radius:8px;text-decoration:none;font-weight:700">Open updated invite →</a>
 </div>`,
-      }).catch(e => console.error('[reissue] email failed:', e.message));
+        });
+        emailSent = true;
+        deliveryReason = null;
+      } catch {
+        console.error('[invite/reissue] email send failed');
+        deliveryReason = RESEND_KEY ? 'email_send_failed' : 'email_not_configured';
+      }
     }
 
-    res.json({ ok: true, new_invite_id: newInviteId });
+    res.json({
+      ok: true,
+      new_invite_id: newInviteId,
+      emailSent,
+      deliveryReason,
+      invite_token: newRawToken,
+    });
   } catch (err) {
     console.error('[invite/reissue]', err.message);
     res.status(err.status || 500).json({ error: err.message });

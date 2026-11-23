@@ -35,6 +35,9 @@ test('invalid, expired, revoked, and wrong-room participant sessions fail closed
     [{ ...validSession, revoked_at: now.toISOString() }, null],
     [validSession, { property_id: 'other-room', role_key: 'buyer', status: 'accepted' }],
     [validSession, { property_id: 'room-1', role_key: 'buyer', status: 'revoked' }],
+    [validSession, { property_id: 'room-1', role_key: 'seller', status: 'pending' }],
+    [validSession, { property_id: 'room-1', role_key: '__room_owner__', status: 'accepted' }],
+    [validSession, { property_id: 'room-1', role_key: 'deal_coordinator', status: 'accepted' }],
   ]) {
     const access = resolveExplicitParticipantAccess({
       sessionToken: 'explicit-participant',

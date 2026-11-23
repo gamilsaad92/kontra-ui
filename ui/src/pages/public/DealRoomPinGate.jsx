@@ -10,7 +10,15 @@
  * This means old PIN-based invites still work without any migration.
  */
 import { useState, useEffect } from 'react';
-import { getInviteStatus, verifyInvitePin, verifyInviteLink, verifyParticipantAccess, storeInviteSession, touchSession } from '../../lib/inviteUtils';
+import {
+  clearInviteCredentialsFromUrl,
+  getInviteStatus,
+  verifyInvitePin,
+  verifyInviteLink,
+  verifyParticipantAccess,
+  storeInviteSession,
+  touchSession,
+} from '../../lib/inviteUtils';
 
 function Spinner({ label = 'Loading…' }) {
   return (
@@ -43,7 +51,9 @@ function NoTokenScreen() {
       </p>
       <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
         <p className="text-[11px] font-semibold text-amber-700 text-center">Access is by invitation only</p>
-        <p className="text-[10px] text-amber-500 mt-0.5 text-center">Each participant receives a unique, secure link</p>
+        <p className="text-[10px] text-amber-500 mt-0.5 text-center">
+          Anyone holding an invitation link can access its assigned role. Do not forward it.
+        </p>
       </div>
     </>
   );
@@ -116,14 +126,10 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, accessT
   useEffect(() => {
     if (accessToken && !inviteToken) {
       verifyParticipantAccess(propertyId, accessToken).then(result => {
+        clearInviteCredentialsFromUrl();
         if (result.success) {
           storeInviteSession(propertyId, result.session_token, result.expires_at);
           touchSession(result.session_token).catch(() => {});
-          try {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('participant_access');
-            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-          } catch {}
           onUnlocked({ sessionToken: result.session_token, roleKey: result.role_key });
           return;
         }
@@ -136,7 +142,10 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, accessT
           return;
         }
         setPhase('error');
-      }).catch(() => setPhase('error'));
+      }).catch(() => {
+        clearInviteCredentialsFromUrl();
+        setPhase('error');
+      });
       return;
     }
     if (!inviteToken) return;
@@ -144,6 +153,7 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, accessT
     // with verificationMethod='link', it auto-authenticates and we never show
     // the PIN screen. If it requires a PIN, fall through to the PIN form.
     verifyInviteLink(propertyId, inviteToken).then(result => {
+      clearInviteCredentialsFromUrl();
       if (result.success) {
         storeInviteSession(propertyId, result.session_token, result.expires_at);
         touchSession(result.session_token).catch(() => {});
@@ -170,7 +180,10 @@ export default function DealRoomPinGate({ propertyId, role, inviteToken, accessT
       if (result.error === 'expired')    { setPhase('expired');   return; }
       if (result.error === 'locked')     { setLockedUntil(result.locked_until); setPhase('locked'); return; }
       setPhase('error');
-    }).catch(() => setPhase('error'));
+    }).catch(() => {
+      clearInviteCredentialsFromUrl();
+      setPhase('error');
+    });
   }, [accessToken, inviteToken, propertyId, onUnlocked]);
 
   async function handleVerifyPin(e) {

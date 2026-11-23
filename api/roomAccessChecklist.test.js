@@ -186,6 +186,7 @@ jest.mock('./lib/operationsManager', () => {
 });
 
 process.env.SESSION_SECRET = 'test-session-secret';
+process.env.RESEND_API_KEY = '';
 const { createParticipantAccessToken } = require('./lib/participantAccessTokens');
 const app = require('./index');
 const request = require('supertest');
@@ -253,6 +254,74 @@ describe('room access and checklist scoping', () => {
       .send({ inviteToken: 'unused-invite-token-that-is-long-enough' });
 
     expect(response.status).toBe(404);
+  });
+
+  it('disables the legacy tokenless invite route after verifying owner access', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/invite')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ role: 'seller', email: 'seller@example.com' });
+
+    expect(response.status).toBe(410);
+    expect(response.body.error).toBe('legacy_invite_disabled');
+  });
+
+  it('rejects a configured owner role when creating a V1 participant invitation', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/create-invite')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        roleKey: 'buyer',
+        invitedEmail: 'seller@example.com',
+        inviteToken: 'a'.repeat(48),
+        verificationMethod: 'link',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('reserved_role');
+    expect(mockInsertedRows.some(row => row.table === 'deal_room_invites')).toBe(false);
+  });
+
+  it('does not accept a raw owner token for V1 invitation creation', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/create-invite')
+      .set('x-owner-write-token', mockOwnerToken)
+      .send({
+        roleKey: 'seller',
+        invitedEmail: 'seller@example.com',
+        inviteToken: 'c'.repeat(48),
+        verificationMethod: 'link',
+      });
+
+    expect(response.status).toBe(403);
+    expect(mockInsertedRows.some(row => row.table === 'deal_room_invites')).toBe(false);
+  });
+
+  it('creates a V1 participant invite with accurate email status and no token in the response', async () => {
+    const rawToken = 'b'.repeat(48);
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/create-invite')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        roleKey: 'seller',
+        invitedEmail: 'Seller@Example.com',
+        inviteToken: rawToken,
+        verificationMethod: 'link',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      emailSent: false,
+      deliveryReason: 'email_not_configured',
+    });
+    expect(JSON.stringify(response.body)).not.toContain(rawToken);
+    const inserted = mockInsertedRows.find(row => row.table === 'deal_room_invites');
+    expect(inserted.values.invite_token_hash).not.toBe(rawToken);
+    expect(inserted.values.invited_email).toBe('seller@example.com');
   });
 
   it('resolves an owner-only direct room URL from the room-scoped owner session cookie', async () => {

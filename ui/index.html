@@ -7,6 +7,15 @@
       content="width=device-width, initial-scale=1.0"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      if (new URLSearchParams(window.location.search).has('invite')
+        || new URLSearchParams(window.location.search).has('participant_access')) {
+        const referrerPolicy = document.createElement('meta');
+        referrerPolicy.name = 'referrer';
+        referrerPolicy.content = 'no-referrer';
+        document.head.appendChild(referrerPolicy);
+      }
+    </script>
     <title>Kontra</title>
     <!-- Optional: replace or remove if causing 404 -->
     <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->

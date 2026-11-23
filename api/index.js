@@ -71,6 +71,7 @@ const {
   getPackRoleConfig,
   getPackRoleLabel,
   getRoomPackId,
+  resolvePackIdFromRoom,
   sendResendEmail,
   uploadToStorage,
   logEvent,
@@ -88,6 +89,12 @@ const {
   loadCustomPackDocuments,
   resolveRoomChecklist,
 } = require('./lib/customPackChecklist');
+const {
+  loadInviteRoleDefinitions,
+  redeemRoomInvite,
+  revokeRoomInvite,
+  validateParticipantInviteRole,
+} = require('./lib/roomInvitationSecurity');
 const {
   clearBriefingCache,
   askQuestion,
@@ -4495,6 +4502,20 @@ async function requireRoomOwnerAccess(req, propertyId) {
   return access.mode === 'owner' ? access : null;
 }
 
+async function loadRoomInviteRoles(propertyId) {
+  const { data: room, error } = await supabase
+    .from('deal_rooms')
+    .select('workflow_pack_id, deal_type')
+    .eq('property_id', propertyId)
+    .maybeSingle();
+  if (error || !room) {
+    throw Object.assign(new Error('Room workflow roles are unavailable'), {
+      code: 'WORKFLOW_ROLES_UNAVAILABLE',
+    });
+  }
+  return loadInviteRoleDefinitions(supabase, resolvePackIdFromRoom(room));
+}
+
 function accessDenied(res, message = 'A verified deal-room invitation or owner access token is required') {
   return res.status(403).json({ error: 'Access denied', message });
 }
@@ -6512,51 +6533,13 @@ app.post('/api/public/deal-room/:propertyId/submit', async (req, res) => {
 // ── Send role-scoped invite email ────────────────────────────────────────────
 app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
   const { propertyId } = req.params;
-  const { role, email, senderName } = req.body || {};
-  if (!role || !email) return res.status(400).json({ error: 'role and email required' });
-  if (!email.includes('@')) return res.status(400).json({ error: 'invalid email' });
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can invite participants');
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_KEY) return res.status(500).json({ error: 'Email not configured' });
-  try {
-    const { data: room } = await supabase.from('deal_rooms')
-      .select('property_name, first_name, customer_email, workflow_pack_id')
-      .eq('property_id', propertyId).single();
-    const propName = room?.property_name || propertyId;
-    const fromName = senderName || room?.first_name || 'The deal coordinator';
-    const packId = room?.workflow_pack_id || DEFAULT_PACK_ID;
-    const roleConfig = getPackRoleConfig(packId).roles.find(r => r.key === role);
-    const roleLabel = roleConfig?.label || role;
-    const roleAction = roleConfig?.inviteAction || 'access the deal room';
-    const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?role=${role}`;
-    await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
-      to: email,
-      reply_to: 'support@kontraplatform.com',
-      subject: `You've been invited to a deal room — ${propName}`,
-      text: `You've been invited to a deal room on Kontra\n\n${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nYour role: ${roleAction}. No account required.\n\nOpen your deal room:\n${inviteUrl}\n\n---\nKontra is a transaction workspace platform. All parties upload documents, AI analyzes them instantly, and the deal coordinator sees everything in one place.\n\nYou received this because ${fromName} added your email to this workspace. If this is a mistake, you can safely ignore it.`,
-      html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
-        <div style="margin-bottom:24px">
-          <span style="display:inline-block;background:#800020;color:white;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;letter-spacing:0.5px">Kontra</span>
-        </div>
-        <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
-        <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
-        <p style="color:#555;font-size:14px;margin:0 0 24px">Your role: ${roleAction}. No account required — click below to access your role-scoped view.</p>
-        <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
-        <div style="margin-top:28px;padding:16px;background:#f9fafb;border-radius:10px;border:1px solid #eee">
-          <p style="color:#888;font-size:12px;margin:0 0 4px">What is Kontra?</p>
-          <p style="color:#555;font-size:13px;margin:0">Kontra is a transaction workspace platform. All parties upload their documents, AI analyzes them instantly, and the deal coordinator sees everything in one place. No email chains required.</p>
-        </div>
-        <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email to this deal room. If this is a mistake, you can safely ignore it.</p>
-      </div>`,
-    });
-    logEvent(propertyId, 'invite_sent', 'owner', senderName || null, `${roleLabel} invited: ${email}`, { role, email });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[invite]', err.message);
-    res.status(500).json({ error: err.message });
-  }
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  return res.status(410).json({
+    error: 'legacy_invite_disabled',
+    message: 'This legacy route does not create a secure invitation. Use the room invitation panel instead.',
+  });
 });
 
 // ── Create a v1 invite record server-side (bypasses RLS) ─────────────────────
@@ -6565,19 +6548,40 @@ app.post('/api/public/deal-room/:propertyId/invite', async (req, res) => {
 // service-role client to insert directly and then sends the invite email.
 app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => {
   const { propertyId } = req.params;
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   const { roleKey, invitedEmail, inviteToken, pin, verificationMethod = 'link' } = req.body || {};
-  if (!roleKey || !inviteToken) return res.status(400).json({ error: 'roleKey and inviteToken required' });
+  if (typeof roleKey !== 'string' || typeof inviteToken !== 'string') {
+    return res.status(400).json({ error: 'roleKey and inviteToken required' });
+  }
+  if (!/^[a-f0-9]{48,128}$/i.test(inviteToken.trim())) {
+    return res.status(400).json({ error: 'invalid_invite_token' });
+  }
+  if (!['link', 'pin'].includes(verificationMethod)) {
+    return res.status(400).json({ error: 'invalid_verification_method' });
+  }
+  if (verificationMethod === 'pin' && (typeof pin !== 'string' || !/^\d{6}$/.test(pin.trim()))) {
+    return res.status(400).json({ error: 'six_digit_pin_required' });
+  }
+  const normalizedEmail = typeof invitedEmail === 'string' ? invitedEmail.trim().toLowerCase() : '';
+  if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return res.status(400).json({ error: 'invalid_email' });
+  }
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can create invitations');
 
-  const tokenHash = crypto.createHash('sha256').update(inviteToken.trim()).digest('hex');
-  const pinHash   = pin ? crypto.createHash('sha256').update(pin.trim()).digest('hex') : null;
-
   try {
+    const roleDefinitions = await loadRoomInviteRoles(propertyId);
+    const validatedRole = validateParticipantInviteRole(roleKey, roleDefinitions);
+    if (!validatedRole.ok) {
+      return res.status(400).json({ error: validatedRole.error });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(inviteToken.trim()).digest('hex');
+    const pinHash = pin ? crypto.createHash('sha256').update(pin.trim()).digest('hex') : null;
     const { error: insertErr } = await supabase.from('deal_room_invites').insert({
       property_id:         propertyId,
-      role_key:            roleKey,
-      invited_email:       invitedEmail || null,
+      role_key:            validatedRole.roleKey,
+      invited_email:       normalizedEmail || null,
       invite_token_hash:   tokenHash,
       verification_method: verificationMethod,
       pin_hash:            pinHash,
@@ -6590,48 +6594,56 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
 
     // Auto-send email if recipient provided and Resend is configured
     let emailSent = false;
-    if (invitedEmail && process.env.RESEND_API_KEY) {
+    let deliveryReason = normalizedEmail ? 'email_not_configured' : 'no_recipient';
+    if (normalizedEmail && process.env.RESEND_API_KEY) {
       try {
         const { data: room } = await supabase.from('deal_rooms')
           .select('property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single();
         const propName  = room?.property_name || propertyId;
         const fromName  = room?.first_name || 'The deal coordinator';
         const packId    = room?.workflow_pack_id || DEFAULT_PACK_ID;
-        const roleConf  = getPackRoleConfig(packId).roles.find(r => r.key === roleKey);
-        const roleLabel = roleConf?.label || roleKey;
-        const inviteUrl = `${FRONTEND_URL}/deal-room/${propertyId}?invite=${inviteToken}&role=${roleKey}`;
+        const roleConf  = getPackRoleConfig(packId).roles.find(r => r.key === validatedRole.roleKey);
+        const roleLabel = roleConf?.label || validatedRole.roleKey;
+        const inviteUrl = `${FRONTEND_URL}/deal-room/${encodeURIComponent(propertyId)}?invite=${encodeURIComponent(inviteToken)}&role=${encodeURIComponent(validatedRole.roleKey)}`;
         await sendResendEmail(process.env.RESEND_API_KEY, {
           from: 'Kontra <notifications@kontraplatform.com>',
-          to: invitedEmail,
+          to: normalizedEmail,
           reply_to: 'support@kontraplatform.com',
           subject: `You've been invited to a deal room — ${propName}`,
-          text: `${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nOpen your deal room:\n${inviteUrl}`,
+          text: `${fromName} has added you as ${roleLabel} to their deal room for ${propName}.\n\nOpen your room invitation:\n${inviteUrl}\n\nAnyone holding this link can access the assigned participant role. The link does not verify email identity. Do not forward it.`,
           html: `<div style="font-family:sans-serif;max-width:560px;margin:auto;padding:32px 24px">
             <div style="margin-bottom:20px"><span style="background:#800020;color:#fff;font-weight:800;font-size:15px;padding:6px 14px;border-radius:8px;display:inline-block">Kontra</span></div>
             <h2 style="color:#111;font-size:22px;font-weight:800;margin:0 0 8px">You've been invited</h2>
-            <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has added you as <strong>${roleLabel}</strong> to their deal room for <strong>${propName}</strong>.</p>
-            <p style="color:#555;font-size:14px;margin:0 0 24px">Click below to access your role-scoped view. No account required.</p>
+            <p style="color:#555;font-size:15px;margin:0 0 6px"><strong>${fromName}</strong> has invited you as <strong>${roleLabel}</strong> to <strong>${propName}</strong>.</p>
+            <p style="color:#555;font-size:14px;margin:0 0 24px">Anyone holding this link can access the assigned participant role. The link does not verify email identity. Do not forward it.</p>
             <a href="${inviteUrl}" style="display:inline-block;padding:14px 28px;background:#800020;color:#fff;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">Open Deal Room →</a>
             <p style="color:#bbb;font-size:11px;margin-top:24px">You received this because ${fromName} added your email. If this is a mistake, ignore it.</p>
           </div>`,
         });
         emailSent = true;
       } catch (emailErr) {
-        console.error('[create-invite] email send failed:', emailErr.message);
+        console.error('[create-invite] email send failed');
+        deliveryReason = 'email_send_failed';
       }
     }
 
-    logEvent(propertyId, 'invite_created', 'owner', null, `${roleKey} invited: ${invitedEmail || 'PIN-only'}`, { roleKey, invitedEmail });
-    res.json({ success: true, emailSent });
+    logEvent(propertyId, 'invite_created', 'owner', null, `${validatedRole.roleKey} invited: ${normalizedEmail || 'PIN-only'}`, {
+      roleKey: validatedRole.roleKey,
+      invitedEmail: normalizedEmail || null,
+      emailSent,
+    });
+    res.json({ success: true, emailSent, deliveryReason: emailSent ? null : deliveryReason });
   } catch (err) {
     console.error('[create-invite]', err.message);
-    res.status(500).json({ error: err.message });
+    const status = err.code === 'WORKFLOW_ROLES_UNAVAILABLE' ? 503 : 500;
+    res.status(status).json({ error: status === 503 ? err.code : 'invite_creation_failed' });
   }
 });
 
 // ── List invites for a room (verified room-scoped owner session) ──────────────
 app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
   const { propertyId } = req.params;
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
   try {
     const access = await getRoomAccessContext(req, propertyId);
     if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can list invitations');
@@ -6648,6 +6660,34 @@ app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
   }
 });
 
+app.post('/api/public/deal-room/:propertyId/invites/:inviteId/revoke', async (req, res) => {
+  const { propertyId, inviteId } = req.params;
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  const access = await getRoomAccessContext(req, propertyId);
+  if (access.mode !== 'owner') return accessDenied(res, 'Only the deal-room owner can revoke invitations');
+  if (!/^[a-f0-9-]{36}$/i.test(inviteId)) {
+    return res.status(400).json({ error: 'invalid_invite_id' });
+  }
+
+  try {
+    const result = await revokeRoomInvite(supabase, { propertyId, inviteId });
+    if (!result.ok) {
+      return res.status(result.status || 500).json({
+        error: result.error,
+        inviteRevoked: result.inviteRevoked === true,
+      });
+    }
+    logEvent(propertyId, 'invite_revoked', 'owner', null, 'Participant invitation revoked', {
+      inviteId,
+      sessionsRevoked: result.sessionsRevoked,
+    }).catch(() => {});
+    return res.json({ ok: true, sessionsRevoked: result.sessionsRevoked });
+  } catch (error) {
+    console.error('[invite/revoke]', error.message);
+    return res.status(500).json({ error: 'invite_revocation_failed' });
+  }
+});
+
 // ── Token-only invite verification (link-auth flow) ───────────────────────────
 // For invites created with verification_method='link', the raw invite token in
 // the URL IS the credential. No PIN needed. This endpoint validates the token,
@@ -6657,50 +6697,40 @@ app.get('/api/public/deal-room/:propertyId/invites', async (req, res) => {
 app.post('/api/public/deal-room/:propertyId/invite/verify-link', async (req, res) => {
   const { propertyId } = req.params;
   const { inviteToken } = req.body || {};
-  if (!inviteToken) return res.status(400).json({ error: 'inviteToken required' });
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+    'Referrer-Policy': 'no-referrer',
+    'X-Robots-Tag': 'noindex',
+  });
+  if (typeof inviteToken !== 'string') return res.status(400).json({ error: 'inviteToken required' });
 
-  const tokenHash = crypto.createHash('sha256').update(inviteToken.trim()).digest('hex');
   try {
-    const { data: invite, error: findErr } = await supabase
-      .from('deal_room_invites')
-      .select('id, property_id, role_key, status, verification_method, expires_at, locked_until')
-      .eq('invite_token_hash', tokenHash)
-      .maybeSingle();
-
-    if (findErr) throw findErr;
-    if (!invite)                                              return res.status(404).json({ error: 'not_found' });
-    if (invite.property_id !== propertyId)                   return res.status(403).json({ error: 'wrong_room' });
-    if (invite.status === 'revoked')                         return res.status(403).json({ error: 'revoked' });
-    if (invite.status === 'expired')                         return res.status(403).json({ error: 'expired' });
-    if (invite.expires_at && new Date(invite.expires_at) < new Date()) return res.status(403).json({ error: 'expired' });
-    if (invite.locked_until && new Date(invite.locked_until) > new Date()) return res.status(403).json({ error: 'locked', locked_until: invite.locked_until });
-
-    // Only allow token-only verification for link-auth invites.
-    // PIN-based invites must use the Supabase RPC verify_invite_credential.
-    if (invite.verification_method !== 'link') {
-      return res.status(400).json({ error: 'requires_pin', message: 'This invitation requires a PIN. Use the PIN verification flow.' });
-    }
-
-    // Create a 7-day access session
-    const sessionToken = crypto.randomBytes(32).toString('hex');
-    const sessionHash  = crypto.createHash('sha256').update(sessionToken).digest('hex');
-    const expiresAt    = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    const { error: sessionErr } = await supabase.from('deal_room_access_sessions').insert({
-      invite_id:          invite.id,
-      session_token_hash: sessionHash,
-      expires_at:         expiresAt,
+    const roleDefinitions = await loadRoomInviteRoles(propertyId);
+    const result = await redeemRoomInvite(supabase, {
+      propertyId,
+      inviteToken,
+      validateRole: roleKey => validateParticipantInviteRole(roleKey, roleDefinitions),
     });
-    if (sessionErr) throw sessionErr;
-
-    // Mark invite as accepted so the People tab shows the right status
-    await supabase.from('deal_room_invites').update({ status: 'accepted', last_used_at: new Date().toISOString() }).eq('id', invite.id);
-
-    logEvent(propertyId, 'participant_authenticated', invite.role_key, null, `${invite.role_key} accessed via invite link`).catch(() => {});
-    return res.json({ success: true, session_token: sessionToken, expires_at: expiresAt, role_key: invite.role_key });
+    if (!result.ok) {
+      return res.status(result.status).json({
+        error: result.error,
+        ...(result.locked_until ? { locked_until: result.locked_until } : {}),
+      });
+    }
+    logEvent(propertyId, 'participant_authenticated', result.roleKey, null, `${result.roleKey} accessed via invite link`).catch(() => {});
+    return res.json({
+      success: true,
+      session_token: result.sessionToken,
+      expires_at: result.expiresAt,
+      role_key: result.roleKey,
+    });
   } catch (e) {
     console.error('[verify-link]', e.message);
-    return res.status(500).json({ error: e.message });
+    const status = e.code === 'WORKFLOW_ROLES_UNAVAILABLE' ? 503 : 500;
+    return res.status(status).json({
+      error: status === 503 ? 'WORKFLOW_ROLES_UNAVAILABLE' : 'invite_verification_failed',
+    });
   }
 });
 
