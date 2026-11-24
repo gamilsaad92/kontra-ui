@@ -138,6 +138,13 @@ const {
   semanticRecordKey,
 } = require('./lib/semanticFieldTaxonomy');
 const {
+  BUYER_FUNDS_DUE_KEY,
+  deriveRecoverableBuyerFundsEvidence,
+  buildRecoveredBuyerFundsFieldPatch,
+  findExistingBuyerFundsField,
+  hasStoredValue,
+} = require('./lib/buyerFundsRecovery');
+const {
   buildVerifiedAssetSnapshot,
 } = require('./lib/verifiedAssetSnapshot');
 const {
@@ -10324,6 +10331,211 @@ app.get('/api/public/deal-room/:propertyId/transaction-record', async (req, res)
   }
 });
 
+app.get('/api/public/deal-room/:propertyId/transaction-record/recoverable-evidence', async (req, res) => {
+  const { propertyId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+    const [
+      { data: conflicts, error: conflictsError },
+      { data: fields, error: fieldsError },
+      sourceDocuments,
+    ] = await Promise.all([
+      supabase.from('transaction_record_conflicts').select('*')
+        .eq('property_id', propertyId)
+        .eq('status', 'resolved')
+        .order('created_at', { ascending: false }),
+      supabase.from('transaction_record_fields').select('*').eq('property_id', propertyId),
+      loadSourceDocuments(supabase, propertyId),
+    ]);
+    if (conflictsError) throw conflictsError;
+    if (fieldsError) throw fieldsError;
+    const activeDocuments = currentSourceDocuments(sourceDocuments || []);
+    const recoverable = (conflicts || [])
+      .map(conflict => deriveRecoverableBuyerFundsEvidence({
+        conflict,
+        activeDocuments,
+        fields: fields || [],
+      }))
+      .filter(Boolean);
+    res.json({
+      candidates: recoverable.map(candidate => ({
+        conflict_id: candidate.conflict_id,
+        field_key: candidate.field_key,
+        display_label: candidate.display_label,
+        value_text: candidate.value_text,
+        source_doc_id: candidate.source_doc_id,
+        source_page: candidate.source_page,
+        source_excerpt: candidate.source_excerpt,
+      })),
+    });
+  } catch (err) {
+    console.error('[transaction-record recoverable evidence GET]', err.message);
+    res.status(500).json({ error: 'Could not load recoverable evidence' });
+  }
+});
+
+app.post('/api/public/deal-room/:propertyId/transaction-record/recoverable-evidence/:conflictId', async (req, res) => {
+  const { propertyId, conflictId } = req.params;
+  try {
+    const access = await getRoomAccessContext(req, propertyId);
+    if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
+
+    const { data: room, error: roomError } = await supabase.from('deal_rooms')
+      .select('sealed_at')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (roomError) throw roomError;
+    if (room?.sealed_at) {
+      return res.status(409).json({
+        error: 'WORKSPACE_SEALED',
+        message: 'Transaction Record fields are immutable after the workspace is sealed.',
+      });
+    }
+
+    const { data: conflict, error: conflictError } = await supabase
+      .from('transaction_record_conflicts')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('id', conflictId)
+      .maybeSingle();
+    if (conflictError) throw conflictError;
+    if (!conflict) return res.status(404).json({ error: 'Recoverable evidence not found' });
+
+    const [
+      { data: fields, error: fieldsError },
+      sourceDocuments,
+    ] = await Promise.all([
+      supabase.from('transaction_record_fields').select('*').eq('property_id', propertyId),
+      loadSourceDocuments(supabase, propertyId),
+    ]);
+    if (fieldsError) throw fieldsError;
+    const activeDocuments = currentSourceDocuments(sourceDocuments || []);
+    const existingFields = fields || [];
+    const candidateWithoutExistingField = deriveRecoverableBuyerFundsEvidence({
+      conflict,
+      activeDocuments,
+      fields: [],
+    });
+    if (!candidateWithoutExistingField) {
+      return res.status(409).json({
+        error: 'EVIDENCE_NOT_RECOVERABLE',
+        message: 'This resolved evidence is no longer eligible for recovery.',
+      });
+    }
+
+    const matchingFields = findExistingBuyerFundsField(existingFields);
+    if (matchingFields.some(hasStoredValue)) {
+      const existingValue = matchingFields[0]?.value_text;
+      if (matchingFields.length === 1
+          && String(existingValue ?? '').trim() === candidateWithoutExistingField.value_text) {
+        return res.json({
+          ok: true,
+          already_exists: true,
+          field_key: BUYER_FUNDS_DUE_KEY,
+          status: matchingFields[0].status,
+        });
+      }
+      return res.status(409).json({
+        error: 'CANONICAL_FIELD_ALREADY_POPULATED',
+        message: 'Buyer Funds Due already has a value. Review the existing field instead of creating a duplicate.',
+      });
+    }
+
+    const candidate = deriveRecoverableBuyerFundsEvidence({
+      conflict,
+      activeDocuments,
+      fields: existingFields,
+    });
+    if (!candidate) {
+      return res.status(409).json({
+        error: 'EVIDENCE_NOT_RECOVERABLE',
+        message: 'This evidence cannot be added without creating a duplicate or replacing an existing value.',
+      });
+    }
+    const sourceDocument = activeDocuments.find(document => document.id === candidate.source_doc_id);
+    const existingField = matchingFields[0] || null;
+    const now = new Date().toISOString();
+    const fieldPatch = buildRecoveredBuyerFundsFieldPatch(candidate, sourceDocument, existingField, now);
+    const history = transactionFieldHistoryRow({
+      fieldId: existingField?.id || null,
+      fieldKey: BUYER_FUNDS_DUE_KEY,
+      propertyId,
+      // The deployed schema constrains history event types. Keep the recovery
+      // marker in metadata while using the existing extraction event type.
+      eventType: 'extracted',
+      actorEmail: access.email || 'coordinator',
+      actorRole: 'Deal Coordinator',
+      priorValue: existingField?.value_text || null,
+      newValue: candidate.value_text,
+      priorStatus: existingField?.status || null,
+      newStatus: 'needs_review',
+      sourceDocId: candidate.source_doc_id,
+      sourcePage: candidate.source_page,
+      sourceExcerpt: candidate.source_excerpt,
+      metadata: {
+        recovery: true,
+        conflict_id: conflictId,
+        original_field_key: conflict.field_key,
+        source_doc_version: candidate.source_doc_version,
+        source_file_hash: candidate.source_file_hash,
+      },
+    });
+    const expectedFields = existingField
+      ? [expectedFieldSnapshot(existingField)]
+      : [expectedFieldSnapshot(null, BUYER_FUNDS_DUE_KEY)];
+    if (existingField && existingField.field_key !== BUYER_FUNDS_DUE_KEY) {
+      expectedFields.push(expectedFieldSnapshot(null, BUYER_FUNDS_DUE_KEY));
+    }
+    const result = await commitCanonicalChangeSet({
+      p_change_set: {
+        property_id: propertyId,
+        required_sources: [requiredSource(sourceDocument)].filter(Boolean),
+        expected_fields: expectedFields,
+        field_changes: [existingField
+          ? { op: 'update', id: existingField.id, patch: fieldPatch }
+          : { op: 'insert', field_key: BUYER_FUNDS_DUE_KEY, patch: fieldPatch }],
+        expected_conflicts: [expectedConflictSnapshot(conflict)],
+        conflict_changes: [],
+        history_rows: [history],
+      },
+    });
+    if (result.status === 'stale_source') {
+      return res.status(409).json({
+        error: 'STALE_DOCUMENT_SOURCE',
+        message: 'The source document is no longer current. Refresh and review current evidence.',
+      });
+    }
+    if (result.status === 'retry_snapshot') {
+      return res.status(409).json({
+        error: 'EVIDENCE_CHANGED',
+        message: 'The evidence changed while it was being recovered. Refresh and review it again.',
+      });
+    }
+    if (result.status !== 'committed') {
+      throw result.error || new Error(`Buyer Funds Due recovery did not commit (${result.status || 'unknown'})`);
+    }
+
+    await recalculateTransactionState(propertyId, {
+      source: 'transaction_record_evidence_recovered',
+      actorId: access.actorId,
+      actorType: access.actorType,
+      evaluateTasks: false,
+    });
+    res.json({
+      ok: true,
+      field_key: BUYER_FUNDS_DUE_KEY,
+      status: 'needs_review',
+      is_required: fieldPatch.is_required,
+      source_doc_id: candidate.source_doc_id,
+    });
+  } catch (err) {
+    console.error('[transaction-record evidence recovery POST]', err.message);
+    res.status(500).json({ error: 'Could not recover financial evidence' });
+  }
+});
+
 app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/history', async (req, res) => {
   const { propertyId, fieldId } = req.params;
   try {
@@ -12864,6 +13076,7 @@ app.buildCreationMetadata = buildCreationMetadata;
 app.isTokenizationTransaction = isTokenizationTransaction;
 app.startServer = startServer;
 if (process.env.NODE_ENV === 'test') {
+  app.extractTransactionFieldsForTest = extractTransactionFields;
   app.setMyRoomsOtpForTest = (email, code) => {
     otpStore.set(email, { code, expiresAt: Date.now() + 60_000 });
   };

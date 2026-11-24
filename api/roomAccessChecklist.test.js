@@ -8,8 +8,12 @@ const mockChecklistDefaults = [
 ];
 const mockChecklistItems = mockChecklistDefaults.map(item => ({ ...item }));
 const mockDocumentAnalyses = [];
+const mockRecoveryConflicts = [];
+let mockTransactionRecordFields = null;
+let mockExtractionSchemaKey = null;
 const mockChecklistSelections = [];
 const mockCanonicalRpc = jest.fn(async () => ({ data: { status: 'committed' }, error: null }));
+const mockOpenAIChatCreate = jest.fn();
 let mockFieldSourceDocId = null;
 let mockParticipantSessionAvailable = true;
 let mockOwnerSessionAvailable = true;
@@ -92,11 +96,19 @@ jest.mock('./db', () => {
       },
       order: () => chain,
       in: () => chain,
+      limit: () => chain,
       gt: () => chain,
       is: () => chain,
       maybeSingle: async () => {
         if (table === 'deal_rooms') {
-          if (state.filters.property_id === 'room-1') return { data: owner, error: null };
+          if (state.filters.property_id === 'room-1') {
+            return {
+              data: mockExtractionSchemaKey
+                ? { ...owner, workflow_pack_id: mockExtractionSchemaKey }
+                : owner,
+              error: null,
+            };
+          }
           if (state.filters.property_id === 'room-2') {
             return {
               data: {
@@ -110,7 +122,30 @@ jest.mock('./db', () => {
           }
           return { data: null, error: null };
         }
-        if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
+        if (table === 'transaction_record_fields') {
+          const rows = mockTransactionRecordFields === null
+            ? [transactionField()]
+            : mockTransactionRecordFields;
+          return {
+            data: rows.find(row => Object.entries(state.filters)
+              .every(([key, value]) => row[key] === undefined || row[key] === value)) || null,
+            error: null,
+          };
+        }
+        if (table === 'transaction_record_conflicts') {
+          return {
+            data: mockRecoveryConflicts.find(row => Object.entries(state.filters)
+              .every(([key, value]) => row[key] === value)) || null,
+            error: null,
+          };
+        }
+        if (table === 'deal_analyses') {
+          return {
+            data: mockDocumentAnalyses.find(row => Object.entries(state.filters)
+              .every(([key, value]) => row[key] === undefined || row[key] === value)) || null,
+            error: null,
+          };
+        }
         if (table === 'deal_room_access_sessions') {
           if (state.filters.session_token_hash === sessionHash && mockParticipantSessionAvailable) {
             return { data: session, error: null };
@@ -141,12 +176,21 @@ jest.mock('./db', () => {
         if (table === 'deal_rooms' && state.filters.customer_email) {
           data = [(({ owner_write_token, ...room }) => room)(owner)];
         } else if (table === 'transaction_record_fields') {
-          data = [transactionField()];
+          const rows = mockTransactionRecordFields === null
+            ? [transactionField()]
+            : mockTransactionRecordFields;
+          data = rows.filter(row => Object.entries(state.filters)
+            .every(([key, value]) => row[key] === undefined || row[key] === value));
+        } else if (table === 'transaction_record_conflicts') {
+          data = mockRecoveryConflicts.filter(row => Object.entries(state.filters)
+            .every(([key, value]) => row[key] === value));
         } else if (table === 'deal_analyses') {
+          const filteredAnalyses = mockDocumentAnalyses.filter(analysis => Object.entries(state.filters)
+            .every(([key, value]) => analysis[key] === undefined || analysis[key] === value));
           const selectedColumns = state.selectedColumns === '*'
             ? null
             : String(state.selectedColumns || '').split(',').map(column => column.trim()).filter(Boolean);
-          data = mockDocumentAnalyses.map(analysis => selectedColumns
+          data = filteredAnalyses.map(analysis => selectedColumns
             ? Object.fromEntries(selectedColumns
               .filter(column => Object.prototype.hasOwnProperty.call(analysis, column))
               .map(column => [column, analysis[column]]))
@@ -165,6 +209,14 @@ jest.mock('./db', () => {
     },
   };
 });
+
+jest.mock('openai', () => jest.fn().mockImplementation(() => ({
+  chat: {
+    completions: {
+      create: (...args) => mockOpenAIChatCreate(...args),
+    },
+  },
+})));
 
 jest.mock('./lib/transactionState', () => {
   const actual = jest.requireActual('./lib/transactionState');
@@ -210,8 +262,12 @@ describe('room access and checklist scoping', () => {
       ...mockChecklistDefaults.map(item => ({ ...item })),
     );
     mockDocumentAnalyses.length = 0;
+    mockRecoveryConflicts.length = 0;
+    mockTransactionRecordFields = null;
+    mockExtractionSchemaKey = null;
     mockChecklistSelections.length = 0;
     mockCanonicalRpc.mockReset().mockResolvedValue({ data: { status: 'committed' }, error: null });
+    mockOpenAIChatCreate.mockReset();
     mockFieldSourceDocId = null;
     mockParticipantSessionAvailable = true;
     mockOwnerSessionAvailable = true;
@@ -855,6 +911,251 @@ describe('room access and checklist scoping', () => {
       expect(addedComment.status).toBe(200);
       expect(mockInsertedRows.find(row => row.table === 'deal_comments').values.role)
         .toBe('seller');
+    });
+
+    it('keeps recovered Buyer Funds Due evidence owner-only and room-scoped', async () => {
+      mockRecoveryConflicts.push({
+        id: 'resolved-buyer-funds',
+        property_id: 'room-1',
+        field_key: 'parties.buyer',
+        display_label: 'Estimated Buyer Funds Due',
+        conflicting_value: '$1,450,000',
+        conflicting_source_doc_id: 'loi-1',
+        conflicting_source_page: 1,
+        conflicting_source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+        status: 'resolved',
+      });
+      mockDocumentAnalyses.push({
+        id: 'loi-1',
+        property_id: 'room-1',
+        section: 'letter_of_intent',
+        filename: 'Letter of Intent.pdf',
+        created_at: '2026-11-01T00:00:00.000Z',
+        source_hash: 'sha256:loi',
+        is_active: true,
+        superseded_at: null,
+      });
+      mockTransactionRecordFields = [];
+
+      const anonymous = await request(app)
+        .get('/api/public/deal-room/room-1/transaction-record/recoverable-evidence');
+      const rawOwnerToken = await request(app)
+        .get('/api/public/deal-room/room-1/transaction-record/recoverable-evidence')
+        .set('x-owner-write-token', mockOwnerToken);
+      const participant = await request(app)
+        .get('/api/public/deal-room/room-1/transaction-record/recoverable-evidence')
+        .set('x-kontra-session', mockParticipantToken);
+      const otherRoom = await request(app)
+        .get('/api/public/deal-room/room-2/transaction-record/recoverable-evidence')
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
+      const candidates = await request(app)
+        .get('/api/public/deal-room/room-1/transaction-record/recoverable-evidence')
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`);
+
+      expect(anonymous.status).toBe(403);
+      expect(rawOwnerToken.status).toBe(403);
+      expect(participant.status).toBe(403);
+      expect(otherRoom.status).toBe(403);
+      expect(candidates.status).toBe(200);
+      expect(candidates.body.candidates).toEqual([
+        expect.objectContaining({
+          conflict_id: 'resolved-buyer-funds',
+          field_key: 'financial.buyer_funds_due',
+          value_text: '$1,450,000',
+          source_doc_id: 'loi-1',
+          source_page: 1,
+          source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+        }),
+      ]);
+      expect(candidates.body.candidates[0]).not.toHaveProperty('source_file_hash');
+    });
+
+    it('recovers an existing-room amount without confirming it or rewriting conflict history', async () => {
+      const conflict = {
+        id: 'resolved-buyer-funds',
+        property_id: 'room-1',
+        field_key: 'parties.buyer',
+        display_label: 'Estimated Buyer Funds Due',
+        conflicting_value: '$1,450,000',
+        conflicting_source_doc_id: 'loi-1',
+        conflicting_source_page: 1,
+        conflicting_source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+        status: 'resolved',
+        resolution_note: 'Original discrepancy resolved.',
+      };
+      mockRecoveryConflicts.push(conflict);
+      mockDocumentAnalyses.push({
+        id: 'loi-1',
+        property_id: 'room-1',
+        section: 'letter_of_intent',
+        created_at: '2026-11-01T00:00:00.000Z',
+        source_hash: 'sha256:loi',
+        is_active: true,
+        superseded_at: null,
+      });
+      mockTransactionRecordFields = [];
+
+      const response = await request(app)
+        .post('/api/public/deal-room/room-1/transaction-record/recoverable-evidence/resolved-buyer-funds')
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+        .set('Origin', 'http://localhost:3000')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(expect.objectContaining({
+        ok: true,
+        field_key: 'financial.buyer_funds_due',
+        status: 'needs_review',
+        is_required: false,
+        source_doc_id: 'loi-1',
+      }));
+      const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+      expect(changeSet.field_changes).toEqual([
+        expect.objectContaining({
+          op: 'insert',
+          field_key: 'financial.buyer_funds_due',
+          patch: expect.objectContaining({
+            value_text: '$1,450,000',
+            status: 'needs_review',
+            is_required: false,
+            source_doc_id: 'loi-1',
+            source_doc_version: 'loi-1',
+            source_file_hash: 'sha256:loi',
+            source_page: 1,
+            source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+            verified_by: null,
+            verified_at: null,
+          }),
+        }),
+      ]);
+      expect(changeSet.history_rows[0]).toEqual(expect.objectContaining({
+        event_type: 'extracted',
+        new_status: 'needs_review',
+        source_doc_id: 'loi-1',
+        source_page: 1,
+        source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+        metadata: expect.objectContaining({
+          recovery: true,
+          conflict_id: 'resolved-buyer-funds',
+          original_field_key: 'parties.buyer',
+          source_doc_version: 'loi-1',
+          source_file_hash: 'sha256:loi',
+        }),
+      }));
+      expect(changeSet.conflict_changes).toEqual([]);
+      expect(changeSet.expected_conflicts).toEqual([
+        expect.objectContaining({ id: 'resolved-buyer-funds', status: 'resolved' }),
+      ]);
+      expect(conflict).toMatchObject({
+        field_key: 'parties.buyer',
+        conflicting_value: '$1,450,000',
+        status: 'resolved',
+        resolution_note: 'Original discrepancy resolved.',
+      });
+      expect(require('./lib/transactionState').recalculateTransactionState)
+        .toHaveBeenCalledWith('room-1', expect.objectContaining({ evaluateTasks: false }));
+    });
+
+    it('does not insert a duplicate Buyer Funds Due field when the same canonical value exists', async () => {
+      mockRecoveryConflicts.push({
+        id: 'resolved-buyer-funds',
+        property_id: 'room-1',
+        field_key: 'parties.buyer',
+        display_label: 'Estimated Buyer Funds Due',
+        conflicting_value: '$1,450,000',
+        conflicting_source_doc_id: 'loi-1',
+        status: 'resolved',
+      });
+      mockDocumentAnalyses.push({
+        id: 'loi-1',
+        property_id: 'room-1',
+        section: 'letter_of_intent',
+        created_at: '2026-11-01T00:00:00.000Z',
+        source_hash: 'sha256:loi',
+        is_active: true,
+        superseded_at: null,
+      });
+      mockTransactionRecordFields = [{
+        id: 'buyer-funds-row',
+        property_id: 'room-1',
+        field_key: 'financial.buyer_funds_due',
+        value_text: '$1,450,000',
+        status: 'needs_review',
+        is_required: false,
+      }];
+
+      const response = await request(app)
+        .post('/api/public/deal-room/room-1/transaction-record/recoverable-evidence/resolved-buyer-funds')
+        .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+        .set('Origin', 'http://localhost:3000')
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.already_exists).toBe(true);
+      expect(mockCanonicalRpc).not.toHaveBeenCalled();
+    });
+
+    it('extracts Buyer Funds Due into an optional canonical field for a new generated room without a schema definition', async () => {
+      mockExtractionSchemaKey = 'generated_ai';
+      mockDocumentAnalyses.push({
+        id: 'new-room-loi',
+        property_id: 'room-1',
+        section: 'letter_of_intent',
+        created_at: '2026-11-01T00:00:00.000Z',
+        source_hash: 'sha256:new-room-loi',
+        is_active: true,
+        superseded_at: null,
+      });
+      mockTransactionRecordFields = [];
+      mockOpenAIChatCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              fields: [{
+                field_key: 'parties.buyer',
+                field_category: 'parties',
+                display_label: 'Estimated Buyer Funds Due',
+                value_text: '$1,450,000',
+                confidence: 0.98,
+                source_page: 1,
+                source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+              }],
+            }),
+          },
+        }],
+      });
+
+      const result = await app.extractTransactionFieldsForTest(
+        'room-1',
+        'new-room-loi',
+        'x'.repeat(100),
+        'Letter of Intent',
+      );
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'committed',
+        canonicalKeys: ['financial.buyer_funds_due'],
+        schemaKey: 'generated_ai',
+      }));
+      const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+      expect(changeSet.field_changes).toEqual([
+        expect.objectContaining({
+          op: 'insert',
+          field_key: 'financial.buyer_funds_due',
+          patch: expect.objectContaining({
+            value_text: '$1,450,000',
+            status: 'extracted',
+            is_required: false,
+            source_doc_id: 'new-room-loi',
+            source_doc_version: 'new-room-loi',
+            source_file_hash: 'sha256:new-room-loi',
+            source_page: 1,
+            source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+            verified_by: null,
+            verified_at: null,
+          }),
+        }),
+      ]);
     });
   });
 });

@@ -3877,6 +3877,61 @@ function DigitalAssetReadinessSection({
   const [focusedFieldKey, setFocusedFieldKey] = useState('');
   const [expandedLists, setExpandedLists] = useState({});
   const [openingSourceId, setOpeningSourceId] = useState('');
+  const [recoverableEvidence, setRecoverableEvidence] = useState([]);
+  const [recoveringEvidenceId, setRecoveringEvidenceId] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
+
+  const loadRecoverableEvidence = useCallback(async () => {
+    if (!ownerToken) {
+      setRecoverableEvidence([]);
+      return;
+    }
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/recoverable-evidence`,
+        { credentials: 'include' },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Could not load recoverable evidence.');
+      setRecoverableEvidence(Array.isArray(data.candidates) ? data.candidates : []);
+    } catch {
+      setRecoverableEvidence([]);
+    }
+  }, [ownerToken, propertyId]);
+
+  useEffect(() => {
+    loadRecoverableEvidence();
+  }, [loadRecoverableEvidence]);
+
+  async function recoverFinancialEvidence(candidate) {
+    const conflictId = candidate?.conflict_id;
+    if (!conflictId || recoveringEvidenceId) return;
+    setRecoveringEvidenceId(conflictId);
+    setRecoveryMessage('');
+    setMutationError('');
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/public/deal-room/${propertyId}/transaction-record/recoverable-evidence/${encodeURIComponent(conflictId)}`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Evidence could not be recovered.');
+      setRecoveryMessage(data.already_exists
+        ? 'This value is already in the Transaction Record.'
+        : 'Added as optional evidence awaiting owner confirmation.');
+      await onRecordUpdated?.();
+      await loadRecoverableEvidence();
+    } catch (error) {
+      setMutationError(error.message || 'Evidence could not be recovered.');
+    } finally {
+      setRecoveringEvidenceId('');
+    }
+  }
 
   const toggleList = (categoryKey, listKey) => {
     const key = `${categoryKey}:${listKey}`;
@@ -3955,7 +4010,12 @@ function DigitalAssetReadinessSection({
         canonicalKey: field.key || field.persistedKey,
         label: field.label || field.persistedKey || field.key,
         category: normalizeRecordCategory(field.category, field.key || field.persistedKey),
-        workflowRequired: field.required !== false && field.isRequired !== false,
+        workflowRequired: field.required !== false
+          && field.isRequired !== false
+          && field.is_required !== false,
+        reviewableOptional: field.key === 'financial.buyer_funds_due'
+          && (field.required === false || field.isRequired === false || field.is_required === false)
+          && hasPersistedOptionalEvidenceValue(field),
         renderable: true,
       }))
     : proposalFields;
@@ -3975,12 +4035,35 @@ function DigitalAssetReadinessSection({
     ? generatedFields.map(field => ({
         ...field,
         category: normalizeRecordCategory(field.category || field.field_category, field.key),
-        workflowRequired: field.required !== false,
+        workflowRequired: field.workflowRequired !== false
+          && field.required !== false
+          && field.is_required !== false,
+        reviewableOptional: field.reviewableOptional === true,
         canonicalKey: field.key,
         renderable: true,
       }))
     : Object.entries(getPackRecordSchema(schemaKey)).flatMap(([category, fields]) =>
-        fields.map(field => ({ ...field, category })),
+        fields.map(field => {
+          const buyerFundsEvidence = field.key === 'financial.buyer_funds_due'
+            ? [
+                ...(Array.isArray(recordFields) ? recordFields : []),
+                ...(Array.isArray(canonicalRecordState?.fields) ? canonicalRecordState.fields : []),
+              ].find(candidate =>
+                candidate.field_key === 'financial.buyer_funds_due'
+                  && hasPersistedOptionalEvidenceValue(candidate),
+              )
+            : null;
+          const reviewableOptional = Boolean(
+            buyerFundsEvidence
+              && (field.required === false || buyerFundsEvidence.is_required === false),
+          );
+          return {
+            ...field,
+            category,
+            workflowRequired: field.required !== false,
+            reviewableOptional,
+          };
+        }),
       );
   // The canonical API can contain required fields added by a room-specific
   // workflow pack that is not present in the older static schema. Keep those
@@ -4013,9 +4096,20 @@ function DigitalAssetReadinessSection({
     canonicalRecordState,
     recordFields,
   );
-  const schemaFieldKeys = new Set(baseSchemaFields.map(field => field.canonicalKey || field.key));
+  const supplementalEvidenceFields = getSupplementalFinancialEvidenceDefinitions(
+    baseSchemaFields,
+    [
+      ...(Array.isArray(recordFields) ? recordFields : []),
+      ...(Array.isArray(canonicalRecordState?.fields) ? canonicalRecordState.fields : []),
+    ],
+  );
+  const schemaFieldKeys = new Set([
+    ...baseSchemaFields,
+    ...supplementalEvidenceFields,
+  ].map(field => field.canonicalKey || field.key));
   const rawSchemaFields = [
     ...baseSchemaFields,
+    ...supplementalEvidenceFields,
     ...canonicalSchemaFields.filter(field =>
       !schemaFieldKeys.has(field.canonicalKey || field.key)
     ),
@@ -4064,8 +4158,8 @@ function DigitalAssetReadinessSection({
         .filter(field =>
           schemaCategories.includes(field.category)
          && (generatedFields.length
-           ? field.workflowRequired !== false
-           : requiredKeys.has(field.canonicalKey || field.key))
+           ? field.workflowRequired !== false || field.reviewableOptional === true
+           : requiredKeys.has(field.canonicalKey || field.key) || field.reviewableOptional === true)
           && field.renderable !== false,
         )
         .map(field => ({
@@ -4073,6 +4167,7 @@ function DigitalAssetReadinessSection({
           canonicalKey: field.canonicalKey || field.key,
           aliasOf: field.aliasOf || null,
           label: field.label,
+          reviewableOptional: field.reviewableOptional === true,
            hint: field.hint || '',
         })),
     ]),
@@ -4116,10 +4211,13 @@ function DigitalAssetReadinessSection({
       return { ...def, field: populated, state, allMatches: matched };
     });
     const confirmedDefs = enriched.filter(d => d.state.status === 'confirmed');
-     const awaitingDefs  = enriched.filter(d => d.state.status === 'awaiting');
-     const missingDefs   = enriched.filter(d => d.state.status === 'missing');
-    const count = confirmedDefs.length;
-    const total = enriched.length;
+    const awaitingDefs = enriched.filter(d => d.state.status === 'awaiting');
+    const requiredDefinitions = enriched.filter(d =>
+      d.workflowRequired !== false && d.reviewableOptional !== true,
+    );
+    const missingDefs = requiredDefinitions.filter(d => d.state.status === 'missing');
+    const count = requiredDefinitions.filter(d => d.state.status === 'confirmed').length;
+    const total = requiredDefinitions.length;
     // Derive sources from populated fields
     const sources = [...new Set(
       confirmedDefs.flatMap(d => [d.field?.source_document, d.field?.source_file, d.field?.source_section].filter(Boolean))
@@ -4395,6 +4493,49 @@ function DigitalAssetReadinessSection({
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="px-5 pb-4 pt-1 bg-gray-50/60 border-t border-gray-100">
+                    {cat.key === 'financial' && ownerToken && recoverableEvidence.length > 0 && (
+                      <section aria-label="Previously misclassified financial evidence" className="mb-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                          Evidence available for owner review
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-amber-900">
+                          These resolved conflict records contain monetary Buyer Funds Due evidence. Recovery adds an optional, unconfirmed Transaction Record value; it does not change closing readiness.
+                        </p>
+                        <ul className="mt-2 space-y-2">
+                          {recoverableEvidence.map(candidate => {
+                            const source = analyses.find(item => item.id === candidate.source_doc_id);
+                            return (
+                              <li key={candidate.conflict_id} className="rounded-lg border border-amber-100 bg-white p-2 text-xs text-gray-700">
+                                <p className="font-semibold">
+                                  {candidate.display_label}: {candidate.value_text}
+                                  <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">Optional</span>
+                                </p>
+                                <p className="mt-1 text-[10px] text-gray-500">
+                                  {source?.filename || source?.section || 'Source document'}
+                                  {candidate.source_page != null ? ` · page ${candidate.source_page}` : ''}
+                                </p>
+                                {candidate.source_excerpt && (
+                                  <p className="mt-1 break-words text-[10px] italic text-gray-500">“{candidate.source_excerpt}”</p>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => recoverFinancialEvidence(candidate)}
+                                  disabled={Boolean(recoveringEvidenceId)}
+                                  className="mt-2 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[10px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                                >
+                                  {recoveringEvidenceId === candidate.conflict_id ? 'Adding…' : 'Add for owner confirmation'}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </section>
+                    )}
+                    {recoveryMessage && cat.key === 'financial' && (
+                      <p role="status" className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                        {recoveryMessage}
+                      </p>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {cat.conflictDefs.length > 0 && (
                       <div>
@@ -4448,7 +4589,10 @@ function DigitalAssetReadinessSection({
                                 <span className="flex items-start gap-1.5">
                                   <span className="mt-0.5 text-emerald-500 shrink-0">✓</span>
                                   <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                    <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                  <span className="break-words">
+                                    {d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}
+                                    {d.reviewableOptional && <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">Optional</span>}
+                                  </span>
                                     {confirmedFieldId && (
                                       <span className="flex max-w-full flex-wrap items-center gap-1">
                                         <button type="button"
@@ -4510,7 +4654,10 @@ function DigitalAssetReadinessSection({
                                 <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                 <span className="break-words">{d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}</span>
+                                  <span className="break-words">
+                                    {d.label}{d.state?.value ? <span className="text-gray-400"> — {d.state.value}</span> : ''}
+                                    {d.reviewableOptional && <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">Optional</span>}
+                                  </span>
                                   {(() => {
                                     const evidence = getTransactionRecordEvidence(d.state?.field || d.state, analyses);
                                     return (
@@ -5411,6 +5558,55 @@ function getEffectiveRecordSchemaKey(property, packId, pack) {
     : resolveSchemaKey(packId, pack, property?.name || property?.property_name);
 }
 
+const OPTIONAL_BUYER_FUNDS_DUE_DEFINITION = {
+  key: 'financial.buyer_funds_due',
+  canonicalKey: 'financial.buyer_funds_due',
+  definitionKey: 'financial.buyer_funds_due',
+  persistedKey: 'financial.buyer_funds_due',
+  field_key: 'financial.buyer_funds_due',
+  label: 'Estimated Buyer Funds Due',
+  display_label: 'Estimated Buyer Funds Due',
+  category: 'financial',
+  field_category: 'financial',
+  required: false,
+  is_required: false,
+  workflowRequired: false,
+  renderable: true,
+  summaryPriority: 'key',
+  reviewableOptional: true,
+};
+
+function hasPersistedOptionalEvidenceValue(field) {
+  const status = String(field?.status || '').toLowerCase();
+  const value = field?.value_text ?? field?.value;
+  return Boolean(String(value ?? '').trim())
+    && !['missing', 'not_applicable'].includes(status);
+}
+
+function getSupplementalFinancialEvidenceDefinitions(schemaFields = [], recordFields = []) {
+  const alreadyDefined = (Array.isArray(schemaFields) ? schemaFields : []).some(field =>
+    [
+      field?.key,
+      field?.canonicalKey,
+      field?.definitionKey,
+      field?.persistedKey,
+      field?.field_key,
+    ].includes(OPTIONAL_BUYER_FUNDS_DUE_DEFINITION.key),
+  );
+  if (alreadyDefined) return [];
+  const evidence = (Array.isArray(recordFields) ? recordFields : []).find(field =>
+    [
+      field?.field_key,
+      field?.key,
+      field?.canonicalKey,
+      field?.persistedKey,
+    ].includes(OPTIONAL_BUYER_FUNDS_DUE_DEFINITION.key)
+      && hasPersistedOptionalEvidenceValue(field)
+      && (field?.is_required === false || field?.isRequired === false || field?.required === false),
+  );
+  return evidence ? [{ ...OPTIONAL_BUYER_FUNDS_DUE_DEFINITION, field: evidence }] : [];
+}
+
 function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], recordState = null) {
   // Generated rooms have no reusable pack schema. Once the room exists, the
   // persisted record rows are the schema: this prevents the proposal JSON
@@ -5440,6 +5636,9 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
         required: field.required !== false && field.is_required !== false,
         renderable: field.renderable !== false,
         summaryPriority: field.summaryPriority || 'key',
+          reviewableOptional: (field.field_key || field.key || field.persistedKey) === 'financial.buyer_funds_due'
+            && (field.is_required === false || field.isRequired === false || field.required === false)
+            && hasPersistedOptionalEvidenceValue(field),
         };
       })
       .filter(field => field.renderable !== false);
@@ -5483,6 +5682,10 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
           field.definitionKey,
         ].filter(Boolean).map(normalizeAttentionFieldKey)
           .some(identity => persistedIdentities.has(identity))),
+        ...getSupplementalFinancialEvidenceDefinitions(
+          [...persistedFields, ...canonicalFields],
+          recordFields,
+        ),
       ];
     }
     if (canonicalFields.length > 0) return canonicalFields;
@@ -5504,8 +5707,23 @@ function getEffectiveRecordDefinitions(schemaKey, property, recordFields = [], r
     }
     return [];
   }
-  return Object.values(getPackRecordSchema(schemaKey)).flat()
-    .filter(field => field.renderable !== false);
+  const packDefinitions = Object.values(getPackRecordSchema(schemaKey)).flat()
+    .filter(field => field.renderable !== false)
+    .map(field => {
+      const buyerFundsDueRow = field.key === 'financial.buyer_funds_due'
+        ? recordFields.find(candidate =>
+            candidate.field_key === 'financial.buyer_funds_due'
+              && hasPersistedOptionalEvidenceValue(candidate),
+          )
+        : null;
+      return buyerFundsDueRow && field.required === false
+        ? { ...field, reviewableOptional: true, summaryPriority: 'key' }
+        : field;
+    });
+  return [
+    ...packDefinitions,
+    ...getSupplementalFinancialEvidenceDefinitions(packDefinitions, recordFields),
+  ];
 }
 
 function getRecordDateValue(property, recordFields = [], recordState = null, fallbackKeys = []) {
@@ -5556,6 +5774,7 @@ function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recor
       ...getRecordDefinitionState(definition, recordFields, recordState),
       key: definition.key || definition.canonicalKey,
       label: definition.label || definition.key,
+      optional: definition.reviewableOptional === true,
       }));
   }
   const economicKey = schemaKey === 'fundraising'
@@ -5584,7 +5803,16 @@ function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recor
   ];
   const definitions = [];
   const seen = new Set();
-  [...preferredKeys, ...fields.filter(field => field.summaryPriority === 'key').map(field => field.canonicalKey || field.key)]
+  const recoveredOptionalKeys = fields
+    .filter(field => field.reviewableOptional
+      && getRecordDefinitionState(field, recordFields, recordState).value)
+    .map(field => field.canonicalKey || field.key);
+  [
+    economicKey,
+    ...recoveredOptionalKeys,
+    ...preferredKeys.filter(key => key !== economicKey),
+    ...fields.filter(field => field.summaryPriority === 'key').map(field => field.canonicalKey || field.key),
+  ]
     .forEach(key => {
       const definition = fields.find(field => (field.canonicalKey || field.key) === key || field.key === key);
       if (!definition) return;
@@ -5596,6 +5824,7 @@ function getCoordinatorRecordFacts(schemaKey, property, recordFields = [], recor
   return definitions.slice(0, 8).map(definition => ({
      ...getRecordDefinitionState(definition, recordFields, recordState),
     key: definition.canonicalKey || definition.key,
+    optional: definition.reviewableOptional === true,
      label: schemaKey === 'fundraising' && (definition.canonicalKey || definition.key) === 'financial.target_raise'
        ? 'Transaction Value'
        : definition.label || definition.key,
@@ -6259,8 +6488,15 @@ function KeyTransactionFacts({ facts = [], loading = false, onTabChange, onOverv
                 <p className="mt-1 break-words text-sm font-semibold text-gray-900">
                   {fact.value || 'Not recorded'}
                 </p>
-                <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${config.bg} ${config.text}`}>
-                  {config.label}
+                <span className="mt-2 flex flex-wrap items-center gap-1">
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${config.bg} ${config.text}`}>
+                    {config.label}
+                  </span>
+                  {fact.optional && (
+                    <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+                      Optional
+                    </span>
+                  )}
                 </span>
               </div>
             );
@@ -6916,6 +7152,8 @@ export {
   mergeTransactionRecordState,
   getCoordinatorRecordProjection,
   getRecordDefinitionState,
+  getEffectiveRecordDefinitions,
+  getSupplementalFinancialEvidenceDefinitions,
   getCurrentProvenanceGap,
   getCoordinatorRecordFacts,
   preparationDraftValue,

@@ -1295,4 +1295,45 @@ describe('transaction state recalculation', () => {
     expect(result.digitalAssetGapCount).toBeGreaterThan(0);
     expect(result.digitalAssetRequiredInputCount).toBeGreaterThan(4);
   });
+
+  it('keeps recovered optional Buyer Funds Due outside closing and Digital Asset required counts', () => {
+    const requiredDefinitions = [
+      { key: 'transaction.purchase_price', label: 'Purchase Price', required: true },
+      { key: 'transaction.closing_date', label: 'Closing Date', required: true },
+    ];
+    const room = { workflow_pack_id: 'generated_ai' };
+    const baseline = computeTransactionReadiness(
+      room,
+      [],
+      'generated_ai',
+      requiredDefinitions,
+      [],
+    );
+    const withRecoveredEvidence = computeTransactionReadiness(
+      room,
+      [{
+        id: 'buyer-funds',
+        field_key: 'financial.buyer_funds_due',
+        definition_key: 'financial.buyer_funds_due',
+        field_category: 'financial',
+        display_label: 'Estimated Buyer Funds Due',
+        value_text: '$1,450,000',
+        status: 'needs_review',
+        is_required: false,
+        source_doc_id: 'loi-1',
+        source_file_hash: 'sha256:loi',
+      }],
+      'generated_ai',
+      requiredDefinitions,
+      [],
+    );
+
+    expect(withRecoveredEvidence.recordState.requiredCount).toBe(baseline.recordState.requiredCount);
+    expect(withRecoveredEvidence.recordState.requiredFields.map(field => field.key))
+      .not.toContain('financial.buyer_funds_due');
+    expect(withRecoveredEvidence.recordState.awaitingOptionalCount).toBe(1);
+    expect(withRecoveredEvidence.overall).toBe(baseline.overall);
+    expect(withRecoveredEvidence.digitalAssetSufficient)
+      .toBe(baseline.digitalAssetSufficient);
+  });
 });

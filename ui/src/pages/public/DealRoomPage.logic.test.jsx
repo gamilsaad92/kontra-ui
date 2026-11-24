@@ -24,6 +24,8 @@ const {
   getCoordinatorRecordFacts,
   getCoordinatorRecordProjection,
   getRecordDefinitionState,
+  getEffectiveRecordDefinitions,
+  getSupplementalFinancialEvidenceDefinitions,
   mergeTransactionRecordState,
   normalizeRecordCategory,
   getTransactionRecordCategory,
@@ -926,5 +928,94 @@ describe('coordinator transaction brief logic', () => {
       conflictingValue: '2024',
       conflictingSourceDocId: 'annual-report',
     })]);
+  });
+
+  test('shows recovered optional Buyer Funds Due in Financial Information and Key Facts without duplicating schema rows', () => {
+    const evidence = {
+      id: 'buyer-funds',
+      field_key: 'financial.buyer_funds_due',
+      display_label: 'Estimated Buyer Funds Due',
+      field_category: 'financial',
+      value_text: '$1,450,000',
+      status: 'needs_review',
+      is_required: false,
+      source_doc_id: 'loi-1',
+      source_page: 1,
+      source_excerpt: 'Estimated Buyer Funds Due: $1,450,000.',
+    };
+
+    const supplemental = getSupplementalFinancialEvidenceDefinitions([], [evidence]);
+    expect(supplemental).toEqual([
+      expect.objectContaining({
+        key: 'financial.buyer_funds_due',
+        category: 'financial',
+        workflowRequired: false,
+        reviewableOptional: true,
+        field: evidence,
+      }),
+    ]);
+    expect(getSupplementalFinancialEvidenceDefinitions(
+      [{ key: 'financial.buyer_funds_due' }],
+      [evidence],
+    )).toEqual([]);
+
+    const facts = getCoordinatorRecordFacts('business_acquisition', {}, [evidence]);
+    expect(facts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'financial.buyer_funds_due',
+        label: 'Estimated Buyer Funds Due',
+        value: '$1,450,000',
+        status: 'awaiting',
+        optional: true,
+      }),
+    ]));
+  });
+
+  test('shows optional evidence on generated rooms even when their proposal schema omits the field', () => {
+    const evidence = {
+      id: 'generated-buyer-funds',
+      field_key: 'financial.buyer_funds_due',
+      key: 'financial.buyer_funds_due',
+      display_label: 'Estimated Buyer Funds Due',
+      label: 'Estimated Buyer Funds Due',
+      value_text: '$1,450,000',
+      value: '$1,450,000',
+      status: 'needs_review',
+      required: false,
+      is_required: false,
+      source_doc_id: 'loi-1',
+    };
+    const property = {
+      generated_proposal: {
+        transaction_record_fields: [
+          { key: 'parties.buyer', label: 'Buyer', category: 'parties', required: true },
+        ],
+      },
+    };
+    const recordState = {
+      fields: [evidence],
+      requiredFields: [
+        { key: 'parties.buyer', label: 'Buyer', status: 'confirmed', value: 'Redwood Capital Partners LLC' },
+      ],
+    };
+
+    const definitions = getEffectiveRecordDefinitions('generated_ai', property, [evidence], recordState);
+    expect(definitions.filter(field => field.canonicalKey === 'financial.buyer_funds_due')).toHaveLength(1);
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        canonicalKey: 'financial.buyer_funds_due',
+        workflowRequired: false,
+        reviewableOptional: true,
+      }),
+    ]));
+    expect(getCoordinatorRecordFacts('generated_ai', property, [evidence], recordState))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          key: 'financial.buyer_funds_due',
+          value: '$1,450,000',
+          status: 'awaiting',
+          optional: true,
+        }),
+      ]));
   });
 });
