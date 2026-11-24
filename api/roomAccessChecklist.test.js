@@ -301,6 +301,7 @@ describe('room access and checklist scoping', () => {
 
   it('creates a V1 participant invite with accurate email status and no token in the response', async () => {
     const rawToken = 'b'.repeat(48);
+    const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
     const response = await request(app)
       .post('/api/public/deal-room/room-1/create-invite')
       .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
@@ -322,6 +323,22 @@ describe('room access and checklist scoping', () => {
     const inserted = mockInsertedRows.find(row => row.table === 'deal_room_invites');
     expect(inserted.values.invite_token_hash).not.toBe(rawToken);
     expect(inserted.values.invited_email).toBe('seller@example.com');
+    expect(infoSpy).toHaveBeenCalledWith('[create-invite] email delivery skipped', {
+      reason: 'email_not_configured',
+    });
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('seller@example.com');
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain(rawToken);
+    const inviteEvent = mockInsertedRows.find(row =>
+      row.table === 'deal_events' && row.values.event_type === 'invite_created',
+    );
+    expect(inviteEvent.values.description).toBe('seller invitation created');
+    expect(inviteEvent.values.metadata).toEqual({
+      roleKey: 'seller',
+      emailSent: false,
+      deliveryReason: 'email_not_configured',
+    });
+    expect(JSON.stringify(inviteEvent.values)).not.toContain('seller@example.com');
+    infoSpy.mockRestore();
   });
 
   it('resolves an owner-only direct room URL from the room-scoped owner session cookie', async () => {

@@ -516,7 +516,7 @@ export default function ParticipantsPanel({
   ).length;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-200 mb-6 overflow-visible">
 
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -663,7 +663,7 @@ export default function ParticipantsPanel({
                     {/* Last activity (hidden on mobile) */}
                     <div className="hidden sm:block">
                       <p className="text-xs text-gray-400">
-                        {lastSeen ? timeAgo(lastSeen) : (invite?.created_at ? `Sent ${timeAgo(invite.created_at)}` : '—')}
+                        {lastSeen ? timeAgo(lastSeen) : (invite?.created_at ? `Created ${timeAgo(invite.created_at)}` : '—')}
                       </p>
                     </div>
 
@@ -681,6 +681,7 @@ export default function ParticipantsPanel({
                       ) : (
                         <div className="relative">
                           <button
+                            aria-label={`Participant actions for ${role.label}`}
                             onClick={e => {
                               e.stopPropagation();
                               setOpenMenuId(openMenuId === invite?.id ? null : invite?.id);

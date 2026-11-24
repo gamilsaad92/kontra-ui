@@ -6592,10 +6592,21 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
       return res.status(500).json({ error: insertErr.message });
     }
 
-    // Auto-send email if recipient provided and Resend is configured
+    // Reuse the verified environment-specific provider settings so staging
+    // cannot fall back to the production Resend key or sender identity.
+    const inviteEmailConfig = getOtpEmailConfiguration({
+      env: process.env,
+      stagingIsolationVerified: stagingEnvironment.enabled,
+    });
+    // Log only the outcome reason; never include recipient, invite token, or
+    // message data.
     let emailSent = false;
     let deliveryReason = normalizedEmail ? 'email_not_configured' : 'no_recipient';
-    if (normalizedEmail && process.env.RESEND_API_KEY) {
+    if (!normalizedEmail) {
+      console.info('[create-invite] email delivery skipped', { reason: 'no_recipient' });
+    } else if (!inviteEmailConfig.configured) {
+      console.info('[create-invite] email delivery skipped', { reason: 'email_not_configured' });
+    } else {
       try {
         const { data: room } = await supabase.from('deal_rooms')
           .select('property_name, first_name, workflow_pack_id').eq('property_id', propertyId).single();
@@ -6605,8 +6616,8 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
         const roleConf  = getPackRoleConfig(packId).roles.find(r => r.key === validatedRole.roleKey);
         const roleLabel = roleConf?.label || validatedRole.roleKey;
         const inviteUrl = `${FRONTEND_URL}/deal-room/${encodeURIComponent(propertyId)}?invite=${encodeURIComponent(inviteToken)}&role=${encodeURIComponent(validatedRole.roleKey)}`;
-        await sendResendEmail(process.env.RESEND_API_KEY, {
-          from: 'Kontra <notifications@kontraplatform.com>',
+        await sendResendEmail(inviteEmailConfig.apiKey, {
+          from: inviteEmailConfig.from,
           to: normalizedEmail,
           reply_to: 'support@kontraplatform.com',
           subject: `You've been invited to a deal room — ${propName}`,
@@ -6621,16 +6632,16 @@ app.post('/api/public/deal-room/:propertyId/create-invite', async (req, res) => 
           </div>`,
         });
         emailSent = true;
-      } catch (emailErr) {
-        console.error('[create-invite] email send failed');
+      } catch {
+        console.error('[create-invite] email delivery failed', { reason: 'email_send_failed' });
         deliveryReason = 'email_send_failed';
       }
     }
 
-    logEvent(propertyId, 'invite_created', 'owner', null, `${validatedRole.roleKey} invited: ${normalizedEmail || 'PIN-only'}`, {
+    logEvent(propertyId, 'invite_created', 'owner', null, `${validatedRole.roleKey} invitation created`, {
       roleKey: validatedRole.roleKey,
-      invitedEmail: normalizedEmail || null,
       emailSent,
+      deliveryReason: emailSent ? null : deliveryReason,
     });
     res.json({ success: true, emailSent, deliveryReason: emailSent ? null : deliveryReason });
   } catch (err) {

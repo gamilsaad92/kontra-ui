@@ -3,9 +3,34 @@ jest.mock('../../lib/supabaseClient', () => ({
   isSupabaseConfigured: false,
 }));
 
+jest.mock('../../lib/workflowPacks', () => ({
+  DEFAULT_PACK_ID: 'test_pack',
+  getWorkflowPack: () => ({
+    name: 'Test pack',
+    roles: [
+      { key: 'owner', label: 'Owner', canManage: true },
+      { key: 'buyer', label: 'Buyer' },
+    ],
+  }),
+}));
+
+jest.mock('../../lib/workflowRoles', () => ({
+  getCoordinatorRoleKeys: () => ['owner'],
+  getExternalParticipantRoles: () => [{ key: 'buyer', label: 'Buyer', icon: '👤' }],
+  isCoordinatorRole: role => role.key === 'owner',
+  resolveCoordinatorRole: () => ({ key: 'owner', label: 'Owner', icon: '🏢' }),
+}));
+
+jest.mock('../../lib/inviteUtils', () => ({
+  buildInviteLink: jest.fn(),
+  createInvite: jest.fn(),
+  getRoomAuthHeaders: jest.fn(() => ({})),
+  revokeInvite: jest.fn(),
+}));
+
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { InviteModal } from './ParticipantsPanel';
+import ParticipantsPanel, { InviteModal } from './ParticipantsPanel';
 
 const roles = [{ key: 'seller', label: 'Seller', icon: '🏪' }];
 
@@ -72,5 +97,44 @@ describe('participant invitation modal delivery reporting', () => {
 
     expect(await screen.findByText(/Kontra sent the invite email/)).toBeTruthy();
     expect(screen.queryByText(/did not send an email/)).toBeNull();
+  });
+});
+
+describe('participant panel menu and invitation timestamps', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('keeps the participant action menu visible and labels invite creation accurately', async () => {
+    const priorFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        invites: [{
+          id: 'invite-1',
+          role_key: 'buyer',
+          invited_email: 'buyer@example.test',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          last_used_at: null,
+        }],
+      }),
+    });
+
+    try {
+      render(<ParticipantsPanel roomId="room-1" packId="test_pack" isCoordinator />);
+      await screen.findByText('Invited');
+      expect(screen.getByText('Created just now')).toBeTruthy();
+      expect(screen.queryByText('Sent just now')).toBeNull();
+
+      const panel = screen.getByText('Participants').closest('div.bg-white');
+      expect(panel.className).toContain('overflow-visible');
+      expect(panel.className).not.toContain('overflow-hidden');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Participant actions for Buyer' }));
+      expect(await screen.findByText(/Send another invitation/)).toBeTruthy();
+    } finally {
+      global.fetch = priorFetch;
+    }
   });
 });

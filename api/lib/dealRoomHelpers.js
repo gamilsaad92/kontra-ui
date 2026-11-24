@@ -75,7 +75,7 @@ async function getRoomPackId(propertyId) {
   return resolvePackIdFromRoom(data);
 }
 
-// ── Shared email helper — logs Resend errors instead of swallowing them ──────
+// ── Shared email helper — log delivery outcomes without recipient/content data ─
 async function sendResendEmail(key, payload) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -84,10 +84,12 @@ async function sendResendEmail(key, payload) {
   });
   const data = await r.json();
   if (!r.ok) {
-    console.error('[resend-error]', r.status, JSON.stringify(data));
-    throw new Error(data.message || `Resend error ${r.status}`);
+    console.error('[resend-error]', { status: r.status });
+    // Provider response bodies can contain recipient or request details. Keep
+    // them out of logs and downstream error messages.
+    throw new Error(`Resend error ${r.status}`);
   }
-  console.log('[resend-ok] id:', data.id, 'to:', payload.to);
+  console.info('[resend-ok]', { status: r.status });
   return data;
 }
 
