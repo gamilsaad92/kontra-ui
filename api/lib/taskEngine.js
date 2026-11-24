@@ -27,6 +27,7 @@ const {
 const { resolveParticipantCompletions } = require('./participantCompletion');
 const { resolveRoomChecklist } = require('./customPackChecklist');
 const { projectDocumentChecklist } = require('./documentStatus');
+const { getChecklistItemAssignedRoles } = require('./documentAssignmentAccess');
 const {
   buildChecklistRequirementPlan,
   filterTasksForRoom,
@@ -185,6 +186,275 @@ async function loadTaskDocumentAnalyses(propertyId) {
   }
   if (lastError) throw lastError;
   return [];
+}
+
+const OPEN_TASK_STATUSES = new Set(['pending', 'in_progress', 'escalated']);
+
+function parseTaskEvidence(value) {
+  if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(item => String(item || '').trim()).filter(Boolean) : [];
+  } catch {
+    return value.trim() ? [value.trim()] : [];
+  }
+}
+
+async function resolveMissingParticipantTask(propertyId, task, roleKey, submissionPresent) {
+  if (!task?.id || !OPEN_TASK_STATUSES.has(task.status)) return null;
+  const evidence = parseTaskEvidence(task.evidence);
+  const resolutionEvidence = submissionPresent
+    ? `A party_submissions record is now present for role "${roleKey}".`
+    : `The accepted "${roleKey}" participant completed all assigned required documents.`;
+  if (evidence.includes(resolutionEvidence)) return null;
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('deal_room_tasks')
+    .update({
+      status: 'completed',
+      evidence: JSON.stringify([...evidence, resolutionEvidence]),
+      resolved_at: now,
+      updated_at: now,
+    })
+    .eq('property_id', propertyId)
+    .eq('id', task.id)
+    .eq('status', task.status)
+    .select('*')
+    .maybeSingle();
+  if (error) {
+    console.warn('[taskEngine] missing-participant task reconciliation failed', {
+      code: error.code || 'unknown',
+    });
+    return null;
+  }
+  if (!data) return null;
+
+  emit('task.updated', {
+    propertyId, taskId: task.id, taskType: task.task_type,
+    status: 'completed', sourceId: task.source_id,
+  }, { source: 'task-engine' });
+  logEvent(propertyId, 'task_auto_resolved', 'system', null,
+    `Resolved missing participant submission task for role "${roleKey}"`, {
+      taskId: task.id, taskType: task.task_type, sourceId: task.source_id,
+      resolution: submissionPresent ? 'submission_recorded' : 'participant_requirements_complete',
+    }).catch(() => {});
+  return data;
+}
+
+const INSPECTION_ACTION_WORDS = /\b(?:repair|replace|remediate|correct|remove|install|evaluate|obtain|provide|secure|complete|follow[\s-]?up|schedule|recommend|address|resolve|mitigate|upgrade|service|rebuild|restore|verify|confirm|engage|consult|maintain)\b/i;
+const INSPECTION_DIRECTIVE_PATTERN = /\b(?:should|must|needs?\s+to|requires?\s+(?:that\s+)?|recommended\s+to|calls?\s+for)\s+(?:be\s+)?(?:inspected|tested|monitored|reviewed|documented|repaired|replaced|remediated|corrected|addressed|verified|confirmed)\b|\b(?:inspection|testing|monitoring|review|documentation)\s+(?:is\s+)?(?:required|recommended|needed)\b/i;
+const INSPECTION_DEFICIENCY_WORDS = /\b(?:deficien(?:cy|t)|hazard|unsafe|damaged|crack(?:ed)?|leak(?:ing)?|missing|failed|deteriorat(?:ed|ing)|mold|asbestos|fire[\s-]?safety|life[\s-]?safety|violation|non[\s-]?compliant|repair[\s-]?required)\b/i;
+
+function findingText(item) {
+  if (typeof item === 'string') return item.trim();
+  if (!item || typeof item !== 'object') return '';
+  return String(
+    item.action
+      || item.recommended_action
+      || item.recommendedAction
+      || item.item
+      || item.finding
+      || item.issue
+      || item.deficiency
+      || item.title
+      || item.description
+      || item.text
+      || '',
+  ).trim();
+}
+
+function findingDetails(item, primary) {
+  if (!item || typeof item !== 'object') return '';
+  const details = [
+    item.description,
+    item.details,
+    item.timeline,
+    item.estimatedCost || item.estimated_cost,
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  return [...new Set(details)].filter(value => value !== primary).join(' · ');
+}
+
+function findingSeverity(value, fallback = 'medium') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['critical', 'high', 'urgent'].includes(normalized)) return 'high';
+  if (['low', 'minor'].includes(normalized)) return 'low';
+  if (['medium', 'moderate'].includes(normalized)) return 'medium';
+  return fallback;
+}
+
+function buildInspectionActionCandidates(analysis = {}) {
+  const candidates = [];
+  const add = (kind, item, actionableBySchema = false) => {
+    const primary = findingText(item);
+    if (!primary) return;
+    const detail = findingDetails(item, primary);
+    const text = [primary, detail].filter(Boolean).join(' — ').slice(0, 900);
+    const explicitAction = item && typeof item === 'object'
+      && (item.actionable === true || item.requires_action === true || item.requiresAction === true);
+    const highPriorityFlag = ['critical', 'high'].includes(
+      String(item?.severity || item?.priority || '').trim().toLowerCase(),
+    );
+    if (!actionableBySchema && !explicitAction && !highPriorityFlag
+      && !INSPECTION_ACTION_WORDS.test(text)
+      && !INSPECTION_DIRECTIVE_PATTERN.test(text)
+      && !INSPECTION_DEFICIENCY_WORDS.test(text)) return;
+    candidates.push({
+      kind,
+      primary: primary.slice(0, 140),
+      text,
+      severity: findingSeverity(item?.severity || item?.priority, kind === 'life_safety' ? 'high' : 'medium'),
+      page: Number.isInteger(Number(item?.source_page ?? item?.page))
+        ? Number(item?.source_page ?? item?.page)
+        : null,
+    });
+  };
+
+  (Array.isArray(analysis.lifeSafetyFindings) ? analysis.lifeSafetyFindings : [])
+    .forEach(item => add('life_safety', item, true));
+  (Array.isArray(analysis.deferredMaintenance) ? analysis.deferredMaintenance : [])
+    .forEach(item => {
+      const priority = String(item?.priority || '').toLowerCase();
+      add('deferred_maintenance', item, priority === 'high' || priority === 'medium');
+    });
+  (Array.isArray(analysis.priorityActions) ? analysis.priorityActions : [])
+    .forEach(item => add('priority_action', item, true));
+
+  // Prefer the specific inspection schema when it is present. Generic custom
+  // pack analyses use risk_flags/recommendations; flags alone are not tasks
+  // unless they carry explicit action or clear deficiency language.
+  if (candidates.length === 0) {
+    (Array.isArray(analysis.recommendations) ? analysis.recommendations : [])
+      .forEach(item => add('recommendation', item, false));
+    (Array.isArray(analysis.risk_flags) ? analysis.risk_flags : [])
+      .forEach(item => add('risk_flag', item, false));
+  }
+
+  const unique = new Map();
+  for (const candidate of candidates) {
+    const identity = candidate.text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (identity && !unique.has(identity)) unique.set(identity, candidate);
+  }
+  return [...unique.values()];
+}
+
+function inspectionOwnerRole(checklist, roleConfig, section) {
+  const normalizedSection = String(section || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const item = (Array.isArray(checklist) ? checklist : []).find(candidate =>
+    [candidate?.section, candidate?.id, candidate?.document_id, candidate?.documentId]
+      .some(value => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_') === normalizedSection)
+  );
+  const validRoles = new Set((roleConfig?.roles || []).map(role => String(role.key || '').trim()));
+  const assigned = getChecklistItemAssignedRoles(item, null, null);
+  return {
+    item,
+    role: assigned.find(role => role === 'owner' || validRoles.has(role)) || 'owner',
+  };
+}
+
+function inspectionFindingSourceId(text) {
+  const identity = String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const fingerprint = crypto.createHash('sha256').update(identity).digest('hex').slice(0, 24);
+  return `inspection-follow-up:${fingerprint}`;
+}
+
+async function updateInspectionTaskForReplacement(propertyId, task, document, candidate, ownerRole) {
+  if (!task?.id || !OPEN_TASK_STATUSES.has(task.status) || task.source_document_id === document.id) return null;
+  const evidence = parseTaskEvidence(task.evidence);
+  const replacementNote = `The same follow-up appears in a newer active inspection analysis: ${candidate.text}`;
+  if (evidence.includes(replacementNote)) return null;
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('deal_room_tasks')
+    .update({
+      evidence: JSON.stringify([...evidence, replacementNote]),
+      source_document_id: document.id,
+      title: `Inspection follow-up: ${candidate.primary}`.slice(0, 180),
+      owner_role: ownerRole,
+      severity: candidate.severity,
+      updated_at: now,
+    })
+    .eq('property_id', propertyId)
+    .eq('id', task.id)
+    .eq('status', task.status)
+    .select('*')
+    .maybeSingle();
+  if (error) {
+    console.warn('[taskEngine] inspection replacement reconciliation failed', {
+      code: error.code || 'unknown',
+    });
+    return null;
+  }
+  return data || null;
+}
+
+async function reconcileInspectionFollowUpTasks({
+  propertyId, analyses, checklist, roleConfig, room, existing, options,
+}) {
+  const seenSources = new Set();
+  const completedAnalysis = (Array.isArray(analyses) ? analyses : [])
+    .filter(document => /inspection/i.test(`${document.section || ''} ${document.filename || ''}`)
+      && !['pending', 'processing', 'failed', 'superseded'].includes(
+        String(document.processing_status || '').toLowerCase(),
+      )
+      && document.analysis?.pending !== true)
+    .sort((left, right) => Date.parse(right.created_at || 0) - Date.parse(left.created_at || 0));
+
+  const created = [];
+  for (const document of completedAnalysis) {
+    const candidates = buildInspectionActionCandidates(document.analysis || {});
+    const assignment = inspectionOwnerRole(checklist, roleConfig, document.section);
+    const workflowStage = assignment.item?.workflow_stage
+      || assignment.item?.stage_key
+      || assignment.item?.stageKey
+      || null;
+    const currentStage = room?.deal_stage || null;
+    if (workflowStage && currentStage
+      && String(workflowStage).trim().toLowerCase().replace(/[\s-]+/g, '_')
+        !== String(currentStage).trim().toLowerCase().replace(/[\s-]+/g, '_')) continue;
+    for (const candidate of candidates) {
+      const sourceId = inspectionFindingSourceId(candidate.primary);
+      if (seenSources.has(sourceId)) continue;
+      seenSources.add(sourceId);
+      const existingTask = (existing || []).find(task =>
+        task.task_type === 'inspection_follow_up' && task.source_id === sourceId
+      );
+      if (existingTask) {
+        await updateInspectionTaskForReplacement(
+          propertyId,
+          existingTask,
+          document,
+          candidate,
+          assignment.role,
+        );
+        continue;
+      }
+      const task = await createTask(propertyId, {
+        taskType: 'inspection_follow_up',
+        title: `Inspection follow-up: ${candidate.primary}`.slice(0, 180),
+        description: 'AI suggested a follow-up based on the inspection analysis. Review the linked source document before acting.',
+        ownerType: 'ai',
+        ownerRole: assignment.role,
+        evidence: [
+          `AI inspection ${candidate.kind.replace(/_/g, ' ')} (not independently verified): ${candidate.text}`,
+          `Source document record: ${document.id}`,
+        ],
+        sourceType: 'inspection_analysis',
+        sourceId,
+        category: 'inspection',
+        blocking: false,
+        severity: candidate.severity,
+        sourceDocumentId: document.id,
+        sourcePage: candidate.page,
+        sourceAgent: 'inspection-analysis',
+        correlationId: options.correlationId,
+      });
+      if (task) created.push(task);
+    }
+  }
+  return created;
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────
@@ -575,9 +845,22 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
   );
   for (const role of requiredRoles) {
     const sub = submissions.find(s => s.role === role.key);
-    if (sub || completedParticipantRoles.has(role.key)) continue;
     const sourceId = `missing-role:${role.key}`;
-    if (hasExistingTask('missing_participant', sourceId)) continue;
+    const existingTask = existing.find(task =>
+      task.task_type === 'missing_participant' && task.source_id === sourceId
+    );
+    if (sub || completedParticipantRoles.has(role.key)) {
+      if (existingTask) {
+        await resolveMissingParticipantTask(
+          propertyId,
+          existingTask,
+          role.key,
+          Boolean(sub),
+        );
+      }
+      continue;
+    }
+    if (existingTask || hasExistingTask('missing_participant', sourceId)) continue;
     const roleLabel = role.label || getPackRoleLabel(packId, role.key);
     const task = await createTask(propertyId, {
       taskType: 'missing_participant',
@@ -660,6 +943,16 @@ async function evaluateDealRoomForTasks(propertyId, options = {}) {
     });
     if (task) created.push(task);
   }
+
+  created.push(...await reconcileInspectionFollowUpTasks({
+    propertyId,
+    analyses,
+    checklist,
+    roleConfig,
+    room,
+    existing,
+    options,
+  }));
 
   const checklistPlan = buildChecklistRequirementPlan({
     room: { ...room, checklist_items: checklist },

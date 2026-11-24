@@ -4,6 +4,7 @@ const {
   normalizeComparableValue,
   compareComparableValues,
   isSemanticallyValidValue,
+  isValidExtractedSemanticCandidate,
 } = require('./lib/semanticFieldTaxonomy');
 const { normalizeProposal } = require('./lib/transactionRoomGenerator');
 const { extractTransactionContext } = require('./lib/transactionRoomGenerator');
@@ -221,6 +222,56 @@ describe('semantic Transaction Record field taxonomy', () => {
       recordKey: 'transaction.purchase_price',
       valueType: 'amount',
     }));
+  });
+
+  test('maps Buyer Funds Due to a validated monetary field, never to the Buyer identity', () => {
+    const label = 'Estimated Buyer Funds Due';
+    const definition = inferSemanticDefinition('buyer', '$475,000', label);
+
+    expect(definition).toEqual(expect.objectContaining({
+      recordKey: 'financial.buyer_funds_due',
+      valueType: 'amount',
+    }));
+    expect(semanticRecordKey('buyer', label, '$475,000')).toBe('financial.buyer_funds_due');
+    expect(canonicalizeTransactionRecordKey(semanticRecordKey('buyer', label, '$475,000')))
+      .toBe('financial.buyer_funds_due');
+    expect(isValidExtractedSemanticCandidate('buyer', '$475,000', label)).toBe(true);
+    expect(isValidExtractedSemanticCandidate('parties.buyer', '42', 'Employee Count')).toBe(false);
+    expect(isValidExtractedSemanticCandidate(
+      'parties.buyer',
+      'Summit Peak Holdings, LLC',
+      'Buyer Entity',
+    )).toBe(true);
+    expect(isValidExtractedSemanticCandidate(
+      'buyer',
+      'Summit Peak Holdings, LLC',
+      label,
+    )).toBe(false);
+
+    const proposal = normalizeProposal({
+      transaction: { category: 'cre_acquisition' },
+      transaction_record_fields: [{
+        key: 'buyer',
+        label,
+        value: '$475,000',
+      }],
+    });
+    expect(proposal.transaction_record_fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'financial.buyer_funds_due',
+        category: 'financial',
+        value: '$475,000',
+      }),
+    ]));
+    const invalidProposal = normalizeProposal({
+      transaction: { category: 'cre_acquisition' },
+      transaction_record_fields: [{
+        key: 'buyer',
+        label,
+        value: 'Summit Peak Holdings, LLC',
+      }],
+    });
+    expect(invalidProposal.transaction_record_fields).toEqual([]);
   });
 
   test('maps a buyer-keyed closing condition to a condition identity', () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { semanticRecordKey } = require('./semanticFieldTaxonomy');
+const { isValidExtractedSemanticCandidate, semanticRecordKey } = require('./semanticFieldTaxonomy');
 const { TRANSACTION_ENTRY_MODES } = require('./transactionEntryMode');
 
 const SOURCE_TYPES = new Set([
@@ -182,20 +182,28 @@ function normalizeProposal(raw = {}, context = {}) {
   });
   const modelTransactionRecordFields = (Array.isArray(raw.transaction_record_fields)
     ? raw.transaction_record_fields
-    : []).map((field, index) => ({
-    key: semanticRecordKey(
-      String(field.key || field.field_key || `transaction.field_${index + 1}`).trim(),
-      field.label || field.display_label || '',
-    ) || String(field.key || field.field_key || `transaction.field_${index + 1}`).trim().slice(0, 120),
-    label: String(field.label || field.display_label || field.key || `Transaction field ${index + 1}`).trim().slice(0, 160),
-    category: String(field.category || field.field_category || String(field.key || '').split('.')[0] || 'transaction')
-      .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction',
-    value: field.value ?? field.value_text ?? null,
-    required: field.required !== false,
-    confidence: confidence(field.confidence),
-    rationale: String(field.rationale || '').trim().slice(0, 500),
-    ...normalizeSource(field),
-  }));
+    : []).map((field, index) => {
+      const rawKey = String(field.key || field.field_key || `transaction.field_${index + 1}`).trim();
+      const label = String(field.label || field.display_label || field.key || `Transaction field ${index + 1}`)
+        .trim().slice(0, 160);
+      const value = field.value ?? field.value_text ?? null;
+      const key = semanticRecordKey(rawKey, field.label || field.display_label || '', value)
+        || rawKey.slice(0, 120);
+      return {
+        key,
+        label,
+        category: String(key.split('.')[0] || field.category || field.field_category || 'transaction')
+          .trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 80) || 'transaction',
+        value,
+        required: field.required !== false,
+        confidence: confidence(field.confidence),
+        rationale: String(field.rationale || '').trim().slice(0, 500),
+        ...normalizeSource(field),
+      };
+    }).filter(field => {
+    if (field.value === null || field.value === undefined || !String(field.value).trim()) return true;
+    return isValidExtractedSemanticCandidate(field.key, field.value, field.label);
+  });
   const contextTransactionFields = contextFields(context.contextFacts || []);
   const transactionRecordFields = [...modelTransactionRecordFields];
   const modelFieldKeys = new Set(transactionRecordFields.map(field => field.key));

@@ -11077,6 +11077,20 @@ export default function DealRoomPage() {
     : resolvePackId(apiProperty);
   const pack = getWorkflowPack(packId);
   const isCREPack       = packId === DEFAULT_PACK_ID;
+  const explicitDigitalAssetValue = apiProperty?.metadata_values?.digital_asset_enabled;
+  const digitalAssetExplicitlyEnabled = explicitDigitalAssetValue === true
+    || String(explicitDigitalAssetValue || '').trim().toLowerCase() === 'true';
+  const tokenizationTypeValues = [
+    pack?.id,
+    pack?.transactionType,
+    apiProperty?.deal_type,
+    apiProperty?.transaction_type,
+  ].map(value => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_'));
+  const digitalAssetOptional = !isDemo
+    && digitalAssetExplicitlyEnabled
+    && !tokenizationTypeValues.some(value =>
+      ['tokenization', 'token_issuance', 'security_token', 'sto', 'digital_asset'].includes(value)
+    );
   // Public illustrative rooms predate the creation toggle and intentionally
   // retain their completed readiness exhibits.
   const isTokenization  = isDemo || isDigitalAssetLayerEnabled(apiProperty, pack);
@@ -11491,6 +11505,7 @@ export default function DealRoomPage() {
                   canManage={isCoordinator}
                   onTabChange={setActiveTab}
                   authHeaders={getRoomAuthHeaders(pid)}
+                  digitalAssetOptional={digitalAssetOptional}
                 />
               </div>
             )}

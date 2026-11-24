@@ -909,6 +909,9 @@ Return only valid JSON. No extra text.`;
           propertyId,
           role,
           email: uploadAccess.email,
+          onSubmissionRecorded: () => evaluateDealRoomForTasks(propertyId, {
+            source: 'participant_submission_recorded',
+          }),
         });
       }
       console.log(`[deal_analyses] ${section} saved (analyze-document) — fresh content analysis persisted`);

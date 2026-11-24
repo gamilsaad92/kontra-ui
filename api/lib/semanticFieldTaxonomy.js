@@ -7,6 +7,7 @@ const ACTUAL_WORDS = /\b(actual|current|reported|observed|measured|as\s+of|is|wa
 // narrow fields before broader patterns so "servicing fee rate" never lands in
 // the generic fee/amount bucket.
 const SEMANTIC_FIELD_DEFINITIONS = [
+  { key: 'financial.buyer_funds_due', pattern: /\b(?:estimated\s+)?buyer(?:'s)?\s+(?:estimated\s+)?(?:funds|cash)\s+due\b|\b(?:funds|cash)\s+due\s+from\s+(?:the\s+)?buyer\b/i, type: 'amount', recordKey: 'financial.buyer_funds_due' },
   { key: 'parties.seller', pattern: /\b(?:seller|seller\s+entity|seller\s+name|vendor|transferor)\b/i, type: 'text', recordKey: 'parties.seller' },
   { key: 'parties.buyer', pattern: /\b(?:buyer|buyer\s+entity|buyer\s+name|acquirer|transferee)\b/i, type: 'text', recordKey: 'parties.buyer' },
   { key: 'transaction.closing_date', pattern: /\b(?:(?:target|scheduled|expected|estimated|proposed)\s+)?(?:closing|close)\s+date\b|\btarget\s+closing\b/i, type: 'period', recordKey: 'transaction.closing_date' },
@@ -80,7 +81,7 @@ function isPartyEntityCandidate(key, rawValue, explicitLabel = '') {
       : '',
   ].filter(Boolean).join(' '));
   const valueText = rawValueText(rawValue);
-  const nonEntityLabel = /\b(?:purchase|sale)\s+price\b|\b(?:amount|value|total|balance|number|count|price|cost|revenue|income|ebitda)\b|\b(?:approval|condition|contingenc|status|date|period|deadline)\b/i.test(identityContext);
+  const nonEntityLabel = /\b(?:purchase|sale)\s+price\b|\b(?:amount|value|total|balance|number|count|price|cost|revenue|income|ebitda)\b|\b(?:funds?|cash)\s+due\b|\b(?:approval|condition|contingenc|status|date|period|deadline)\b/i.test(identityContext);
   const numericOnlyValue = /^\(?\s*[$€£]?\s*\d[\d,.]*\s*(?:million|mm|billion|bn|thousand|k|m|b)?\s*(?:dollars?|usd)?\s*\)?$/i.test(valueText);
   const nonEntityValue = /[$€£]\s*[\d,.]+/i.test(valueText)
     || numericOnlyValue
@@ -286,8 +287,20 @@ function isSemanticallyValidValue(value, definitionOrKey, explicitLabel = '') {
   return normalizeComparableValue(value, definition).type === 'amount';
 }
 
-function semanticRecordKey(rawKey, displayLabel = '') {
-  return inferSemanticDefinition(rawKey, null, displayLabel)?.recordKey || null;
+function isValidExtractedSemanticCandidate(rawKey, rawValue, displayLabel = '') {
+  const definition = inferSemanticDefinition(rawKey, rawValue, displayLabel);
+  if (definition) return isSemanticallyValidValue(rawValue, definition, displayLabel);
+
+  // If an entity-only key has no compatible semantic definition, do not let
+  // canonicalization's legacy bare-key aliases turn an amount/count/status
+  // back into parties.buyer or parties.seller.
+  const entityKey = normalizedText(rawKey).replace(/\s+/g, '_');
+  const isEntityIdentityKey = /^(?:(?:parties|party)[._])?(?:buyer|seller|acquirer|transferee|vendor|transferor)(?:[._](?:entity|name))?$/.test(entityKey);
+  return !isEntityIdentityKey;
+}
+
+function semanticRecordKey(rawKey, displayLabel = '', rawValue = null) {
+  return inferSemanticDefinition(rawKey, rawValue, displayLabel)?.recordKey || null;
 }
 
 module.exports = {
@@ -296,6 +309,7 @@ module.exports = {
   normalizeComparableValue,
   compareComparableValues,
   isSemanticallyValidValue,
+  isValidExtractedSemanticCandidate,
   semanticRecordKey,
   normalizedText,
 };

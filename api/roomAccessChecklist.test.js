@@ -96,9 +96,19 @@ jest.mock('./db', () => {
       is: () => chain,
       maybeSingle: async () => {
         if (table === 'deal_rooms') {
-          return state.filters.property_id === 'room-1'
-            ? { data: owner, error: null }
-            : { data: null, error: null };
+          if (state.filters.property_id === 'room-1') return { data: owner, error: null };
+          if (state.filters.property_id === 'room-2') {
+            return {
+              data: {
+                ...owner,
+                id: 'room-2',
+                property_id: 'room-2',
+                property_name: 'Other Room',
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
         }
         if (table === 'transaction_record_fields') return { data: transactionField(), error: null };
         if (table === 'deal_room_access_sessions') {
@@ -666,6 +676,19 @@ describe('room access and checklist scoping', () => {
 
     expect(uploadResponse.status).toBe(403);
     expect(uploadResponse.body.message).toMatch(/not assigned to your role/i);
+  });
+
+  it('rejects a valid participant session from room one when uploading to another room', async () => {
+    const response = await request(app)
+      .post('/api/public/deal-room/room-2/track-document')
+      .set('x-kontra-session', mockParticipantToken)
+      .field('section', 'seller_financials')
+      .field('role', 'seller')
+      .attach('file', Buffer.from('synthetic isolated test document'), 'cross-room.pdf');
+
+    expect([401, 403]).toContain(response.status);
+    expect(mockInsertedRows.some(row => row.table === 'deal_analyses')).toBe(false);
+    expect(mockInsertedRows.some(row => row.table === 'deal_room_tasks')).toBe(false);
   });
 
   it('ignores URL and body role overrides for a verified participant session', async () => {

@@ -57,7 +57,26 @@ function OwnerBadge({ ownerType, ownerRole }) {
   );
 }
 
-export default function TasksPanel({ propertyId, role, canManage = false, onTabChange, authHeaders }) {
+function DigitalAssetPrepBadge({ task, optional = false }) {
+  const isDigitalAssetPrep = task?.source_type === 'readiness'
+    || task?.category === 'readiness'
+    || ['readiness_setup', 'readiness_document'].includes(task?.task_type);
+  if (!isDigitalAssetPrep) return null;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-100">
+      {optional ? 'Optional Digital Asset prep' : 'Digital Asset prep'}
+    </span>
+  );
+}
+
+export default function TasksPanel({
+  propertyId,
+  role,
+  canManage = false,
+  onTabChange,
+  authHeaders,
+  digitalAssetOptional = false,
+}) {
   const [tasks, setTasks] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
@@ -186,6 +205,7 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
                           style={{ background: style.bg, color: style.color }}>
                           {style.label}
                         </span>
+                        <DigitalAssetPrepBadge task={task} optional={digitalAssetOptional} />
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-2">{task.title}</p>
                       {task.task_type === 'missing_document' && (
@@ -243,6 +263,7 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
                           style={{ background: style.bg, color: style.color }}>
                           {style.label}
                         </span>
+                        <DigitalAssetPrepBadge task={task} optional={digitalAssetOptional} />
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-2">{task.title}</p>
                       {task.task_type === 'missing_document' && (
@@ -267,6 +288,7 @@ export default function TasksPanel({ propertyId, role, canManage = false, onTabC
             {doneTasks.map(task => (
               <li key={task.id} className="text-xs text-gray-400 flex items-center gap-2">
                 <OwnerBadge ownerType={task.owner_type} ownerRole={task.owner_role} />
+                <DigitalAssetPrepBadge task={task} optional={digitalAssetOptional} />
                 <span className="line-through">{task.title}</span>
               </li>
             ))}

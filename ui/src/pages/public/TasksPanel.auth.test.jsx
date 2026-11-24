@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import TasksPanel from './TasksPanel';
 
 jest.mock('../../lib/apiBase', () => ({ API_BASE: '' }));
@@ -120,5 +120,69 @@ describe('room-scoped task decisions', () => {
 
     expect(await screen.findByText('Waiting on others')).toBeInTheDocument();
     expect(screen.getByText('Upload Title Report')).toBeInTheDocument();
+  });
+
+  test('labels optional Digital Asset preparation separately from core deal tasks', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tasks: [
+          {
+            id: 'digital-asset-task',
+            status: 'pending',
+            task_type: 'readiness_setup',
+            source_type: 'readiness',
+            category: 'readiness',
+            owner_type: 'ai',
+            owner_role: 'owner',
+            title: 'Set Token Price in issuance details',
+            evidence: [],
+          },
+          {
+            id: 'core-deal-task',
+            status: 'pending',
+            task_type: 'missing_document',
+            source_type: 'workflow_checklist',
+            category: 'document',
+            owner_type: 'human',
+            owner_role: 'buyer',
+            title: 'Upload the Purchase Agreement',
+            evidence: [],
+          },
+        ],
+      }),
+    });
+
+    render(<TasksPanel propertyId="room-1" role="owner" digitalAssetOptional />);
+
+    const digitalAssetTask = await screen.findByText('Set Token Price in issuance details');
+    const coreTask = screen.getByText('Upload the Purchase Agreement');
+    expect(within(digitalAssetTask.closest('li')).getByText('Optional Digital Asset prep')).toBeInTheDocument();
+    expect(within(coreTask.closest('li')).queryByText('Optional Digital Asset prep')).not.toBeInTheDocument();
+  });
+
+  test('does not label tokenization-workflow readiness as optional', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tasks: [{
+          id: 'tokenization-readiness-task',
+          status: 'pending',
+          task_type: 'readiness_setup',
+          source_type: 'readiness',
+          category: 'readiness',
+          owner_type: 'ai',
+          owner_role: 'owner',
+          title: 'Set the Token Price',
+          evidence: [],
+        }],
+      }),
+    });
+
+    render(<TasksPanel propertyId="room-1" role="owner" />);
+
+    const task = await screen.findByText('Set the Token Price');
+    expect(within(task.closest('li')).getByText('Digital Asset prep')).toBeInTheDocument();
+    expect(within(task.closest('li')).queryByText('Optional Digital Asset prep')).not.toBeInTheDocument();
   });
 });

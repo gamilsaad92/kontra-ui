@@ -36,6 +36,13 @@ describe('participant submission persistence', () => {
     const analyses = [{ id: 'legal-dd-report', uploaded_by_role: 'attorney' }];
     const submissions = [];
     const writes = [];
+    const reconcileTasks = jest.fn(async ({ propertyId, role, submission }) => {
+      expect(submissions).toContain(submission);
+      expect({ propertyId, role }).toEqual({
+        propertyId: 'harbor-ridge-production-regression',
+        role: 'attorney',
+      });
+    });
     const supabase = {
       from(table) {
         const filters = {};
@@ -78,6 +85,7 @@ describe('participant submission persistence', () => {
       propertyId: 'harbor-ridge-production-regression',
       role: 'attorney',
       email: 'legal@example.test',
+      onSubmissionRecorded: reconcileTasks,
     });
 
     expect(writes).toEqual([
@@ -88,5 +96,10 @@ describe('participant submission persistence', () => {
       }),
     ]);
     expect(writes[0]).not.toHaveProperty('status');
+    expect(reconcileTasks).toHaveBeenCalledWith(expect.objectContaining({
+      propertyId: 'harbor-ridge-production-regression',
+      role: 'attorney',
+      submission: expect.objectContaining({ doc_count: 1 }),
+    }));
   });
 });

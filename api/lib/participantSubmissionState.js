@@ -11,6 +11,7 @@ async function syncParticipantSubmissionFromDocument({
   role,
   email = null,
   name = null,
+  onSubmissionRecorded = null,
 } = {}) {
   if (!supabase || !propertyId || !role) return null;
 
@@ -59,7 +60,19 @@ async function syncParticipantSubmissionFromDocument({
     .select('property_id, role, doc_count, submitted_at')
     .maybeSingle();
   if (error) throw error;
-  return data || payload;
+  const submission = data || payload;
+  if (typeof onSubmissionRecorded === 'function') {
+    try {
+      await onSubmissionRecorded({ propertyId, role, submission });
+    } catch (refreshError) {
+      // A task refresh is best-effort after the durable submission write;
+      // it must not turn a successfully processed upload into a failed upload.
+      console.warn('[participant-submission] task reconciliation failed after submission write', {
+        code: refreshError?.code || 'unknown',
+      });
+    }
+  }
+  return submission;
 }
 
 function deriveParticipantSubmissionRows(submissions = [], analyses = []) {

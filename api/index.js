@@ -134,7 +134,7 @@ const {
   inferSemanticDefinition,
   normalizeComparableValue: normalizeSemanticComparableValue,
   compareComparableValues,
-  isSemanticallyValidValue,
+  isValidExtractedSemanticCandidate,
   semanticRecordKey,
 } = require('./lib/semanticFieldTaxonomy');
 const {
@@ -4147,16 +4147,24 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
   const fieldsByCanonicalKey = new Map();
   for (const field of proposalFields) {
     if (!field?.key) continue;
+    const proposedValue = field.value ?? field.value_text ?? null;
+    const proposedLabel = field.label || field.display_label || '';
     const key = canonicalizeTransactionRecordKey(
-      semanticRecordKey(String(field.key), field.label || field.display_label || '') || String(field.key),
+      semanticRecordKey(
+        String(field.key),
+        proposedLabel,
+        proposedValue,
+      ) || String(field.key),
       'generic',
     );
     const existing = fieldsByCanonicalKey.get(key);
-    const hasValue = field.value !== null && field.value !== undefined && String(field.value).trim() !== '';
-    if (hasValue && !isSemanticallyValidValue(field.value, field.key, field.label || field.display_label || '')) continue;
+    const hasValue = proposedValue !== null && proposedValue !== undefined && String(proposedValue).trim() !== '';
+    if (hasValue && !isValidExtractedSemanticCandidate(field.key, proposedValue, proposedLabel)) continue;
     const existingHasValue = existing?.value !== null && existing?.value !== undefined
       && String(existing.value).trim() !== '';
-    if (!existing || (hasValue && !existingHasValue)) fieldsByCanonicalKey.set(key, { ...field, key });
+    if (!existing || (hasValue && !existingHasValue)) {
+      fieldsByCanonicalKey.set(key, { ...field, key, value: proposedValue });
+    }
   }
 
   const buildChangeSet = async () => {
@@ -4172,7 +4180,11 @@ async function syncGeneratedProposalToTransactionRecord(propertyId, proposal, ac
       if (!field?.key || !field?.label) continue;
       const definitionKey = String(field.definition_key || field.key).trim().slice(0, 120);
       const fieldKey = canonicalizeTransactionRecordKey(
-        semanticRecordKey(field.key, field.label || field.display_label || '') || field.key,
+        semanticRecordKey(
+          field.key,
+          field.label || field.display_label || '',
+          field.value ?? field.value_text ?? null,
+        ) || field.key,
         'generic',
       );
       const canonicalCategory = {
@@ -5155,7 +5167,7 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
       messages: [
         {
           role: 'system',
-          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars). Use canonical field keys when a concept has a canonical home: purchase price is "transaction.purchase_price" (never "financial.purchase_price"), and transaction value is "transaction.value" (never "financial.deal_value"). Certified outstanding principal must be a numeric monetary balance; never map a facility name, document title, loan identifier, or other prose containing a year/number into an amount field. One document may populate multiple distinct fields, but do not emit duplicate keys for the same concept.`,
+          content: `You are a transaction data extraction specialist. Given document text, extract key structured fields for a transaction record. Return a JSON array of field objects — only include fields explicitly present in the text. Each object must have: field_key (dotted string like "parties.buyer"), field_category (one of: asset_identity, transaction, parties, beneficial_ownership, financial, legal, approvals), display_label (human-readable label), value_text (the extracted value as a plain string), confidence (0.0 to 1.0), source_page (integer if determinable, else null), source_excerpt (the exact clause the value was extracted from, max 120 chars). Use canonical field keys when a concept has a canonical home: purchase price is "transaction.purchase_price" (never "financial.purchase_price"), estimated Buyer Funds Due is "financial.buyer_funds_due" (never "parties.buyer"), and transaction value is "transaction.value" (never "financial.deal_value"). Certified outstanding principal must be a numeric monetary balance; never map a facility name, document title, loan identifier, or other prose containing a year/number into an amount field. One document may populate multiple distinct fields, but do not emit duplicate keys for the same concept.`,
         },
         {
           role: 'user',
@@ -5170,9 +5182,11 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     const extracted = Array.isArray(parsed.fields) ? parsed.fields : [];
     const validExtracted = extracted.filter((f) => {
       if (!f?.field_key || !f?.field_category || !f?.value_text) return false;
-      const semantic = inferSemanticDefinition(f.field_key, f.value_text, f.display_label || '');
-      if (semantic?.valueType !== 'amount') return true;
-      return isSemanticallyValidValue(f.value_text, semantic);
+      return isValidExtractedSemanticCandidate(
+        f.field_key,
+        f.value_text,
+        f.display_label || '',
+      );
     });
     const rawKeys = validExtracted.map(f => String(f.field_key));
     console.log(`[tx-record] raw ${validExtracted.length} fields for ${propertyId} pack=${schemaKey} keys=${rawKeys.join(',') || 'none'}`);
@@ -5186,11 +5200,11 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         inferSemanticDefinition(fieldKey, value, displayLabel),
         displayLabel,
       );
-    const semanticFieldKey = (rawKey, displayLabel) => {
-      return semanticRecordKey(rawKey, displayLabel);
+    const semanticFieldKey = (rawKey, displayLabel, rawValue) => {
+      return semanticRecordKey(rawKey, displayLabel, rawValue);
     };
-    const resolveExtractedCanonicalKey = (rawKey, displayLabel) => {
-      const semanticKey = semanticFieldKey(rawKey, displayLabel);
+    const resolveExtractedCanonicalKey = (rawKey, displayLabel, rawValue) => {
+      const semanticKey = semanticFieldKey(rawKey, displayLabel, rawValue);
       return canonicalizeTransactionRecordKey(
         semanticKey || String(rawKey),
         schemaKey,
@@ -5198,7 +5212,11 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
     };
     const extractedByCanonicalKey = new Map();
     for (const field of validExtracted) {
-      const key = resolveExtractedCanonicalKey(String(field.field_key), field.display_label);
+      const key = resolveExtractedCanonicalKey(
+        String(field.field_key),
+        field.display_label,
+        field.value_text,
+      );
       if (key && !extractedByCanonicalKey.has(key)) extractedByCanonicalKey.set(key, field);
     }
     const canonicalKeys = [...extractedByCanonicalKey.keys()];
@@ -6148,6 +6166,10 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               propertyId,
               role: effectiveRole,
               email: access.email,
+              onSubmissionRecorded: () => evaluateDealRoomForTasks(propertyId, {
+                source: 'participant_submission_recorded',
+                correlationId,
+              }),
             });
           }
           clearBriefingCache(propertyId);
@@ -6231,6 +6253,10 @@ app.post('/api/public/deal-room/:propertyId/track-document', upload.single('file
               propertyId,
               role: effectiveRole,
               email: access.email,
+              onSubmissionRecorded: () => evaluateDealRoomForTasks(propertyId, {
+                source: 'participant_submission_recorded',
+                correlationId,
+              }),
             });
           }
           clearBriefingCache(propertyId);
