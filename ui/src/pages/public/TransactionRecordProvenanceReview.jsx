@@ -2,6 +2,23 @@ import React, { useState } from "react";
 import { API_BASE } from "../../lib/apiBase";
 import { getRoomAuthHeaders } from "../../lib/inviteUtils";
 
+export function hasTransactionRecordDocumentEvidence(sourceField = {}) {
+  const hasValue = (...keys) => keys.some(key => Boolean(sourceField[key]));
+  const hasPage = ["sourcePage", "source_page"].some(key => sourceField[key] != null);
+  const hasDocumentType = ["sourceType", "source_type"].some(key =>
+    ["document", "document_extraction"].includes(String(sourceField[key] || "").toLowerCase()),
+  );
+
+  return Boolean(
+    hasValue("sourceDocId", "source_doc_id")
+      || hasValue("sourceDocVersion", "source_doc_version")
+      || hasValue("sourceFileHash", "source_file_hash")
+      || hasPage
+      || hasValue("sourceExcerpt", "source_excerpt")
+      || hasDocumentType,
+  );
+}
+
 export default function TransactionRecordProvenanceReview({
   propertyId,
   fieldId,

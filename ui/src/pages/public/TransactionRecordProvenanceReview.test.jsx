@@ -1,17 +1,21 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import TransactionRecordProvenanceReview from "./TransactionRecordProvenanceReview";
+import TransactionRecordProvenanceReview, {
+  hasTransactionRecordDocumentEvidence,
+} from "./TransactionRecordProvenanceReview";
 
 const originalFetch = global.fetch;
 
 describe("TransactionRecordProvenanceReview", () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    window.localStorage.removeItem("kontra_owner_token_room-1");
     if (originalFetch === undefined) delete global.fetch;
     else global.fetch = originalFetch;
   });
 
-  test("does not expose the source correction action to non-owners", () => {
+  test("does not expose the action to participants even if a browser owner hint exists", () => {
+    window.localStorage.setItem("kontra_owner_token_room-1", "room-owner-session");
     render(
       <TransactionRecordProvenanceReview
         propertyId="room-1"
@@ -21,6 +25,45 @@ describe("TransactionRecordProvenanceReview", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Flag source mismatch" })).not.toBeInTheDocument();
+    window.localStorage.removeItem("kontra_owner_token_room-1");
+  });
+
+  test("shows Redwood's projected Buyer evidence action without a source-file hash", () => {
+    const projectedBuyerField = {
+      key: "parties.buyer",
+      fieldId: "buyer-field-id",
+      value: "Redwood Capital Partners LLC",
+      status: "awaiting",
+      sourceType: "transaction_description",
+      sourceDocId: "source-document-id",
+      sourceDocVersion: null,
+      sourceFileHash: null,
+      sourcePage: 1,
+      sourceExcerpt: "Buyer entity named in the transaction description.",
+    };
+
+    expect(hasTransactionRecordDocumentEvidence(projectedBuyerField)).toBe(true);
+    render(
+      <TransactionRecordProvenanceReview
+        propertyId="redwood-business-center-acquisition"
+        fieldId={projectedBuyerField.fieldId}
+        ownerAccess
+        hasDocumentEvidence={hasTransactionRecordDocumentEvidence(projectedBuyerField)}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Flag source mismatch" })).toBeInTheDocument();
+  });
+
+  test("recognizes snake_case source evidence for legacy field projections", () => {
+    expect(hasTransactionRecordDocumentEvidence({
+      source_doc_id: "source-document-id",
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+      source_type: "transaction_description",
+    })).toBe(true);
   });
 
   test("does not offer a source correction when no document evidence is attached", () => {

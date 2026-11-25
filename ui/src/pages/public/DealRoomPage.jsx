@@ -32,7 +32,9 @@ import {
   isVerifiedAssetReadinessResponse,
 } from "../../lib/verifiedAssetReadinessDisplay.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
-import TransactionRecordProvenanceReview from "./TransactionRecordProvenanceReview";
+import TransactionRecordProvenanceReview, {
+  hasTransactionRecordDocumentEvidence,
+} from "./TransactionRecordProvenanceReview";
 import {
   getPackRecordSchema,
   getRequiredRecordFields,
@@ -3859,6 +3861,7 @@ function DigitalAssetReadinessSection({
   readiness,
   provenanceGaps = [],
   ownerToken = '',
+  ownerAccess = false,
   onTabChange,
   schemaKey = DEFAULT_PACK_ID,
   readinessPhase = 'transaction',
@@ -4545,14 +4548,7 @@ function DigitalAssetReadinessSection({
                           {cat.conflictDefs.map(d => {
                             const sourceField = d.state?.field || d.state || {};
                             const sourceFieldId = d.state?.fieldId || sourceField.id;
-                            const hasDocumentEvidence = Boolean(
-                              sourceField.source_doc_id
-                                || sourceField.source_doc_version
-                                || sourceField.source_file_hash
-                                || sourceField.source_page != null
-                                || sourceField.source_excerpt
-                                || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
-                            );
+                            const hasDocumentEvidence = hasTransactionRecordDocumentEvidence(sourceField);
                             const conflict = unresolvedRecordConflicts.find(item =>
                               normalizeAttentionFieldKey(item.fieldKey || item.field_key)
                                 === normalizeAttentionFieldKey(d.key),
@@ -4582,7 +4578,7 @@ function DigitalAssetReadinessSection({
                                 <TransactionRecordProvenanceReview
                                   propertyId={propertyId}
                                   fieldId={sourceFieldId}
-                                  ownerAccess={Boolean(ownerToken)}
+                                  ownerAccess={ownerAccess}
                                   hasDocumentEvidence={hasDocumentEvidence}
                                   onUpdated={onRecordUpdated}
                                 />
@@ -4602,14 +4598,7 @@ function DigitalAssetReadinessSection({
                           {cat.confirmedDefs.map(d => {
                             const confirmedFieldId = d.state?.fieldId || d.state?.field?.id;
                             const sourceField = d.state?.field || d.state || {};
-                            const hasDocumentEvidence = Boolean(
-                              sourceField.source_doc_id
-                                || sourceField.source_doc_version
-                                || sourceField.source_file_hash
-                                || sourceField.source_page != null
-                                || sourceField.source_excerpt
-                                || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
-                            );
+                            const hasDocumentEvidence = hasTransactionRecordDocumentEvidence(sourceField);
                             const provenanceGap = getCurrentProvenanceGap(d, provenanceGaps);
                             return (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
@@ -4657,7 +4646,7 @@ function DigitalAssetReadinessSection({
                                 <TransactionRecordProvenanceReview
                                   propertyId={propertyId}
                                   fieldId={confirmedFieldId}
-                                  ownerAccess={Boolean(ownerToken)}
+                                  ownerAccess={ownerAccess}
                                   hasDocumentEvidence={hasDocumentEvidence}
                                   onUpdated={onRecordUpdated}
                                 />
@@ -4687,14 +4676,7 @@ function DigitalAssetReadinessSection({
                                {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => {
                                  const sourceField = d.state?.field || d.state || {};
                                  const sourceFieldId = d.state?.fieldId || sourceField.id;
-                                 const hasDocumentEvidence = Boolean(
-                                   sourceField.source_doc_id
-                                     || sourceField.source_doc_version
-                                     || sourceField.source_file_hash
-                                     || sourceField.source_page != null
-                                     || sourceField.source_excerpt
-                                     || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
-                                 );
+                                 const hasDocumentEvidence = hasTransactionRecordDocumentEvidence(sourceField);
                                  return (
                                 <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
@@ -4756,7 +4738,7 @@ function DigitalAssetReadinessSection({
                                 <TransactionRecordProvenanceReview
                                   propertyId={propertyId}
                                   fieldId={sourceFieldId}
-                                  ownerAccess={Boolean(ownerToken)}
+                                  ownerAccess={ownerAccess}
                                   hasDocumentEvidence={hasDocumentEvidence}
                                   onUpdated={onRecordUpdated}
                                 />
@@ -9833,6 +9815,7 @@ function CoordinatorOverview({ propertyId, property, pack, packId, onTabChange, 
             readiness={readiness}
              provenanceGaps={verifiedAssetReadiness?.reasons?.provenance_gaps || []}
              ownerToken={ownerToken}
+             ownerAccess={hasOwnerAccess}
             onTabChange={onTabChange}
             schemaKey={recordSchemaKey}
             readinessPhase={readinessPhase}
