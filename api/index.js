@@ -145,6 +145,10 @@ const {
   hasStoredValue,
 } = require('./lib/buyerFundsRecovery');
 const {
+  preserveCanonicalEvidence,
+  sourceExcerptSupportsValue,
+} = require('./lib/transactionProvenance');
+const {
   buildVerifiedAssetSnapshot,
 } = require('./lib/verifiedAssetSnapshot');
 const {
@@ -5307,24 +5311,28 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
         const nextValue = differs
           ? existing.value_text
           : String(f.value_text).slice(0, 2000);
+        const evidencePatch = differs
+          ? preserveCanonicalEvidence(existing)
+          : {
+            display_label: f.display_label || canonicalKey,
+            confidence: f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
+            source_doc_id: docId || null,
+            source_doc_version: docId || null,
+            source_file_hash: sourceDocument?.source_hash || null,
+            source_page: f.source_page || null,
+            source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+            extracted_by: 'ai',
+            source_type: storedField?.source_type ?? null,
+          };
         const fieldPatch = {
           field_key: canonicalKey,
           field_category: storedField?.field_category || ({
             asset: 'asset_identity',
             ownership: 'beneficial_ownership',
           }[canonicalKey.split('.')[0]] || canonicalKey.split('.')[0] || f.field_category),
-          display_label: f.display_label || canonicalKey,
+          ...evidencePatch,
           value_text: nextValue,
           status: nextStatus,
-          confidence: f.confidence != null ? Math.min(1, Math.max(0, parseFloat(f.confidence))) : null,
-          source_doc_id: differs ? (existing.source_doc_id || docId || null) : (docId || null),
-          source_doc_version: differs ? (existing.source_doc_version || null) : (docId || null),
-          source_file_hash: differs ? (existing.source_file_hash || null) : (sourceDocument?.source_hash || null),
-          source_page: differs ? (existing.source_page || f.source_page || null) : (f.source_page || null),
-          source_excerpt: differs
-            ? (existing.source_excerpt || (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null))
-            : (f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null),
-          extracted_by: 'ai',
           verified_by: nextStatus === 'verified' ? (existing?.verified_by || null) : null,
           verified_role: nextStatus === 'verified' ? (existing?.verified_role || null) : null,
           verified_at: nextStatus === 'verified' ? (existing?.verified_at || null) : null,
@@ -5351,7 +5359,27 @@ async function extractTransactionFields(propertyId, docId, text, sectionLabel) {
           source_doc_id: docId || null,
           source_page: f.source_page || null,
           source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
-          metadata: { sectionLabel },
+          metadata: {
+            sectionLabel,
+            source_file_hash: sourceDocument?.source_hash || null,
+            ...(differs ? {
+              canonical_value: existing.value_text ?? null,
+              conflicting_value: String(f.value_text).slice(0, 2000),
+              canonical_display_label: existing.display_label ?? null,
+              canonical_confidence: existing.confidence ?? null,
+              canonical_source_doc_id: existing.source_doc_id ?? null,
+              canonical_source_doc_version: existing.source_doc_version ?? null,
+              canonical_source_file_hash: existing.source_file_hash ?? null,
+              canonical_source_page: existing.source_page ?? null,
+              canonical_source_excerpt: existing.source_excerpt ?? null,
+              conflicting_display_label: f.display_label || canonicalKey,
+              conflicting_confidence: f.confidence ?? null,
+              conflicting_source_doc_id: docId || null,
+              conflicting_source_file_hash: sourceDocument?.source_hash || null,
+              conflicting_source_page: f.source_page || null,
+              conflicting_source_excerpt: f.source_excerpt ? String(f.source_excerpt).slice(0, 200) : null,
+            } : {}),
+          },
         });
 
         if (differs) {
@@ -10557,7 +10585,14 @@ app.get('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/hi
 
 app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId', async (req, res) => {
   const { propertyId, fieldId } = req.params;
-  const { value_text, value_json, notes, status } = req.body || {};
+  const {
+    value_text,
+    value_json,
+    notes,
+    status,
+    provenance_action: provenanceAction,
+    provenance_note: provenanceNote,
+  } = req.body || {};
   const access = await getRoomAccessContext(req, propertyId);
   if (access.mode !== 'owner') return accessDenied(res, 'Owner access required');
 
@@ -10582,6 +10617,94 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
       .eq('property_id', propertyId)
       .maybeSingle();
     if (!existing) return res.status(404).json({ error: 'Transaction Record field not found' });
+    if (provenanceAction === 'detach') {
+      const reason = String(provenanceNote || '').trim().slice(0, 500);
+      if (reason.length < 5) {
+        return res.status(400).json({
+          error: 'PROVENANCE_REVIEW_NOTE_REQUIRED',
+          message: 'Explain why the existing source does not support this value.',
+        });
+      }
+      if (!hasDocumentProvenance(existing)) {
+        return res.status(409).json({
+          error: 'NO_DOCUMENT_PROVENANCE',
+          message: 'This field does not have document provenance to remove.',
+        });
+      }
+      const now = new Date().toISOString();
+      const historyValue = value => typeof value === 'string' ? value : JSON.stringify(value);
+      const canonicalValue = existing.value_text || historyValue(existing.value_json);
+      const provenanceUpdate = {
+        source_type: null,
+        source_doc_id: null,
+        source_doc_version: null,
+        source_file_hash: null,
+        source_page: null,
+        source_excerpt: null,
+        confidence: null,
+        status: 'needs_review',
+        verified_by: null,
+        verified_role: null,
+        verified_at: null,
+        updated_at: now,
+      };
+      const historyRow = transactionFieldHistoryRow({
+        fieldId,
+        propertyId,
+        eventType: 'source_changed',
+        actorEmail: access.email || 'coordinator',
+        actorRole: 'Deal Coordinator',
+        priorValue: canonicalValue,
+        newValue: canonicalValue,
+        priorStatus: existing.status,
+        newStatus: 'needs_review',
+        sourceDocId: existing.source_doc_id || null,
+        sourcePage: existing.source_page ?? null,
+        sourceExcerpt: existing.source_excerpt || null,
+        metadata: {
+          provenance_correction: true,
+          reason,
+          prior_source_type: existing.source_type ?? null,
+          prior_source_doc_id: existing.source_doc_id || null,
+          prior_source_doc_version: existing.source_doc_version || null,
+          prior_source_file_hash: existing.source_file_hash || null,
+          prior_source_page: existing.source_page ?? null,
+          prior_source_excerpt: existing.source_excerpt || null,
+          prior_confidence: existing.confidence ?? null,
+          prior_display_label: existing.display_label ?? null,
+          prior_extracted_by: existing.extracted_by ?? null,
+        },
+      });
+      const result = await commitCanonicalChangeSet({
+        p_change_set: {
+          property_id: propertyId,
+          required_sources: [],
+          expected_fields: [expectedFieldSnapshot(existing)],
+          field_changes: [{ op: 'update', id: fieldId, patch: provenanceUpdate }],
+          history_rows: [historyRow],
+        },
+      });
+      if (result.status === 'stale_source' || result.status === 'retry_snapshot') {
+        return res.status(409).json({
+          error: result.status === 'stale_source' ? 'STALE_DOCUMENT_SOURCE' : 'FIELD_CHANGED',
+          message: 'The field changed while its source was being reviewed. Refresh and review the latest evidence.',
+        });
+      }
+      if (result.status !== 'committed') {
+        throw result.error || new Error(`Provenance review did not commit (${result.status || 'unknown'})`);
+      }
+      await recalculateTransactionState(propertyId, {
+        source: 'transaction_record_provenance_corrected',
+        actorId: access.actorId,
+        actorType: access.actorType,
+      });
+      return res.json({
+        ok: true,
+        status: 'needs_review',
+        value_preserved: true,
+        provenance_detached: true,
+      });
+    }
     const now = new Date().toISOString();
     const nextText = value_text === undefined ? existing.value_text : String(value_text).slice(0, 2000);
     const textChanged = value_text !== undefined && nextText !== existing.value_text;
@@ -10608,6 +10731,35 @@ app.patch('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId'
           error: 'FIELD_VALUE_REQUIRED',
           message: 'A populated field is required before it can be confirmed.',
         });
+      }
+      const { data: correctionHistory, error: correctionHistoryError } = await supabase
+        .from('transaction_record_history')
+        .select('metadata')
+        .eq('property_id', propertyId)
+        .eq('field_id', fieldId)
+        .eq('event_type', 'source_changed')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (correctionHistoryError) throw correctionHistoryError;
+      const provenanceWasFlaggedForReview = (correctionHistory || [])
+        .some(row => row.metadata?.provenance_correction === true);
+      if (provenanceWasFlaggedForReview) {
+        const supportingSource = await resolveCurrentSourceDocument(supabase, propertyId, existing);
+        const sourceHashMatches = !existing.source_file_hash
+          || existing.source_file_hash === supportingSource.document?.source_hash;
+        if (
+          manualInputProvided
+          || !hasDocumentProvenance(existing)
+          || !supportingSource.current
+          || !supportingSource.document
+          || !sourceHashMatches
+          || !sourceExcerptSupportsValue(confirmationValue, existing.source_excerpt)
+        ) {
+          return res.status(409).json({
+            error: 'PROVENANCE_REVIEW_REQUIRED',
+            message: 'This field was flagged for a source mismatch. It can only be reconfirmed from current document evidence whose excerpt supports the value.',
+          });
+        }
       }
     }
     const manualSourcePatch = {
@@ -10810,6 +10962,17 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
       ? existing.value_text
       : existing.value_json;
     const verificationValue = valueForVerification(verificationRawValue);
+    const { data: provenanceCorrectionHistory, error: provenanceHistoryError } = await supabase
+      .from('transaction_record_history')
+      .select('event_type, metadata, created_at')
+      .eq('property_id', propertyId)
+      .eq('field_id', fieldId)
+      .eq('event_type', 'source_changed')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (provenanceHistoryError) throw provenanceHistoryError;
+    const provenanceWasFlaggedForReview = (provenanceCorrectionHistory || [])
+      .some(row => row.metadata?.provenance_correction === true);
     if (provenanceApprovalRequested) {
       const confirmedStatus = new Set(['verified', 'confirmed']);
       if (
@@ -10897,6 +11060,23 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields/:fieldId/v
         error: 'FIELD_NOT_AWAITING_CONFIRMATION',
         message: 'Only a populated Awaiting Confirmation field can be confirmed.',
       });
+    }
+    if (provenanceWasFlaggedForReview) {
+      const supportingSource = await resolveCurrentSourceDocument(supabase, propertyId, existing);
+      const sourceHashMatches = !existing.source_file_hash
+        || existing.source_file_hash === supportingSource.document?.source_hash;
+      if (
+        !hasDocumentProvenance(existing)
+        || !supportingSource.current
+        || !supportingSource.document
+        || !sourceHashMatches
+        || !sourceExcerptSupportsValue(verificationRawValue, existing.source_excerpt)
+      ) {
+        return res.status(409).json({
+          error: 'PROVENANCE_REVIEW_REQUIRED',
+          message: 'This field was flagged for a source mismatch. Attach current document evidence whose excerpt supports the value before confirming it.',
+        });
+      }
     }
     const sourceState = await resolveCurrentSourceDocument(supabase, propertyId, existing);
     if (!sourceState.current) {
@@ -11041,86 +11221,112 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       if (fallback.error) throw fallback.error;
       field = fallback.data;
     }
-    const matchesCanonical = conflictValueMatches(
+    const matchingCandidates = [
+      {
+        kind: 'conflicting',
+        value: conflict.conflicting_value,
+        sourceDocId: conflict.conflicting_source_doc_id || null,
+        page: conflict.conflicting_source_page ?? null,
+        excerpt: conflict.conflicting_source_excerpt || null,
+      },
+      {
+        kind: 'canonical',
+        value: conflict.canonical_value,
+        sourceDocId: conflict.canonical_source_doc_id || null,
+        page: conflict.canonical_source_page ?? null,
+        excerpt: conflict.canonical_source_excerpt || null,
+      },
+    ].filter(candidate => conflictValueMatches(
       selectedValue,
-      conflict.canonical_value,
+      candidate.value,
       conflict.field_key,
       conflict.display_label || '',
-    );
-    const matchesConflict = conflictValueMatches(
-      selectedValue,
-      conflict.conflicting_value,
-      conflict.field_key,
-      conflict.display_label || '',
-    );
-    const canonicalSourceReference = {
-      source_doc_id: conflict.canonical_source_doc_id || field?.source_doc_id || null,
-      source_doc_version: field?.source_doc_version || null,
-      source_file_hash: field?.source_file_hash || null,
-    };
-    const conflictingSourceReference = {
-      source_doc_id: conflict.conflicting_source_doc_id || null,
-    };
-    const [canonicalSourceState, conflictingSourceState] = await Promise.all([
-      matchesCanonical
-        ? resolveCurrentSourceDocument(supabase, propertyId, canonicalSourceReference)
-        : Promise.resolve({ current: false, document: null }),
-      matchesConflict
-        ? resolveCurrentSourceDocument(supabase, propertyId, conflictingSourceReference)
-        : Promise.resolve({ current: false, document: null }),
-    ]);
-    let selectedIsConflict = false;
-    let selectedIsCanonical = false;
-    let selectedSourceReference = {};
-    let selectedSourceState = { current: true, document: null };
-    if (matchesConflict && matchesCanonical) {
-      if (conflictingSourceState.current) {
-        selectedIsConflict = true;
-        selectedSourceReference = conflictingSourceReference;
-        selectedSourceState = conflictingSourceState;
-      } else if (canonicalSourceState.current) {
-        selectedIsCanonical = true;
-        selectedSourceReference = canonicalSourceReference;
-        selectedSourceState = canonicalSourceState;
-      } else if (
-        hasDocumentProvenance(canonicalSourceReference)
-        || hasDocumentProvenance(conflictingSourceReference)
-      ) {
-        return res.status(409).json({
-          error: 'STALE_DOCUMENT_SOURCE',
-          message: 'The selected conflict value comes from an inactive or superseded document. Choose current evidence or enter a document-independent value.',
-        });
-      }
-    } else if (matchesConflict) {
-      selectedIsConflict = true;
-      selectedSourceReference = conflictingSourceReference;
-      selectedSourceState = conflictingSourceState;
-    } else if (matchesCanonical) {
-      selectedIsCanonical = true;
-      selectedSourceReference = canonicalSourceReference;
-      selectedSourceState = canonicalSourceState;
+    ));
+    let provenanceHistory = [];
+    if (field?.id && matchingCandidates.some(candidate => candidate.sourceDocId)) {
+      const { data, error } = await supabase
+        .from('transaction_record_history')
+        .select('event_type, prior_value, new_value, source_doc_id, metadata, created_at')
+        .eq('property_id', propertyId)
+        .eq('field_id', field.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      provenanceHistory = data || [];
     }
-    if (!selectedSourceState.current) {
+    const candidateSnapshotHash = candidate => {
+      const candidateSourceIdKey = candidate.kind === 'conflicting'
+        ? 'conflicting_source_doc_id'
+        : 'canonical_source_doc_id';
+      const candidateValueKey = candidate.kind === 'conflicting'
+        ? 'conflicting_value'
+        : 'canonical_value';
+      const candidateHashKey = candidate.kind === 'conflicting'
+        ? 'conflicting_source_file_hash'
+        : 'canonical_source_file_hash';
+      const snapshot = provenanceHistory.find(row => {
+        const metadata = row.metadata || {};
+        if (row.event_type === 'conflict' && metadata[candidateSourceIdKey] === candidate.sourceDocId) {
+          return conflictValueMatches(
+            candidate.value,
+            metadata[candidateValueKey],
+            conflict.field_key,
+            conflict.display_label || '',
+          );
+        }
+        const ordinaryCandidateEvent = candidate.kind === 'canonical'
+          && ['extracted', 'confirmed'].includes(String(row.event_type || '').toLowerCase())
+          && row.source_doc_id === candidate.sourceDocId;
+        return ordinaryCandidateEvent && conflictValueMatches(
+          candidate.value,
+          row.new_value,
+          conflict.field_key,
+          conflict.display_label || '',
+        );
+      });
+      if (!snapshot) return null;
+      const metadata = snapshot.metadata || {};
+      if (Object.prototype.hasOwnProperty.call(metadata, candidateHashKey)) {
+        return metadata[candidateHashKey] || null;
+      }
+      return metadata.source_file_hash || null;
+    };
+    const reviewedCandidates = await Promise.all(matchingCandidates.map(async candidate => ({
+      ...candidate,
+      expectedSourceHash: candidate.sourceDocId ? candidateSnapshotHash(candidate) : null,
+      sourceState: candidate.sourceDocId
+        ? await resolveCurrentSourceDocument(supabase, propertyId, {
+          source_doc_id: candidate.sourceDocId,
+        })
+        : { current: true, document: null },
+    })));
+    const selectedEvidence = reviewedCandidates.find(candidate =>
+      candidate.sourceDocId
+        && candidate.sourceState.current
+        && candidate.sourceState.document
+        && (!candidate.expectedSourceHash
+          || candidate.expectedSourceHash === candidate.sourceState.document.source_hash)
+        && sourceExcerptSupportsValue(selectedValue, candidate.excerpt)
+    ) || null;
+    if (
+      !selectedEvidence
+      && reviewedCandidates.some(candidate => candidate.sourceDocId && !candidate.sourceState.current)
+    ) {
       return res.status(409).json({
         error: 'STALE_DOCUMENT_SOURCE',
         message: 'The selected conflict value comes from an inactive or superseded document. Choose current evidence or enter a document-independent value.',
       });
     }
-    const selectedSourceDocId = selectedSourceState.document?.id
-      || sourceDocumentId(selectedSourceReference)
-      || null;
-    const selectedSourceMetadata = selectedSourceDocId
+    const selectedSourceDocId = selectedEvidence?.sourceState.document?.id || null;
+    const documentEvidenceVerified = Boolean(selectedEvidence);
+    const selectedSourceMetadata = documentEvidenceVerified
       ? {
         source_type: 'document',
         source_doc_id: selectedSourceDocId,
         source_doc_version: selectedSourceDocId,
-        source_file_hash: selectedSourceState.document?.source_hash || null,
-        source_page: selectedIsConflict
-          ? conflict.conflicting_source_page || null
-          : conflict.canonical_source_page || field?.source_page || null,
-        source_excerpt: selectedIsConflict
-          ? conflict.conflicting_source_excerpt || null
-          : conflict.canonical_source_excerpt || field?.source_excerpt || null,
+        source_file_hash: selectedEvidence.sourceState.document?.source_hash || null,
+        source_page: selectedEvidence.page,
+        source_excerpt: selectedEvidence.excerpt,
       }
       : {
         source_type: 'manual',
@@ -11137,12 +11343,15 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       field_category: field?.field_category || canonicalFieldKey.split('.')[0] || 'transaction',
       display_label: field?.display_label || conflict.display_label || conflict.field_key,
       value_text: selectedValue,
-      status: 'verified',
+      status: documentEvidenceVerified ? 'verified' : 'needs_review',
+      confidence: null,
       ...selectedSourceMetadata,
-      extracted_by: field?.extracted_by || 'conflict_resolution',
-      verified_by: access.email || 'coordinator',
-      verified_role: 'Deal Coordinator',
-      verified_at: now,
+      extracted_by: field?.value_text === selectedValue
+        ? (field.extracted_by ?? null)
+        : 'conflict_resolution',
+      verified_by: documentEvidenceVerified ? (access.email || 'coordinator') : null,
+      verified_role: documentEvidenceVerified ? 'Deal Coordinator' : null,
+      verified_at: documentEvidenceVerified ? now : null,
       updated_at: now,
     };
     const fieldChanges = field
@@ -11162,28 +11371,37 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       fieldId: field?.id || null,
       fieldKey: canonicalFieldKey,
       propertyId,
-      eventType: 'confirmed',
+      eventType: documentEvidenceVerified ? 'confirmed' : 'source_changed',
       actorEmail: access.email || 'coordinator',
       actorRole: 'Deal Coordinator',
       priorValue: field?.value_text,
       newValue: selectedValue,
       priorStatus: field?.status,
-      newStatus: 'verified',
+      newStatus: fieldPatch.status,
       sourceDocId: selectedSourceDocId,
-      sourcePage: selectedSourceMetadata.source_page,
-      sourceExcerpt: selectedSourceMetadata.source_excerpt,
+      sourcePage: documentEvidenceVerified ? selectedEvidence.page : null,
+      sourceExcerpt: documentEvidenceVerified ? selectedEvidence.excerpt : null,
       metadata: {
         conflictId,
         resolution: true,
         source_doc_id: selectedSourceDocId,
         source_doc_version: selectedSourceMetadata.source_doc_version,
         source_file_hash: selectedSourceMetadata.source_file_hash,
+        evidence_support: documentEvidenceVerified ? 'selected_excerpt_matches_value' : 'unavailable_or_inconsistent',
+        owner_review_required: !documentEvidenceVerified,
+        selected_candidate: selectedEvidence?.kind || null,
+        prior_source_doc_id: field?.source_doc_id || null,
+        prior_source_doc_version: field?.source_doc_version || null,
+        prior_source_file_hash: field?.source_file_hash || null,
+        prior_source_page: field?.source_page ?? null,
+        prior_source_excerpt: field?.source_excerpt || null,
+        prior_confidence: field?.confidence ?? null,
       },
     });
     const result = await commitCanonicalChangeSet({
       p_change_set: {
         property_id: propertyId,
-        required_sources: [requiredSource(selectedSourceState.document)].filter(Boolean),
+        required_sources: [requiredSource(selectedEvidence?.sourceState.document)].filter(Boolean),
         expected_fields: expectedFields,
         field_changes: fieldChanges,
         expected_conflicts: [expectedConflictSnapshot(conflict)],
@@ -11194,7 +11412,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
           resolution_value: selectedValue,
           resolution_note: note
             ? String(note).slice(0, 500)
-            : 'Coordinator resolved the material source discrepancy.',
+            : documentEvidenceVerified
+              ? 'Coordinator resolved the material source discrepancy.'
+              : 'Owner selected this value; document support was unavailable or inconsistent, so the field remains unconfirmed.',
           resolved_by: access.email || 'coordinator',
         }],
         history_rows: [history],
@@ -11220,7 +11440,12 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       actorId: access.actorId,
       actorType: access.actorType,
     });
-    res.json({ ok: true, state: recalculated.state });
+    res.json({
+      ok: true,
+      status: fieldPatch.status,
+      document_verified: documentEvidenceVerified,
+      state: recalculated.state,
+    });
   } catch (err) {
     console.error('[transaction-record conflict resolve]', err.message);
     res.status(500).json({ error: err.message });

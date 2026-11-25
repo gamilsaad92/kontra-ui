@@ -9,6 +9,7 @@ const mockChecklistDefaults = [
 const mockChecklistItems = mockChecklistDefaults.map(item => ({ ...item }));
 const mockDocumentAnalyses = [];
 const mockRecoveryConflicts = [];
+const mockTransactionHistory = [];
 let mockTransactionRecordFields = null;
 let mockExtractionSchemaKey = null;
 const mockChecklistSelections = [];
@@ -184,6 +185,9 @@ jest.mock('./db', () => {
         } else if (table === 'transaction_record_conflicts') {
           data = mockRecoveryConflicts.filter(row => Object.entries(state.filters)
             .every(([key, value]) => row[key] === value));
+        } else if (table === 'transaction_record_history') {
+          data = mockTransactionHistory.filter(row => Object.entries(state.filters)
+            .every(([key, value]) => row[key] === value));
         } else if (table === 'deal_analyses') {
           const filteredAnalyses = mockDocumentAnalyses.filter(analysis => Object.entries(state.filters)
             .every(([key, value]) => analysis[key] === undefined || analysis[key] === value));
@@ -263,6 +267,7 @@ describe('room access and checklist scoping', () => {
     );
     mockDocumentAnalyses.length = 0;
     mockRecoveryConflicts.length = 0;
+    mockTransactionHistory.length = 0;
     mockTransactionRecordFields = null;
     mockExtractionSchemaKey = null;
     mockChecklistSelections.length = 0;
@@ -560,6 +565,109 @@ describe('room access and checklist scoping', () => {
       prior_status: 'verified',
       new_status: 'verified',
     })]);
+  });
+
+  it('blocks ordinary confirmation after a source mismatch is flagged until supported evidence is attached', async () => {
+    mockTransactionRecordFields = [{
+      id: 'field-1',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      value_json: null,
+      field_category: 'parties',
+      display_label: 'Buyer',
+      status: 'needs_review',
+      source_type: 'manual',
+      source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+    }];
+    mockTransactionHistory.push({
+      property_id: 'room-1',
+      field_id: 'field-1',
+      event_type: 'source_changed',
+      metadata: { provenance_correction: true },
+    });
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({});
+    const directStatusUpdate = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/field-1')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ status: 'verified' });
+    const manualValueUpdate = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/field-1')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ value_text: 'Redwood Capital Partners LLC', status: 'verified' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('PROVENANCE_REVIEW_REQUIRED');
+    expect(directStatusUpdate.status).toBe(409);
+    expect(directStatusUpdate.body.error).toBe('PROVENANCE_REVIEW_REQUIRED');
+    expect(manualValueUpdate.status).toBe(409);
+    expect(manualValueUpdate.body.error).toBe('PROVENANCE_REVIEW_REQUIRED');
+    expect(mockCanonicalRpc).not.toHaveBeenCalled();
+  });
+
+  it('allows confirmation after a source mismatch only when current excerpt supports the value', async () => {
+    mockTransactionRecordFields = [{
+      id: 'field-1',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      value_json: null,
+      field_category: 'parties',
+      display_label: 'Buyer',
+      status: 'needs_review',
+      source_type: 'document',
+      source_doc_id: 'fresh-buyer-doc',
+      source_doc_version: 'fresh-buyer-doc',
+      source_file_hash: 'sha256:fresh-buyer-doc',
+      source_excerpt: 'Redwood Capital Partners LLC is the Buyer.',
+    }];
+    mockDocumentAnalyses.push({
+      id: 'fresh-buyer-doc',
+      property_id: 'room-1',
+      source_hash: 'sha256:fresh-buyer-doc',
+      is_active: true,
+      superseded_at: null,
+    });
+    mockTransactionHistory.push({
+      property_id: 'room-1',
+      field_id: 'field-1',
+      event_type: 'source_changed',
+      metadata: { provenance_correction: true },
+    });
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields/field-1/verify')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({});
+
+    expect(response.status).toBe(200);
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes[0].patch).toEqual(expect.objectContaining({
+      status: 'verified',
+      source_type: 'document',
+    }));
+    expect(changeSet.field_changes[0].patch).not.toHaveProperty('source_doc_id');
+    expect(changeSet.expected_fields[0]).toEqual(expect.objectContaining({
+      source_doc_id: 'fresh-buyer-doc',
+      source_file_hash: 'sha256:fresh-buyer-doc',
+      source_excerpt: 'Redwood Capital Partners LLC is the Buyer.',
+    }));
+    expect(changeSet.required_sources).toEqual([{
+      id: 'fresh-buyer-doc',
+      source_hash: 'sha256:fresh-buyer-doc',
+    }]);
   });
 
   it('rejects manual provenance approval when document provenance already exists', async () => {
@@ -1157,5 +1265,516 @@ describe('room access and checklist scoping', () => {
         }),
       ]);
     });
+  });
+
+  it('keeps canonical provenance untouched when a conflicting extraction has no prior source', async () => {
+    mockDocumentAnalyses.push({
+      id: 'incoming-loi',
+      property_id: 'room-1',
+      section: 'letter_of_intent',
+      source_hash: 'incoming-hash',
+      is_active: true,
+      superseded_at: null,
+    });
+    mockTransactionRecordFields = [{
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      value_json: null,
+      status: 'extracted',
+      confidence: null,
+      source_type: null,
+      source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+      extracted_by: 'approved_generated_proposal',
+    }];
+    mockOpenAIChatCreate.mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            fields: [{
+              field_key: 'parties.buyer',
+              field_category: 'parties',
+              display_label: 'Buyer from Letter of Intent',
+              value_text: 'Redwood Test Acquisitions LLC',
+              confidence: 0.99,
+              source_page: 1,
+              source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+            }],
+          }),
+        },
+      }],
+    });
+
+    await app.extractTransactionFieldsForTest(
+      'room-1',
+      'incoming-loi',
+      'x'.repeat(100),
+      'Letter of Intent',
+    );
+
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes).toEqual([
+      expect.objectContaining({
+        op: 'update',
+        id: 'buyer-field',
+        patch: expect.objectContaining({
+          value_text: 'Redwood Capital Partners LLC',
+          display_label: 'Buyer',
+          confidence: null,
+          extracted_by: 'approved_generated_proposal',
+          source_type: null,
+          source_doc_id: null,
+          source_doc_version: null,
+          source_file_hash: null,
+          source_page: null,
+          source_excerpt: null,
+          status: 'conflicting',
+        }),
+      }),
+    ]);
+    expect(changeSet.conflict_changes[0].payload).toEqual(expect.objectContaining({
+      canonical_value: 'Redwood Capital Partners LLC',
+      canonical_source_doc_id: null,
+      canonical_source_excerpt: null,
+      conflicting_value: 'Redwood Test Acquisitions LLC',
+      conflicting_source_doc_id: 'incoming-loi',
+      conflicting_source_page: 1,
+      conflicting_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+    }));
+    expect(changeSet.history_rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event_type: 'conflict',
+        source_doc_id: 'incoming-loi',
+        source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+        metadata: expect.objectContaining({
+          canonical_display_label: 'Buyer',
+          canonical_confidence: null,
+          canonical_source_file_hash: null,
+          conflicting_display_label: 'Buyer from Letter of Intent',
+          conflicting_confidence: 0.99,
+          conflicting_source_file_hash: 'incoming-hash',
+        }),
+      }),
+    ]));
+  });
+
+  it('preserves complete canonical source metadata when a different candidate conflicts', async () => {
+    mockDocumentAnalyses.push({
+      id: 'incoming-loi',
+      property_id: 'room-1',
+      section: 'letter_of_intent',
+      source_hash: 'incoming-hash',
+      is_active: true,
+      superseded_at: null,
+    }, {
+      id: 'canonical-loi',
+      property_id: 'room-1',
+      section: 'letter_of_intent',
+      source_hash: 'canonical-hash',
+      is_active: true,
+      superseded_at: null,
+    });
+    mockTransactionRecordFields = [{
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      value_json: null,
+      status: 'extracted',
+      confidence: 0.82,
+      source_type: 'document',
+      source_doc_id: 'canonical-loi',
+      source_doc_version: 'canonical-v2',
+      source_file_hash: 'canonical-hash',
+      source_page: 3,
+      source_excerpt: 'Buyer: Redwood Capital Partners LLC',
+      extracted_by: 'ai',
+    }];
+    mockOpenAIChatCreate.mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            fields: [{
+              field_key: 'parties.buyer',
+              field_category: 'parties',
+              display_label: 'Buyer from another source',
+              value_text: 'Redwood Test Acquisitions LLC',
+              confidence: 0.99,
+              source_page: 1,
+              source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+            }],
+          }),
+        },
+      }],
+    });
+
+    await app.extractTransactionFieldsForTest(
+      'room-1',
+      'incoming-loi',
+      'x'.repeat(100),
+      'Letter of Intent',
+    );
+
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes[0].patch).toEqual(expect.objectContaining({
+      value_text: 'Redwood Capital Partners LLC',
+      display_label: 'Buyer',
+      confidence: 0.82,
+      source_type: 'document',
+      source_doc_id: 'canonical-loi',
+      source_doc_version: 'canonical-v2',
+      source_file_hash: 'canonical-hash',
+      source_page: 3,
+      source_excerpt: 'Buyer: Redwood Capital Partners LLC',
+      extracted_by: 'ai',
+    }));
+    expect(changeSet.conflict_changes[0].payload).toEqual(expect.objectContaining({
+      canonical_source_doc_id: 'canonical-loi',
+      canonical_source_page: 3,
+      canonical_source_excerpt: 'Buyer: Redwood Capital Partners LLC',
+      conflicting_source_doc_id: 'incoming-loi',
+      conflicting_source_page: 1,
+      conflicting_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+    }));
+    expect(changeSet.history_rows[0].metadata).toEqual(expect.objectContaining({
+      canonical_display_label: 'Buyer',
+      canonical_confidence: 0.82,
+      canonical_source_file_hash: 'canonical-hash',
+      conflicting_display_label: 'Buyer from another source',
+      conflicting_confidence: 0.99,
+      conflicting_source_file_hash: 'incoming-hash',
+    }));
+  });
+
+  it('detaches contaminated provenance only after an owner review and preserves its audit evidence', async () => {
+    const field = {
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      value_json: null,
+      status: 'extracted',
+      confidence: 0.98,
+      source_type: 'document',
+      source_doc_id: 'misattributed-loi',
+      source_doc_version: 'misattributed-loi-v1',
+      source_file_hash: 'legacy-hash',
+      source_page: 1,
+      source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      extracted_by: 'ai',
+      verified_by: null,
+      verified_role: null,
+      verified_at: null,
+    };
+    const conflict = {
+      id: 'buyer-conflict',
+      property_id: 'room-1',
+      field_id: 'buyer-field',
+      field_key: 'parties.buyer',
+      status: 'resolved',
+      canonical_value: 'Redwood Capital Partners LLC',
+      conflicting_value: 'Redwood Test Acquisitions LLC',
+      conflicting_source_doc_id: 'misattributed-loi',
+    };
+    mockTransactionRecordFields = [field];
+    mockRecoveryConflicts.push(conflict);
+
+    const unauthorized = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/buyer-field')
+      .send({ provenance_action: 'detach', provenance_note: 'Wrong source.' });
+    const participant = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/buyer-field')
+      .set('x-kontra-session', mockParticipantToken)
+      .send({ provenance_action: 'detach', provenance_note: 'Wrong source.' });
+    const otherRoom = await request(app)
+      .patch('/api/public/deal-room/room-2/transaction-record/fields/buyer-field')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ provenance_action: 'detach', provenance_note: 'Wrong source.' });
+    const missingReason = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/buyer-field')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ provenance_action: 'detach', provenance_note: 'No.' });
+    expect(unauthorized.status).toBe(403);
+    expect(participant.status).toBe(403);
+    expect(otherRoom.status).toBe(403);
+    expect(missingReason.status).toBe(400);
+    expect(mockCanonicalRpc).not.toHaveBeenCalled();
+
+    const response = await request(app)
+      .patch('/api/public/deal-room/room-1/transaction-record/fields/buyer-field')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({
+        provenance_action: 'detach',
+        provenance_note: 'The cited excerpt names a different buyer.',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      status: 'needs_review',
+      value_preserved: true,
+      provenance_detached: true,
+    }));
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    const patch = changeSet.field_changes[0].patch;
+    expect(patch).toEqual(expect.objectContaining({
+      status: 'needs_review',
+      source_type: null,
+      source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+      confidence: null,
+      verified_by: null,
+      verified_at: null,
+    }));
+    expect(patch).not.toHaveProperty('value_text');
+    expect(changeSet.history_rows[0]).toEqual(expect.objectContaining({
+      event_type: 'source_changed',
+      prior_value: 'Redwood Capital Partners LLC',
+      new_value: 'Redwood Capital Partners LLC',
+      source_doc_id: 'misattributed-loi',
+      source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      metadata: expect.objectContaining({
+        provenance_correction: true,
+        reason: 'The cited excerpt names a different buyer.',
+        prior_source_doc_id: 'misattributed-loi',
+        prior_source_file_hash: 'legacy-hash',
+        prior_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+        prior_confidence: 0.98,
+      }),
+    }));
+    expect(changeSet.conflict_changes).toBeUndefined();
+    expect(conflict.status).toBe('resolved');
+    expect(require('./lib/transactionState').recalculateTransactionState)
+      .toHaveBeenCalledWith('room-1', expect.objectContaining({
+        source: 'transaction_record_provenance_corrected',
+      }));
+  });
+
+  it('does not let conflict resolution borrow a field source when the selected candidate has no own evidence', async () => {
+    const conflict = {
+      id: 'buyer-conflict',
+      property_id: 'room-1',
+      field_id: 'buyer-field',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      canonical_value: 'Redwood Capital Partners LLC',
+      canonical_source_doc_id: null,
+      canonical_source_page: null,
+      canonical_source_excerpt: null,
+      conflicting_value: 'Redwood Test Acquisitions LLC',
+      conflicting_source_doc_id: 'candidate-loi',
+      conflicting_source_page: 1,
+      conflicting_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      status: 'open',
+    };
+    mockRecoveryConflicts.push(conflict);
+    mockDocumentAnalyses.push({
+      id: 'candidate-loi',
+      property_id: 'room-1',
+      source_hash: 'candidate-hash',
+      is_active: true,
+      superseded_at: null,
+    });
+    mockTransactionRecordFields = [{
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      status: 'conflicting',
+      source_type: 'document',
+      source_doc_id: 'candidate-loi',
+      source_doc_version: 'candidate-loi',
+      source_file_hash: 'candidate-hash',
+      source_page: 1,
+      source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      confidence: 0.98,
+    }];
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/conflicts/buyer-conflict/resolve')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ value_text: 'Redwood Capital Partners LLC' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      status: 'needs_review',
+      document_verified: false,
+    }));
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes[0].patch).toEqual(expect.objectContaining({
+      value_text: 'Redwood Capital Partners LLC',
+      status: 'needs_review',
+      source_type: 'manual',
+      source_doc_id: null,
+      source_doc_version: null,
+      source_file_hash: null,
+      source_page: null,
+      source_excerpt: null,
+      confidence: null,
+      verified_by: null,
+    }));
+    expect(changeSet.history_rows[0]).toEqual(expect.objectContaining({
+      event_type: 'source_changed',
+      metadata: expect.objectContaining({
+        evidence_support: 'unavailable_or_inconsistent',
+        owner_review_required: true,
+        selected_candidate: null,
+        prior_source_doc_id: 'candidate-loi',
+      }),
+    }));
+  });
+
+  it('keeps a candidate unconfirmed when its source file hash changed after extraction', async () => {
+    const conflict = {
+      id: 'buyer-conflict',
+      property_id: 'room-1',
+      field_id: 'buyer-field',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      canonical_value: 'Redwood Capital Partners LLC',
+      canonical_source_doc_id: 'canonical-loi',
+      canonical_source_page: 1,
+      canonical_source_excerpt: 'Buyer: Redwood Capital Partners LLC.',
+      conflicting_value: 'Redwood Test Acquisitions LLC',
+      conflicting_source_doc_id: 'candidate-loi',
+      conflicting_source_page: 2,
+      conflicting_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      status: 'open',
+    };
+    mockRecoveryConflicts.push(conflict);
+    mockTransactionHistory.push({
+      property_id: 'room-1',
+      field_id: 'buyer-field',
+      event_type: 'conflict',
+      prior_value: 'Redwood Capital Partners LLC',
+      new_value: 'Redwood Test Acquisitions LLC',
+      source_doc_id: 'candidate-loi',
+      metadata: {
+        canonical_value: 'Redwood Capital Partners LLC',
+        canonical_source_doc_id: 'canonical-loi',
+        canonical_source_file_hash: 'original-hash',
+        conflicting_value: 'Redwood Test Acquisitions LLC',
+        conflicting_source_doc_id: 'candidate-loi',
+        conflicting_source_file_hash: 'candidate-hash',
+      },
+    });
+    mockDocumentAnalyses.push({
+      id: 'canonical-loi',
+      property_id: 'room-1',
+      source_hash: 'replaced-hash',
+      is_active: true,
+      superseded_at: null,
+    });
+    mockTransactionRecordFields = [{
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      status: 'conflicting',
+      source_type: 'document',
+      source_doc_id: 'canonical-loi',
+      source_file_hash: 'original-hash',
+    }];
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/conflicts/buyer-conflict/resolve')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ value_text: 'Redwood Capital Partners LLC' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      status: 'needs_review',
+      document_verified: false,
+    }));
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes[0].patch).toEqual(expect.objectContaining({
+      value_text: 'Redwood Capital Partners LLC',
+      status: 'needs_review',
+      source_doc_id: null,
+      source_file_hash: null,
+      source_excerpt: null,
+      verified_by: null,
+    }));
+    expect(changeSet.history_rows[0].metadata).toEqual(expect.objectContaining({
+      evidence_support: 'unavailable_or_inconsistent',
+      owner_review_required: true,
+      prior_source_file_hash: 'original-hash',
+    }));
+  });
+
+  it('resolves a conflicting candidate only with its own matching, current source evidence', async () => {
+    const conflict = {
+      id: 'buyer-conflict',
+      property_id: 'room-1',
+      field_id: 'buyer-field',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      canonical_value: 'Redwood Capital Partners LLC',
+      canonical_source_doc_id: 'canonical-loi',
+      canonical_source_page: 1,
+      canonical_source_excerpt: 'Buyer: Redwood Capital Partners LLC.',
+      conflicting_value: 'Redwood Test Acquisitions LLC',
+      conflicting_source_doc_id: 'candidate-loi',
+      conflicting_source_page: 2,
+      conflicting_source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+      status: 'open',
+    };
+    mockRecoveryConflicts.push(conflict);
+    mockDocumentAnalyses.push(
+      { id: 'canonical-loi', property_id: 'room-1', source_hash: 'canonical-hash', is_active: true, superseded_at: null },
+      { id: 'candidate-loi', property_id: 'room-1', source_hash: 'candidate-hash', is_active: true, superseded_at: null },
+    );
+    mockTransactionRecordFields = [{
+      id: 'buyer-field',
+      property_id: 'room-1',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      value_text: 'Redwood Capital Partners LLC',
+      status: 'conflicting',
+    }];
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/conflicts/buyer-conflict/resolve')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'http://localhost:3000')
+      .send({ value_text: 'Redwood Test Acquisitions LLC' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      status: 'verified',
+      document_verified: true,
+    }));
+    const changeSet = mockCanonicalRpc.mock.calls[0][1].p_change_set;
+    expect(changeSet.field_changes[0].patch).toEqual(expect.objectContaining({
+      value_text: 'Redwood Test Acquisitions LLC',
+      status: 'verified',
+      source_doc_id: 'candidate-loi',
+      source_file_hash: 'candidate-hash',
+      source_page: 2,
+      source_excerpt: 'Buyer: Redwood Test Acquisitions LLC (fictional).',
+    }));
+    expect(changeSet.history_rows[0].metadata).toEqual(expect.objectContaining({
+      evidence_support: 'selected_excerpt_matches_value',
+      selected_candidate: 'conflicting',
+      owner_review_required: false,
+    }));
   });
 });

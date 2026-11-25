@@ -32,6 +32,7 @@ import {
   isVerifiedAssetReadinessResponse,
 } from "../../lib/verifiedAssetReadinessDisplay.mjs";
 import SettlementReadinessPanel from "./SettlementReadinessPanel";
+import TransactionRecordProvenanceReview from "./TransactionRecordProvenanceReview";
 import {
   getPackRecordSchema,
   getRequiredRecordFields,
@@ -4542,6 +4543,16 @@ function DigitalAssetReadinessSection({
                         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-red-700">Conflicts to resolve</p>
                         <ul className="space-y-1">
                           {cat.conflictDefs.map(d => {
+                            const sourceField = d.state?.field || d.state || {};
+                            const sourceFieldId = d.state?.fieldId || sourceField.id;
+                            const hasDocumentEvidence = Boolean(
+                              sourceField.source_doc_id
+                                || sourceField.source_doc_version
+                                || sourceField.source_file_hash
+                                || sourceField.source_page != null
+                                || sourceField.source_excerpt
+                                || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
+                            );
                             const conflict = unresolvedRecordConflicts.find(item =>
                               normalizeAttentionFieldKey(item.fieldKey || item.field_key)
                                 === normalizeAttentionFieldKey(d.key),
@@ -4568,6 +4579,13 @@ function DigitalAssetReadinessSection({
                                     Resolve
                                   </button>
                                 </span>
+                                <TransactionRecordProvenanceReview
+                                  propertyId={propertyId}
+                                  fieldId={sourceFieldId}
+                                  ownerAccess={Boolean(ownerToken)}
+                                  hasDocumentEvidence={hasDocumentEvidence}
+                                  onUpdated={onRecordUpdated}
+                                />
                               </li>
                             );
                           })}
@@ -4583,6 +4601,15 @@ function DigitalAssetReadinessSection({
                         <ul className="space-y-1">
                           {cat.confirmedDefs.map(d => {
                             const confirmedFieldId = d.state?.fieldId || d.state?.field?.id;
+                            const sourceField = d.state?.field || d.state || {};
+                            const hasDocumentEvidence = Boolean(
+                              sourceField.source_doc_id
+                                || sourceField.source_doc_version
+                                || sourceField.source_file_hash
+                                || sourceField.source_page != null
+                                || sourceField.source_excerpt
+                                || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
+                            );
                             const provenanceGap = getCurrentProvenanceGap(d, provenanceGaps);
                             return (
                               <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`rounded-lg px-1 text-xs text-gray-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1' : ''}`}>
@@ -4627,6 +4654,13 @@ function DigitalAssetReadinessSection({
                                     {provenanceGap.requirement || 'Current value needs document/file provenance or an auditable owner approval.'}
                                   </span>
                                 )}
+                                <TransactionRecordProvenanceReview
+                                  propertyId={propertyId}
+                                  fieldId={confirmedFieldId}
+                                  ownerAccess={Boolean(ownerToken)}
+                                  hasDocumentEvidence={hasDocumentEvidence}
+                                  onUpdated={onRecordUpdated}
+                                />
                                 {editingField === confirmedFieldId && (
                                   <span className="mt-1 flex w-full items-center gap-1 pl-4">
                                     <input value={editValue} onChange={event => setEditValue(event.target.value)}
@@ -4650,7 +4684,18 @@ function DigitalAssetReadinessSection({
                          <p className="text-xs text-gray-400 italic">No unconfirmed candidates.</p>
                        ) : (
                          <ul className="space-y-1">
-                              {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => (
+                               {(expandedLists[`${cat.key}:awaiting`] ? cat.awaitingDefs : cat.awaitingDefs.slice(0, 4)).map(d => {
+                                 const sourceField = d.state?.field || d.state || {};
+                                 const sourceFieldId = d.state?.fieldId || sourceField.id;
+                                 const hasDocumentEvidence = Boolean(
+                                   sourceField.source_doc_id
+                                     || sourceField.source_doc_version
+                                     || sourceField.source_file_hash
+                                     || sourceField.source_page != null
+                                     || sourceField.source_excerpt
+                                     || ['document', 'document_extraction'].includes(String(sourceField.source_type || '').toLowerCase()),
+                                 );
+                                 return (
                                 <li key={d.key} id={`transaction-record-field-${encodeURIComponent(d.key)}`} data-transaction-record-field="true" data-transaction-record-key={d.key} data-transaction-record-label={d.label} className={`flex items-start gap-1.5 rounded-lg px-1 text-xs text-blue-700 transition-shadow ${focusedFieldKey === d.key ? 'bg-blue-50 ring-2 ring-blue-300 ring-offset-1' : ''}`}>
                                <span className="mt-0.5 text-blue-500 shrink-0">●</span>
                                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
@@ -4708,6 +4753,13 @@ function DigitalAssetReadinessSection({
                                       </button>
                                     </span>
                                   )}
+                                <TransactionRecordProvenanceReview
+                                  propertyId={propertyId}
+                                  fieldId={sourceFieldId}
+                                  ownerAccess={Boolean(ownerToken)}
+                                  hasDocumentEvidence={hasDocumentEvidence}
+                                  onUpdated={onRecordUpdated}
+                                />
                                </span>
                                 {editingField === (d.state?.fieldId || d.state?.field?.id) && (
                                   <span className="mt-1 flex w-full items-center gap-1 pl-4">
@@ -4720,7 +4772,8 @@ function DigitalAssetReadinessSection({
                                   </span>
                                 )}
                              </li>
-                           ))}
+                                 );
+                               })}
                             {cat.awaitingDefs.length > 4 && (
                               <li>
                                 <button
@@ -6574,7 +6627,9 @@ function TransactionConflictResolver({ propertyId, conflict, analyses = [], onRe
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-red-700">Transaction Record conflict</p>
             <h2 className="mt-1 text-lg font-bold text-gray-900">Resolve {conflict.label || 'Repair Costs'}</h2>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500">Choose the value that should remain authoritative for this transaction record.</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Choose the value that should remain authoritative. If its own excerpt does not support it, the field stays unconfirmed for owner review.
+            </p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 rounded-lg px-2 py-1 text-lg leading-none text-gray-400" aria-label="Close conflict resolver">×</button>
         </div>
