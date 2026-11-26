@@ -1,220 +1,216 @@
-/**
- * Onboarding Router — server-side user provisioning
- *
- * All onboarding writes use the Supabase SERVICE ROLE key (never the anon key)
- * so they can bypass RLS. The backend enforces that only lender admins or
- * platform admins can onboard other users.
- *
- * Endpoints:
- *   POST /api/onboarding/invite        — create auth user + profile + org membership
- *   POST /api/onboarding/assign-role   — update a user's app_role in org_members
- *   GET  /api/onboarding/members       — list org members with roles
- *   GET  /api/onboarding/me            — current user's profile + role
- */
+'use strict';
 
 const express = require('express');
+const { z } = require('zod');
+const { supabase: adminSupabase } = require('../db');
 const requireMembershipRole = require('../middlewares/requireMembershipRole');
-const { UUID_RE } = require('../middlewares/resolveCanonicalIdentity');
 
 const router = express.Router();
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INVITABLE_ROLES = new Set(['admin', 'member']);
 
-// Service-role client — NEVER expose to frontend
-const { supabase: adminSupabase } = require('../db');
+function rolePortal(role) {
+  return role === 'owner' || role === 'admin' ? 'lender' : 'lender';
+}
 
-// ── Role permission sets ───────────────────────────────────────
-const VALID_APP_ROLES = ['platform_admin', 'lender_admin', 'servicer', 'asset_manager', 'investor', 'borrower'];
+function canInviteRole(actorRole, targetRole) {
+  return INVITABLE_ROLES.has(targetRole) &&
+    (actorRole === 'owner' || (actorRole === 'admin' && targetRole === 'member'));
+}
 
-// Maps legacy role names (org_memberships.role) → new app_role values
-const LEGACY_ROLE_MAP = {
-  admin:         'lender_admin',
-  lender_admin:  'lender_admin',
-  platform_admin:'platform_admin',
-  servicer:      'servicer',
-  asset_manager: 'asset_manager',
-  investor:      'investor',
-  borrower:      'borrower',
-  member:        'member',
-};
+function canAssignRole(actorRole, targetRole) {
+  return actorRole === 'owner' && INVITABLE_ROLES.has(targetRole);
+}
 
-// ── GET /api/onboarding/me ──────────────────────────────────────
-router.get('/me', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+function serializeMembership(row) {
+  const email = row.invited_email || row.user?.email || null;
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    role: row.role,
+    app_role: row.role,
+    status: row.status,
+    created_at: row.created_at,
+    profiles: email ? { id: row.user_id, email, full_name: row.data?.full_name || null, avatar_url: null } : null,
+  };
+}
 
-    const [profileRes, memberRes, legacyRes] = await Promise.allSettled([
-      adminSupabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-      // New table: organization_members (has app_role column)
-      adminSupabase
-        .from('organization_members')
-        .select('app_role, status, organization_id')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-      // Legacy table: org_memberships (has role column = "admin", "investor", etc.)
-      adminSupabase
-        .from('org_memberships')
-        .select('role, org_id')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    const profile = profileRes.status === 'fulfilled' ? profileRes.value.data : null;
-    const membership = memberRes.status === 'fulfilled' ? memberRes.value.data : null;
-    const legacy = legacyRes.status === 'fulfilled' ? legacyRes.value.data : null;
-
-    // Priority: organization_members.app_role > JWT claim > org_memberships.role
-    const appRole =
-      membership?.app_role ??
-      req.role ??
-      (legacy?.role ? LEGACY_ROLE_MAP[legacy.role] ?? 'lender_admin' : null) ??
-      'member';
-
-    const orgId = membership?.organization_id ?? req.orgId ?? legacy?.org_id ?? null;
-
-    const portal = (() => {
-      if (['platform_admin','lender_admin','servicer','asset_manager'].includes(appRole)) return 'lender';
-      if (appRole === 'investor') return 'investor';
-      if (appRole === 'borrower') return 'borrower';
-      return 'lender';
-    })();
-
-    return res.json({ profile, app_role: appRole, org_id: orgId, portal });
-  } catch (err) {
-    console.error('[onboarding] /me error', err);
-    return res.status(500).json({ error: 'Internal server error' });
+router.get('/me', (req, res) => {
+  if (!req.authUserId || !req.membership) {
+    return res.status(401).json({ code: 'AUTH_REQUIRED' });
   }
+  const role = req.membershipRole;
+  const email = req.user?.email || null;
+  const fullName = req.user?.user_metadata?.full_name || null;
+  return res.json({
+    profile: { id: req.authUserId, email, full_name: fullName, avatar_url: null },
+    app_role: role,
+    role,
+    org_id: req.orgId,
+    portal: rolePortal(role),
+  });
 });
 
-// ── GET /api/onboarding/members ─────────────────────────────────
 router.get('/members', requireMembershipRole('owner', 'admin'), async (req, res) => {
-  try {
-    const orgId = req.orgId;
-    if (!orgId) return res.status(400).json({ error: 'Org context missing' });
+  const { data, error } = await adminSupabase
+    .from('org_memberships')
+    .select('id, org_id, user_id, role, status, invited_email, data, created_at, deleted_at')
+    .eq('org_id', req.orgId)
+    .order('created_at', { ascending: true });
 
-    const { data, error } = await adminSupabase
-      .from('organization_members')
-      .select('id, user_id, app_role, status, created_at, profiles(id, email, full_name, avatar_url)')
-      .eq('organization_id', orgId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    return res.json({ members: data ?? [] });
-  } catch (err) {
-    console.error('[onboarding] /members error', err);
-    return res.status(500).json({ error: 'Internal server error' });
+  if (error) {
+    console.error('[onboarding] canonical membership list failed', error.code || 'query_error');
+    return res.status(503).json({ code: 'ORG_MEMBERSHIP_LOOKUP_UNAVAILABLE' });
   }
+  const members = await Promise.all((data || []).map(async (row) => {
+    if (row.invited_email) return serializeMembership(row);
+    try {
+      const { data: authUser } = await adminSupabase.auth.admin.getUserById(row.user_id);
+      return serializeMembership({ ...row, user: authUser?.user || null });
+    } catch {
+      return serializeMembership(row);
+    }
+  }));
+  return res.json({
+    members,
+    permissions: {
+      canAssignRoles: req.membershipRole === 'owner',
+      canInviteAdmin: req.membershipRole === 'owner',
+      canRevokeMembers: true,
+    },
+  });
 });
 
-// ── POST /api/onboarding/invite ─────────────────────────────────
-// Body: { email, full_name, app_role, org_id? }
-// Creates a Supabase auth user, profile, and org membership.
-// Supabase sends the invite email automatically.
 router.post('/invite', requireMembershipRole('owner', 'admin'), async (req, res) => {
-  try {
-    const { email, full_name, app_role, org_id } = req.body;
-
-    if (!email || !app_role) {
-      return res.status(400).json({ error: 'email and app_role are required' });
-    }
-    if (!VALID_APP_ROLES.includes(app_role)) {
-      return res.status(400).json({ error: `Invalid app_role. Valid: ${VALID_APP_ROLES.join(', ')}` });
-    }
-
-    const targetOrgId = org_id ?? req.orgId;
-    if (!targetOrgId) return res.status(400).json({ error: 'org_id required' });
-    if (String(targetOrgId) !== String(req.orgId)) {
-      return res.status(403).json({ code: 'ORG_FORBIDDEN' });
-    }
-    if (['platform_admin', 'lender_admin'].includes(app_role) && req.role !== 'platform_admin') {
-      return res.status(403).json({ error: 'Only platform_admin can create admin users' });
-    }
-
-    // 1. Create (or invite) auth user via service role
-    const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(email, {
-      data: { full_name, app_role, org_id: targetOrgId },
-    });
-
-    if (inviteError) {
-      // If user already exists, look them up instead
-      if (!inviteError.message?.includes('already registered')) throw inviteError;
-    }
-
-    const authUserId = inviteData?.user?.id;
-
-    // 2. Upsert via the server-side onboard_user helper
-    if (authUserId) {
-      await adminSupabase.rpc('onboard_user', {
-        p_user_id:    authUserId,
-        p_org_id:     targetOrgId,
-        p_app_role:   app_role,
-        p_full_name:  full_name ?? null,
-        p_email:      email,
-      });
-    }
-
-    return res.status(201).json({
-      message:   `Invite sent to ${email}`,
-      user_id:   authUserId ?? null,
-      app_role,
-      org_id:    targetOrgId,
-    });
-  } catch (err) {
-    console.error('[onboarding] /invite error', err);
-    return res.status(500).json({ error: err.message ?? 'Internal server error' });
+  const parsed = z.object({
+    email: z.string().trim().email().max(320),
+    full_name: z.string().trim().max(120).optional(),
+    app_role: z.enum(['admin', 'member']).optional(),
+    role: z.enum(['admin', 'member']).optional(),
+    org_id: z.string().uuid().optional(),
+  }).safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ code: 'INVITE_INPUT_INVALID' });
   }
+  const { email, full_name: fullName } = parsed.data;
+  const targetRole = parsed.data.role || parsed.data.app_role || 'member';
+
+  if (parsed.data.org_id && String(parsed.data.org_id) !== String(req.orgId)) {
+    return res.status(403).json({ code: 'ORG_FORBIDDEN' });
+  }
+  if (!canInviteRole(req.membershipRole, targetRole)) {
+    return res.status(403).json({ code: 'ORG_ROLE_FORBIDDEN' });
+  }
+
+  const normalizedEmail = email.toLowerCase();
+  const { data: existingRows, error: lookupError } = await adminSupabase
+    .from('org_memberships')
+    .select('id, status')
+    .eq('org_id', req.orgId)
+    .eq('invited_email', normalizedEmail)
+    .limit(1);
+  if (lookupError) {
+    console.error('[onboarding] invite membership lookup failed', lookupError.code || 'query_error');
+    return res.status(503).json({ code: 'ORG_MEMBERSHIP_LOOKUP_UNAVAILABLE' });
+  }
+  if (existingRows?.length) {
+    return res.status(409).json({ code: 'ORG_MEMBERSHIP_ALREADY_EXISTS' });
+  }
+
+  const { data: invitation, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+    normalizedEmail,
+    { data: { full_name: fullName || null, org_id: req.orgId, org_role: targetRole } },
+  );
+  if (inviteError || !UUID_RE.test(String(invitation?.user?.id || ''))) {
+    console.warn('[onboarding] Supabase Auth invitation failed', inviteError?.code || 'invalid_auth_user');
+    return res.status(502).json({ code: 'INVITATION_DELIVERY_FAILED' });
+  }
+
+  const invitedUserId = invitation.user.id;
+  const { data: membership, error: membershipError } = await adminSupabase
+    .from('org_memberships')
+    .insert({
+      org_id: req.orgId,
+      user_id: invitedUserId,
+      role: targetRole,
+      status: 'active',
+      invited_email: normalizedEmail,
+      created_by: req.authUserId,
+      data: fullName ? { full_name: fullName } : {},
+    })
+    .select('id, org_id, user_id, role, status, invited_email, data, created_at')
+    .single();
+  if (membershipError) {
+    // The Auth invitation may already have been delivered. The user remains
+    // unable to access this organization unless the membership insert succeeds.
+    console.error('[onboarding] invited user membership insert failed', membershipError.code || 'insert_error');
+    return res.status(503).json({ code: 'ORG_MEMBERSHIP_CREATE_FAILED' });
+  }
+
+  return res.status(201).json({ member: serializeMembership(membership) });
 });
 
-// ── POST /api/onboarding/assign-role ────────────────────────────
-// Body: { user_id, app_role }
-// Updates an existing org member's role and refreshes their JWT claims.
-router.post('/assign-role', requireMembershipRole('owner', 'admin'), async (req, res) => {
-  try {
-    const { user_id, app_role } = req.body;
-    if (!user_id || !UUID_RE.test(String(user_id)) || !app_role) {
-      return res.status(400).json({ error: 'user_id and app_role are required' });
-    }
-    if (!VALID_APP_ROLES.includes(app_role)) {
-      return res.status(400).json({ error: `Invalid app_role. Valid: ${VALID_APP_ROLES.join(', ')}` });
-    }
-    if (['platform_admin', 'lender_admin'].includes(app_role) && req.role !== 'platform_admin') {
-      return res.status(403).json({ error: 'Only platform_admin can assign admin roles' });
-    }
+router.post('/assign-role', requireMembershipRole('owner'), async (req, res) => {
+  const parsed = z.object({
+    user_id: z.string().regex(UUID_RE),
+    app_role: z.enum(['admin', 'member']).optional(),
+    role: z.enum(['admin', 'member']).optional(),
+  }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ code: 'ROLE_ASSIGNMENT_INVALID' });
 
-    const orgId = req.orgId;
-    if (!orgId) return res.status(403).json({ code: 'ORG_MEMBERSHIP_REQUIRED' });
-
-    const { data: updatedMember, error } = await adminSupabase
-      .from('organization_members')
-      .update({ app_role, updated_at: new Date().toISOString() })
-      .eq('user_id', user_id)
-      .eq('organization_id', orgId)
-      .select('user_id, organization_id, app_role')
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!updatedMember) return res.status(404).json({ error: 'Organization member not found' });
-
-    // Log the role change to audit_logs
-    await adminSupabase.from('audit_logs').insert({
-      organization_id: orgId,
-      actor_id:        req.authUserId,
-      actor_role:      req.role,
-      entity_type:     'organization_members',
-      entity_id:       user_id,
-      action:          'role_assigned',
-      after_state:     { app_role },
-    });
-
-    return res.json({ message: `Role updated to ${app_role} for user ${user_id}` });
-  } catch (err) {
-    console.error('[onboarding] /assign-role error', err);
-    return res.status(500).json({ error: err.message ?? 'Internal server error' });
+  const targetRole = parsed.data.role || parsed.data.app_role;
+  const targetUserId = parsed.data.user_id;
+  if (!targetRole || !canAssignRole(req.membershipRole, targetRole)) {
+    return res.status(403).json({ code: 'ORG_ROLE_FORBIDDEN' });
   }
+  if (String(targetUserId) === String(req.authUserId)) {
+    return res.status(403).json({ code: 'SELF_ROLE_CHANGE_FORBIDDEN' });
+  }
+
+  const { data, error } = await adminSupabase
+    .from('org_memberships')
+    .update({ role: targetRole, updated_at: new Date().toISOString() })
+    .eq('org_id', req.orgId)
+    .eq('user_id', targetUserId)
+    .eq('status', 'active')
+    .neq('role', 'owner')
+    .select('id, user_id, role, status, created_at')
+    .maybeSingle();
+  if (error) {
+    console.error('[onboarding] membership role update failed', error.code || 'update_error');
+    return res.status(503).json({ code: 'ORG_MEMBERSHIP_UPDATE_FAILED' });
+  }
+  if (!data) return res.status(404).json({ code: 'ORG_MEMBERSHIP_NOT_FOUND' });
+  return res.json({ member: data });
+});
+
+router.post('/revoke', requireMembershipRole('owner', 'admin'), async (req, res) => {
+  const parsed = z.object({ user_id: z.string().regex(UUID_RE) }).safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ code: 'MEMBERSHIP_REVOCATION_INVALID' });
+  const targetUserId = parsed.data.user_id;
+  if (String(targetUserId) === String(req.authUserId)) {
+    return res.status(403).json({ code: 'SELF_REVOCATION_FORBIDDEN' });
+  }
+
+  let query = adminSupabase
+    .from('org_memberships')
+    .update({ status: 'revoked', deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('org_id', req.orgId)
+    .eq('user_id', targetUserId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .neq('role', 'owner');
+  if (req.membershipRole === 'admin') query = query.eq('role', 'member');
+
+  const { data, error } = await query
+    .select('id, user_id, role, status, deleted_at')
+    .maybeSingle();
+  if (error) {
+    console.error('[onboarding] membership revocation failed', error.code || 'update_error');
+    return res.status(503).json({ code: 'ORG_MEMBERSHIP_UPDATE_FAILED' });
+  }
+  if (!data) return res.status(404).json({ code: 'ORG_MEMBERSHIP_NOT_FOUND' });
+  return res.json({ member: data });
 });
 
 module.exports = router;

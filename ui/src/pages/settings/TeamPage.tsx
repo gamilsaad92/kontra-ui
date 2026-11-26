@@ -2,12 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/apiClient";
 
 const ROLES = [
-  { value: "platform_admin",  label: "Platform Admin",  color: "bg-rose-900/40 text-rose-300 border-rose-700" },
-  { value: "lender_admin",    label: "Lender Admin",    color: "bg-red-900/40 text-red-300 border-red-700" },
-  { value: "servicer",        label: "Servicer",        color: "bg-amber-900/40 text-amber-300 border-amber-700" },
-  { value: "asset_manager",   label: "Asset Manager",   color: "bg-yellow-900/40 text-yellow-300 border-yellow-700" },
-  { value: "investor",        label: "Investor",        color: "bg-violet-900/40 text-violet-300 border-violet-700" },
-  { value: "borrower",        label: "Borrower",        color: "bg-emerald-900/40 text-emerald-300 border-emerald-700" },
+  { value: "owner", label: "Owner", color: "bg-rose-900/40 text-rose-300 border-rose-700" },
+  { value: "admin", label: "Admin", color: "bg-red-900/40 text-red-300 border-red-700" },
+  { value: "member", label: "Member", color: "bg-slate-800 text-slate-300 border-slate-600" },
 ] as const;
 
 type AppRole = (typeof ROLES)[number]["value"];
@@ -41,10 +38,10 @@ function Initials({ name, email }: { name: string | null; email: string }) {
   );
 }
 
-function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function InviteModal({ onClose, onSuccess, canInviteAdmin }: { onClose: () => void; onSuccess: () => void; canInviteAdmin: boolean }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<AppRole>("servicer");
+  const [role, setRole] = useState<AppRole>("member");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -104,17 +101,13 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
               onChange={(e) => setRole(e.target.value as AppRole)}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-600"
             >
-              {ROLES.map((r) => (
+              {ROLES.filter((r) => r.value === "member" || (r.value === "admin" && canInviteAdmin)).map((r) => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
             <p className="mt-1.5 text-xs text-slate-500">
-              {role === "investor" && "Access: Investor portal — capital stack, holdings, distributions."}
-              {role === "borrower" && "Access: Borrower portal — loan status, draws, documents."}
-              {role === "servicer" && "Access: Lender dashboard — servicing, payments, inspections."}
-              {role === "asset_manager" && "Access: Lender dashboard — portfolio, analytics, risk."}
-              {role === "lender_admin" && "Access: All three portals + admin controls."}
-              {role === "platform_admin" && "Access: Full platform — all portals, billing, user management."}
+              {role === "admin" && "Can manage members and organization settings. Only an owner can assign this role."}
+              {role === "member" && "Can access institutional workspace features allowed to organization members."}
             </p>
           </div>
           {err && <p className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded px-3 py-2">{err}</p>}
@@ -146,7 +139,11 @@ export default function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [changingRole, setChangingRole] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
+  const [canAssignRoles, setCanAssignRoles] = useState(false);
+  const [canInviteAdmin, setCanInviteAdmin] = useState(false);
+  const [canRevokeMembers, setCanRevokeMembers] = useState(false);
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -156,6 +153,9 @@ export default function TeamPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setMembers(Array.isArray(data) ? data : data.members ?? []);
+      setCanAssignRoles(Boolean(data.permissions?.canAssignRoles));
+      setCanInviteAdmin(Boolean(data.permissions?.canInviteAdmin));
+      setCanRevokeMembers(Boolean(data.permissions?.canRevokeMembers));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load members");
     } finally {
@@ -186,12 +186,35 @@ export default function TeamPage() {
     }
   };
 
+  const handleRevoke = async (userId: string) => {
+    if (!window.confirm("Revoke this member's access to the organization?")) return;
+    setRevoking(userId);
+    setRoleError(null);
+    try {
+      const res = await apiFetch("/api/onboarding/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      await loadMembers();
+    } catch (e: unknown) {
+      setRoleError(e instanceof Error ? e.message : "Access revocation failed");
+    } finally {
+      setRevoking(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 px-6 py-8">
       {showInvite && (
         <InviteModal
           onClose={() => setShowInvite(false)}
           onSuccess={loadMembers}
+          canInviteAdmin={canInviteAdmin}
         />
       )}
 
@@ -251,6 +274,7 @@ export default function TeamPage() {
                 <th className="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Change Role</th>
                 <th className="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Joined</th>
+                <th className="px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Access</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -279,16 +303,18 @@ export default function TeamPage() {
 
                     {/* Change role */}
                     <td className="px-5 py-4">
-                      <select
-                        value={m.app_role}
-                        disabled={isChanging}
-                        onChange={(e) => handleRoleChange(m.user_id, e.target.value as AppRole)}
-                        className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-600 disabled:opacity-50 disabled:cursor-wait"
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </select>
+                      {canAssignRoles && m.app_role !== "owner" ? (
+                        <select
+                          value={m.app_role}
+                          disabled={isChanging}
+                          onChange={(e) => handleRoleChange(m.user_id, e.target.value as AppRole)}
+                          className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-600 disabled:opacity-50 disabled:cursor-wait"
+                        >
+                          {ROLES.filter((r) => r.value !== "owner").map((r) => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </select>
+                      ) : <span className="text-slate-500 text-xs">—</span>}
                       {isChanging && (
                         <span className="ml-2 text-xs text-slate-500">Saving…</span>
                       )}
@@ -310,6 +336,19 @@ export default function TeamPage() {
                         ? new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                         : "—"}
                     </td>
+                    <td className="px-5 py-4">
+                      {canRevokeMembers && m.status === "active" && m.app_role !== "owner" &&
+                        (canAssignRoles || m.app_role === "member") ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRevoke(m.user_id)}
+                          disabled={revoking === m.user_id}
+                          className="text-xs text-red-300 hover:text-red-200 disabled:opacity-50"
+                        >
+                          {revoking === m.user_id ? "Revoking…" : "Revoke"}
+                        </button>
+                      ) : <span className="text-slate-500 text-xs">—</span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -318,31 +357,13 @@ export default function TeamPage() {
         )}
       </div>
 
-      {/* How roles map to portals */}
+      {/* Organization role boundaries */}
       <div className="mt-8 bg-slate-900/50 border border-slate-800 rounded-xl p-5">
-        <h3 className="text-sm font-medium text-slate-300 mb-4">Role → Portal Mapping</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-lg border border-red-900/40 bg-red-950/20 p-3">
-            <p className="text-xs font-semibold text-red-300 mb-1.5">Lender Dashboard</p>
-            <div className="flex flex-wrap gap-1">
-              <RoleBadge role="lender_admin" />
-              <RoleBadge role="servicer" />
-              <RoleBadge role="asset_manager" />
-              <RoleBadge role="platform_admin" />
-            </div>
-          </div>
-          <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 p-3">
-            <p className="text-xs font-semibold text-violet-300 mb-1.5">Investor Portal</p>
-            <div className="flex flex-wrap gap-1">
-              <RoleBadge role="investor" />
-            </div>
-          </div>
-          <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-3">
-            <p className="text-xs font-semibold text-emerald-300 mb-1.5">Borrower Portal</p>
-            <div className="flex flex-wrap gap-1">
-              <RoleBadge role="borrower" />
-            </div>
-          </div>
+        <h3 className="text-sm font-medium text-slate-300 mb-4">Organization roles</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-400">
+          <p><RoleBadge role="owner" /> Full organization control. Ownership cannot be reassigned here.</p>
+          <p><RoleBadge role="admin" /> Manage members and settings; cannot promote or revoke an owner.</p>
+          <p><RoleBadge role="member" /> Organization access without membership administration.</p>
         </div>
       </div>
     </div>

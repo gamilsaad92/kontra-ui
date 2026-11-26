@@ -45,6 +45,10 @@ function mockMakeQuery(table) {
       mockQueryLog.push({ table, method: 'update', values });
       return query;
     },
+    neq(field, value) {
+      mockQueryLog.push({ table, method: 'neq', field, value });
+      return query;
+    },
     then(resolve, reject) {
       return Promise.resolve({ data: mockTableRows[table] || [], error: null, count: 0 }).then(resolve, reject);
     },
@@ -106,6 +110,7 @@ function buildApp() {
     req.membershipRole = membershipRole;
     req.membership = {
       org_id: ORG_A,
+      user_id: req.authUserId,
       status: 'active',
       deleted_at: null,
       role: membershipRole,
@@ -180,23 +185,37 @@ describe('tenant query and membership guardrails', () => {
       user_id: 'bbbbbbbb-4444-4444-8444-444444444444',
       role: 'member',
     })).status).toBe(201);
+
+    membershipRole = 'owner';
+    const ownerPromotion = await request(buildApp()).post(`/orgs/${ORG_A}/members`).send({
+      user_id: 'bbbbbbbb-4444-4444-8444-444444444444',
+      role: 'owner',
+    });
+    expect(ownerPromotion.status).toBe(403);
   });
 
-  test('denies member role changes and allows organization admins to change scoped roles', async () => {
+  test('only owners can change canonical organization roles', async () => {
     membershipRole = 'member';
     const denied = await request(buildApp()).post('/onboarding/assign-role').send({
       user_id: 'bbbbbbbb-4444-4444-8444-444444444444',
-      app_role: 'servicer',
+      app_role: 'member',
     });
     expect(denied.status).toBe(403);
 
     membershipRole = 'admin';
-    const allowed = await request(buildApp()).post('/onboarding/assign-role').send({
+    const adminDenied = await request(buildApp()).post('/onboarding/assign-role').send({
       user_id: 'bbbbbbbb-0000-0000-0000-000000000000',
-      app_role: 'servicer',
+      app_role: 'member',
+    });
+    expect(adminDenied.status).toBe(403);
+
+    membershipRole = 'owner';
+    const allowed = await request(buildApp()).post('/onboarding/assign-role').send({
+      user_id: 'bbbbbbbb-4444-4444-8444-444444444444',
+      app_role: 'member',
     });
     expect(allowed.status).toBe(200);
-    expect(mockQueryLog).toContainEqual({ table: 'organization_members', method: 'eq', field: 'organization_id', value: ORG_A });
+    expect(mockQueryLog).toContainEqual({ table: 'org_memberships', method: 'eq', field: 'org_id', value: ORG_A });
   });
 
   test('scopes dashboard, mobile, and applications queries to the active organization', async () => {

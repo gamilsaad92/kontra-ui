@@ -91,7 +91,7 @@ router.post('/:id/members', requireMatchingOrganization, requireMembershipRole('
     role: z.enum(['owner', 'admin', 'member']).default('member'),
     data: z.record(z.any()).optional(),
   }).parse(req.body);
-  if (payload.role === 'owner' && req.membershipRole !== 'owner') {
+  if (payload.role === 'owner' || (payload.role === 'admin' && req.membershipRole !== 'owner')) {
     return res.status(403).json({ code: 'ORG_ROLE_FORBIDDEN' });
   }
 

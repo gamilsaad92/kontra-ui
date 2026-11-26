@@ -134,39 +134,65 @@ router.post('/bootstrap', async (req, res) => {
   if (!token) return res.status(401).json({ error: 'Missing access token' });
 
   try {
-    // Verify local JWT first
-    let userId, userEmail;
+    let authProvider;
+    let authSubject;
+    let userEmail;
     try {
       const payload = localAuth.verifyAccessToken(token);
-      userId = payload.sub;
+      authProvider = 'local';
+      authSubject = String(payload.sub || '');
       userEmail = payload.email;
     } catch (_) {
       // If it's a Supabase token, try that
       if (supabaseAdmin) {
         const { data, error } = await supabaseAdmin.auth.getUser(token);
         if (error || !data?.user) return res.status(401).json({ error: 'Invalid token' });
-        userId = data.user.id;
+        authProvider = 'supabase';
+        authSubject = String(data.user.id);
         userEmail = data.user.email;
       } else {
         return res.status(401).json({ error: 'Invalid token' });
       }
     }
 
-    const { getPool } = require('../../lib/pgAdapter');
-    const pool = getPool();
+    if (!supabaseAdmin) {
+      return res.status(503).json({ code: 'ORG_MEMBERSHIP_LOOKUP_UNAVAILABLE' });
+    }
 
-    // Get user's org memberships
-    const { rows: orgs } = await pool.query(
-      `SELECT o.id, o.name, om.role
-         FROM users u
-         JOIN org_memberships om ON om.user_id = u.id
-         JOIN organizations o ON o.id = om.org_id
-        WHERE u.id = $1 OR u.email = $2
-        ORDER BY o.created_at ASC`,
-      [userId, userEmail]
-    );
+    let userId = authSubject;
+    if (authProvider === 'local') {
+      const { data: identityLink, error: identityError } = await supabaseAdmin
+        .from('local_auth_identity_links')
+        .select('auth_user_id')
+        .eq('issuer', 'kontra-local')
+        .eq('subject', authSubject)
+        .maybeSingle();
+      if (identityError) {
+        return res.status(503).json({ code: 'IDENTITY_LOOKUP_UNAVAILABLE' });
+      }
+      if (!identityLink?.auth_user_id) {
+        return res.status(403).json({ code: 'IDENTITY_LINK_REQUIRED' });
+      }
+      userId = String(identityLink.auth_user_id);
+    }
 
-    const normalizedOrgs = orgs.map(o => ({ id: String(o.id), name: o.name, role: o.role }));
+    const { data: memberships, error: membershipError } = await supabaseAdmin
+      .from('org_memberships')
+      .select('org_id, role, status, deleted_at, organizations!inner(id, name, status, created_at)')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .eq('organizations.status', 'active')
+      .order('created_at', { ascending: true });
+    if (membershipError) {
+      return res.status(503).json({ code: 'ORG_MEMBERSHIP_LOOKUP_UNAVAILABLE' });
+    }
+
+    const normalizedOrgs = (memberships || []).map((membership) => ({
+      id: String(membership.org_id),
+      name: membership.organizations?.name || 'Organization',
+      role: membership.role,
+    }));
     const activeOrgId = normalizedOrgs[0]?.id || null;
 
     return res.status(200).json({

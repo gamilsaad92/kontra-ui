@@ -27,6 +27,7 @@ const DEFERRED_PREFIXES = Object.freeze([
   { module: 'portfolio_and_dashboard', prefixes: ['/api/dashboard', '/api/dashboard-layout', '/api/portfolio', '/api/servicing'] },
   { module: 'institutional_reporting', prefixes: ['/api/reports', '/api/investor-reports'] },
   { module: 'mobile_lending', prefixes: ['/api/mobile'] },
+  { module: 'external_identity_integrations', prefixes: ['/api/sso'] },
 ]);
 
 function requestPath(req) {
