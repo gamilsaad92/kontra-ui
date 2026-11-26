@@ -220,27 +220,48 @@ describe('organization membership gate', () => {
       originalUrl: '/organizations',
       url: '/organizations',
       baseUrl: '/api',
+      path: '/organizations',
     };
 
     expect(isExempt({ ...mountedRequest, method: 'GET' })).toBe(true);
     expect(isExempt({ ...mountedRequest, method: 'POST' })).toBe(true);
     expect(isExempt({
+      originalUrl: '/organizations',
+      url: '/organizations',
+      path: '/organizations',
+      method: 'POST',
+    })).toBe(true);
+    expect(isExempt({
+      originalUrl: '/api/organizations/',
+      url: '/organizations/',
+      baseUrl: '/api',
+      path: '/organizations/',
+      method: 'POST',
+    })).toBe(true);
+    expect(isExempt({
       ...mountedRequest,
       originalUrl: '/organizations/org-id',
       url: '/organizations/org-id',
+      path: '/organizations/org-id',
       method: 'POST',
     })).toBe(false);
-    expect(isExempt({ ...mountedRequest, baseUrl: '/other', method: 'POST' })).toBe(false);
+    expect(isExempt({
+      originalUrl: '/organizations',
+      url: '/organizations',
+      baseUrl: '/other',
+      path: '/organizations',
+      method: 'POST',
+    })).toBe(false);
     expect(isExempt({
       originalUrl: '/plans',
       url: '/plans',
-      baseUrl: '/api',
+      path: '/plans',
       method: 'GET',
     })).toBe(true);
     expect(isExempt({
       originalUrl: '/plans',
       url: '/plans',
-      baseUrl: '/api',
+      path: '/plans',
       method: 'POST',
     })).toBe(false);
   });

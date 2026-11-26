@@ -8,13 +8,21 @@ function requestPath(req) {
   return (req.originalUrl || req.url || '').split('?')[0];
 }
 
+function normalizedPath(value) {
+  const path = String(value || '').split('?')[0];
+  return path.length > 1 ? path.replace(/\/+$/, '') : path;
+}
+
 function isExempt(req) {
-  const path = requestPath(req);
-  const mounted = (req.url || '').split('?')[0];
-  const baseUrl = (req.baseUrl || '').replace(/\/+$/, '');
+  const path = normalizedPath(requestPath(req));
+  const mounted = normalizedPath(req.url || '');
+  const routePath = normalizedPath(req.path || '');
+  const baseUrl = normalizedPath(req.baseUrl || '');
+  const relativeRouteIsApiScoped = !baseUrl || baseUrl === '/api';
   const method = String(req.method || 'GET').toUpperCase();
   const matchesApiPath = (fullPath, mountedPath) =>
-    path === fullPath || (baseUrl === '/api' && mounted === mountedPath);
+    path === fullPath ||
+    (relativeRouteIsApiScoped && (mounted === mountedPath || routePath === mountedPath));
   return path === '/api/health' ||
     (method === 'GET' && matchesApiPath('/api/organizations', '/organizations')) ||
     (method === 'POST' && matchesApiPath('/api/organizations', '/organizations')) ||

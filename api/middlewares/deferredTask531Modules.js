@@ -1,7 +1,9 @@
 'use strict';
 
 const DEFERRED_PREFIXES = Object.freeze([
-  { module: 'institutional_tenancy', prefixes: ['/api/orgs', '/api/me', '/api/invites'] },
+  // Keep the duplicate /api/orgs router and legacy invites deferred. The
+  // verified /api/me bootstrap routes are canonical and ready for staging.
+  { module: 'institutional_tenancy', prefixes: ['/api/orgs', '/api/invites'] },
   {
     module: 'lending_and_servicing',
     prefixes: [

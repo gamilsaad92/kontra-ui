@@ -1,5 +1,6 @@
 const express = require('express');
 const request = require('supertest');
+const { createDeferredTask531Modules } = require('../../../middlewares/deferredTask531Modules');
 
 jest.mock('../../../middlewares/authenticate', () => (req, _res, next) => {
   req.user = { id: 'aaaaaaaa-0000-0000-0000-000000000000', user_metadata: {} };
@@ -36,6 +37,7 @@ describe('GET /bootstrap', () => {
   test('returns 200 with empty orgs when user has no memberships', async () => {
     const app = express();
     app.use(express.json());
+    app.use('/api', createDeferredTask531Modules({ enabled: true }));
     app.use('/api/me', router);
 
     const tokenPayload = Buffer.from(JSON.stringify({ sub: 'user-1' })).toString('base64url');
@@ -52,6 +54,7 @@ describe('GET /bootstrap', () => {
   test('creates the organization and owner using the verified Supabase Auth UUID', async () => {
     const app = express();
     app.use(express.json());
+    app.use('/api', createDeferredTask531Modules({ enabled: true }));
     app.use('/api/me', router);
     mockRpc.mockResolvedValueOnce({
       data: {

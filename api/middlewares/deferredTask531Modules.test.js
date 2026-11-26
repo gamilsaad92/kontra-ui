@@ -10,6 +10,11 @@ function buildApp(enabled) {
   app.get('/api/orgs', (_req, res) => res.json({ active: true }));
   app.post('/api/organizations', (_req, res) => res.status(201).json({ created: true }));
   app.get('/api/organizations/:id', (req, res) => res.json({ id: req.params.id }));
+  app.get('/api/me', (_req, res) => res.json({ authenticatedRouteReached: true }));
+  app.get('/api/me/bootstrap', (_req, res) => res.json({ authenticatedRouteReached: true }));
+  app.get('/api/me/active', (_req, res) => res.json({ authenticatedRouteReached: true }));
+  app.post('/api/me', (_req, res) => res.status(201).json({ created: true }));
+  app.post('/api/me/select', (_req, res) => res.json({ selected: true }));
   app.get('/api/onboarding/me', (_req, res) => res.json({ authenticatedRouteReached: true }));
   app.post('/api/onboarding/invite', (_req, res) => res.status(201).json({ invited: true }));
   app.post('/api/invites/accept', (_req, res) => res.status(201).json({ accepted: true }));
@@ -24,7 +29,6 @@ function buildApp(enabled) {
 describe('Task #531 deferred module boundary', () => {
   test.each([
     ['/api/orgs', 'institutional_tenancy'],
-    ['/api/me/select', 'institutional_tenancy'],
     ['/api/invites/accept', 'institutional_tenancy'],
     ['/api/loans/123', 'lending_and_servicing'],
     ['/api/copilot/ask', 'lending_and_servicing'],
@@ -45,11 +49,22 @@ describe('Task #531 deferred module boundary', () => {
   test.each([
     ['POST', '/api/organizations', 201],
     ['GET', '/api/organizations/org-1', 200],
+    ['GET', '/api/me', 200],
+    ['GET', '/api/me/bootstrap', 200],
+    ['GET', '/api/me/active', 200],
+    ['POST', '/api/me', 201],
+    ['POST', '/api/me/select', 200],
     ['GET', '/api/onboarding/me', 200],
     ['POST', '/api/onboarding/invite', 201],
   ])('passes canonical organization route %s %s through staging deferral', async (method, path, status) => {
     const response = await request(buildApp(true))[method.toLowerCase()](path);
     expect(response.status).toBe(status);
+    expect(response.body.code).not.toBe('TASK531_MODULE_DEFERRED');
+  });
+
+  test('keeps unsupported /api/me paths behind normal routing, not the deferred stub', async () => {
+    const response = await request(buildApp(true)).get('/api/me/not-a-route');
+    expect(response.status).toBe(404);
     expect(response.body.code).not.toBe('TASK531_MODULE_DEFERRED');
   });
 

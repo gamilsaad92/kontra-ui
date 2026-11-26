@@ -80,6 +80,7 @@ const express = require('express');
 const request = require('supertest');
 const { __test: dbTest } = require('../db');
 const { createRequireOrgContext } = require('../src/middleware/requireOrgContext');
+const { createDeferredTask531Modules } = require('../middlewares/deferredTask531Modules');
 const authenticate = require('../middlewares/authenticate');
 const organizationsRouter = require('./organizations');
 
@@ -91,6 +92,7 @@ const ORG_B = 'bbbbbbbb-1111-0000-0000-000000000000';
 function buildApp(options = {}) {
   const app = express();
   app.use(express.json());
+  app.use('/api', createDeferredTask531Modules({ enabled: true }));
   const membershipFilters = [];
   const membershipQuery = {
     select: jest.fn(),
