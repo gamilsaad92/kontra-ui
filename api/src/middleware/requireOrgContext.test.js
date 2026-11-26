@@ -214,4 +214,34 @@ describe('organization membership gate', () => {
     expect(isExempt({ originalUrl: '/api/plans', url: '/api/plans', method: 'GET' })).toBe(true);
     expect(isExempt({ originalUrl: '/api/plans', url: '/api/plans', method: 'POST' })).toBe(false);
   });
+
+  test('allows first-time organization routes when the API mount path is relative', () => {
+    const mountedRequest = {
+      originalUrl: '/organizations',
+      url: '/organizations',
+      baseUrl: '/api',
+    };
+
+    expect(isExempt({ ...mountedRequest, method: 'GET' })).toBe(true);
+    expect(isExempt({ ...mountedRequest, method: 'POST' })).toBe(true);
+    expect(isExempt({
+      ...mountedRequest,
+      originalUrl: '/organizations/org-id',
+      url: '/organizations/org-id',
+      method: 'POST',
+    })).toBe(false);
+    expect(isExempt({ ...mountedRequest, baseUrl: '/other', method: 'POST' })).toBe(false);
+    expect(isExempt({
+      originalUrl: '/plans',
+      url: '/plans',
+      baseUrl: '/api',
+      method: 'GET',
+    })).toBe(true);
+    expect(isExempt({
+      originalUrl: '/plans',
+      url: '/plans',
+      baseUrl: '/api',
+      method: 'POST',
+    })).toBe(false);
+  });
 });

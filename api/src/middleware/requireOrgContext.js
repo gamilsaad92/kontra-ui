@@ -11,11 +11,14 @@ function requestPath(req) {
 function isExempt(req) {
   const path = requestPath(req);
   const mounted = (req.url || '').split('?')[0];
+  const baseUrl = (req.baseUrl || '').replace(/\/+$/, '');
   const method = String(req.method || 'GET').toUpperCase();
+  const matchesApiPath = (fullPath, mountedPath) =>
+    path === fullPath || (baseUrl === '/api' && mounted === mountedPath);
   return path === '/api/health' ||
-    (method === 'GET' && path === '/api/organizations') ||
-    (method === 'POST' && path === '/api/organizations') ||
-    (method === 'GET' && path === '/api/plans') ||
+    (method === 'GET' && matchesApiPath('/api/organizations', '/organizations')) ||
+    (method === 'POST' && matchesApiPath('/api/organizations', '/organizations')) ||
+    (method === 'GET' && matchesApiPath('/api/plans', '/plans')) ||
     mounted === '/health' ||
     path.startsWith('/api/dev/') ||
     mounted.startsWith('/dev/') ||
