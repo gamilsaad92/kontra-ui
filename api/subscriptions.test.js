@@ -42,6 +42,8 @@ jest.mock('./db', () => {
 });
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const request = require('supertest');
 const { supabase } = require('./db');
 const { createRequireOrgContext } = require('./src/middleware/requireOrgContext');
@@ -76,6 +78,17 @@ function buildApp() {
 }
 
 describe('subscription route authorization', () => {
+  test('registers subscriptions before the root-mounted authenticated loans router', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+    const orgGate = source.indexOf("app.use('/api', requireOrgContext)");
+    const subscriptions = source.indexOf("app.use('/api', subscriptionsRouter)");
+    const loans = source.indexOf("app.use('/api', loansRouter)");
+
+    expect(orgGate).toBeGreaterThanOrEqual(0);
+    expect(subscriptions).toBeGreaterThan(orgGate);
+    expect(loans).toBeGreaterThan(subscriptions);
+  });
+
   test('keeps the static plan catalog public', async () => {
     const response = await request(buildApp()).get('/api/plans');
     expect(response.status).toBe(200);

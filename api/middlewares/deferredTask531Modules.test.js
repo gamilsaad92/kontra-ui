@@ -8,6 +8,11 @@ function buildApp(enabled) {
   const app = express();
   app.use('/api', createDeferredTask531Modules({ enabled }));
   app.get('/api/orgs', (_req, res) => res.json({ active: true }));
+  app.post('/api/organizations', (_req, res) => res.status(201).json({ created: true }));
+  app.get('/api/organizations/:id', (req, res) => res.json({ id: req.params.id }));
+  app.get('/api/onboarding/me', (_req, res) => res.json({ authenticatedRouteReached: true }));
+  app.post('/api/onboarding/invite', (_req, res) => res.status(201).json({ invited: true }));
+  app.post('/api/invites/accept', (_req, res) => res.status(201).json({ accepted: true }));
   app.get('/api/loans', (_req, res) => res.json({ loans: [] }));
   app.get('/api/public/deal-room/:propertyId', (req, res) => res.json({ property_id: req.params.propertyId }));
   app.post('/api/v2/deal-room/invite/request-otp', (_req, res) => res.json({ ok: true }));
@@ -20,8 +25,7 @@ describe('Task #531 deferred module boundary', () => {
   test.each([
     ['/api/orgs', 'institutional_tenancy'],
     ['/api/me/select', 'institutional_tenancy'],
-    ['/api/organizations/123/members', 'institutional_tenancy'],
-    ['/api/onboarding/members', 'institutional_tenancy'],
+    ['/api/invites/accept', 'institutional_tenancy'],
     ['/api/loans/123', 'lending_and_servicing'],
     ['/api/copilot/ask', 'lending_and_servicing'],
     ['/api/collections', 'lending_and_servicing'],
@@ -36,6 +40,17 @@ describe('Task #531 deferred module boundary', () => {
       code: 'TASK531_MODULE_DEFERRED',
       module,
     }));
+  });
+
+  test.each([
+    ['POST', '/api/organizations', 201],
+    ['GET', '/api/organizations/org-1', 200],
+    ['GET', '/api/onboarding/me', 200],
+    ['POST', '/api/onboarding/invite', 201],
+  ])('passes canonical organization route %s %s through staging deferral', async (method, path, status) => {
+    const response = await request(buildApp(true))[method.toLowerCase()](path);
+    expect(response.status).toBe(status);
+    expect(response.body.code).not.toBe('TASK531_MODULE_DEFERRED');
   });
 
   test('does not match neighboring paths by prefix alone', async () => {

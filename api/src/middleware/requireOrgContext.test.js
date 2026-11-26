@@ -206,7 +206,10 @@ describe('organization membership gate', () => {
 
   test('does not exempt organization administration or organization invites', () => {
     expect(isExempt({ originalUrl: '/api/organizations', url: '/api/organizations', method: 'GET' })).toBe(false);
+    expect(isExempt({ originalUrl: '/api/organizations', url: '/api/organizations', method: 'POST' })).toBe(true);
+    expect(isExempt({ originalUrl: '/api/organizations/other', url: '/api/organizations/other', method: 'POST' })).toBe(false);
     expect(isExempt({ originalUrl: '/api/invites/accept', url: '/api/invites/accept', method: 'POST' })).toBe(false);
+    expect(isExempt({ originalUrl: '/api/onboarding/invite', url: '/api/onboarding/invite', method: 'POST' })).toBe(false);
     expect(isExempt({ originalUrl: '/api/plans', url: '/api/plans', method: 'GET' })).toBe(true);
     expect(isExempt({ originalUrl: '/api/plans', url: '/api/plans', method: 'POST' })).toBe(false);
   });

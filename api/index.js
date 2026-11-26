@@ -8631,6 +8631,10 @@ app.use('/api', (req, res, next) => {
 
 app.use(createStagingScoringGuard(stagingEnvironment));
 app.use('/api', requireOrgContext);
+// Keep the static plan catalog reachable before broad authenticated routers.
+// Subscription details and changes still pass through the owner/admin guards
+// in subscriptionsRouter and the organization context middleware above.
+app.use('/api', subscriptionsRouter);
 app.use('/api/dashboard-layout', authenticate, dashboard);
 app.use('/api/portfolio', portfolioSliceRouter);
 app.use('/api/servicing', servicingSliceRouter);
@@ -8703,7 +8707,6 @@ app.use('/api/borrower', borrowerRouter);
 app.use('/api/marketplace', marketplaceRouter);
 app.use('/api/capital-markets/tokens', capitalMarketsTokensRouter);
 app.use('/api/legal', legalRouter);
-app.use('/api', subscriptionsRouter);
 app.use('/api/searches', savedSearchesRouter);
 app.use('/api/site-analysis', siteAnalysisRouter);
 app.use('/api', analyticsRouter);

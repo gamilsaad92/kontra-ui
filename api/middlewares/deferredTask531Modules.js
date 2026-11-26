@@ -1,7 +1,7 @@
 'use strict';
 
 const DEFERRED_PREFIXES = Object.freeze([
-  { module: 'institutional_tenancy', prefixes: ['/api/orgs', '/api/me', '/api/organizations', '/api/onboarding', '/api/invites'] },
+  { module: 'institutional_tenancy', prefixes: ['/api/orgs', '/api/me', '/api/invites'] },
   {
     module: 'lending_and_servicing',
     prefixes: [
