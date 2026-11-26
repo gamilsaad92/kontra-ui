@@ -22,6 +22,7 @@ const { readTransactionState, getHazardLossRepairGate } = require('../lib/transa
 const { buildVerifiedAssetHandoff } = require('../lib/verifiedAssetHandoff');
 const { createInstitutionalOpenAIClient } = require('../lib/openaiClient');
 const { TRANSACTION_NOTIFICATION_FROM } = require('../lib/emailConfig');
+const { resolveRoomSessionAccess } = require('../lib/roomSessionAccess');
 const cache = require('../cache');
 
 // ── Share token helpers ──────────────────────────────────────────────────────
@@ -486,15 +487,37 @@ router.post('/api/public/deal-room/:propertyId/verified-asset-package/share', as
   const { email, recipientName } = req.body || {};
 
   try {
+    const access = await resolveRoomSessionAccess(req, propertyId, supabase);
+    if (access.mode !== 'owner') {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'Verified owner access for this deal room is required to create a share link.',
+      });
+    }
+
     // Verify the deal room exists and has a package worth sharing
-    const { data: room } = await supabase
+    const { data: room, error: roomError } = await supabase
       .from('deal_rooms')
       .select('property_name, customer_email, first_name, deal_stage')
       .eq('property_id', propertyId)
       .maybeSingle();
 
+    if (roomError) throw roomError;
     if (!room) {
       return res.status(404).json({ error: 'Deal room not found' });
+    }
+
+    const { data: storedPackage, error: packageError } = await supabase
+      .from('verified_asset_packages')
+      .select('package')
+      .eq('property_id', propertyId)
+      .maybeSingle();
+    if (packageError) throw packageError;
+    if (!storedPackage?.package) {
+      return res.status(409).json({
+        error: 'LEGACY_PACKAGE_NOT_FOUND',
+        message: 'A stored Verified Asset Package is required before a share link can be created.',
+      });
     }
 
     const token = signShareToken(propertyId);

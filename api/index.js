@@ -11,7 +11,11 @@ const {
   createStagingScoringGuard,
   createStagingScoringScheduler,
 } = require('./lib/stagingScoringGuard');
-const { stagingDemoRouteGuard, stagingTrialAuth } = require('./lib/stagingTrialAuth');
+const {
+  stagingDemoRouteGuard,
+  stagingTrialAuth,
+  stagingTrialRoomOrganizationLink,
+} = require('./lib/stagingTrialAuth');
 
 // Allow OPENAI_API_KEY1 as the active key (e.g. after rotating to a new key).
 if (!stagingEnvironment.enabled && process.env.OPENAI_API_KEY1) {
@@ -2430,6 +2434,14 @@ const demoCheckoutHandler = async (req, res) => {
       role = 'owner',
       meta = {},
     } = req.body;
+    const requestedOrganizationId = String(
+      req.body?.organizationId || req.body?.organization_id || '',
+    ).trim();
+    if (requestedOrganizationId && !stagingTrial) {
+      return res.status(403).json({
+        error: 'institutional_onboarding_requires_verified_membership',
+      });
+    }
     const email = stagingEnvironment.enabled && isTrial
       ? req.stagingTrialUser.email
       : requestedEmail;
@@ -2592,12 +2604,39 @@ const demoCheckoutHandler = async (req, res) => {
         roomCreated = true;
         console.log(`[demo] ✅ Deal room created — ${pid}`);
       }
+      if (stagingTrial && req.stagingTrialOrganizationId) {
+        const association = stagingTrialRoomOrganizationLink(stagingTrial, req, pid);
+        if (!association) {
+          throw Object.assign(new Error('Verified organization membership context is unavailable'), {
+            code: 'INSTITUTIONAL_ROOM_LINK_CONTEXT_INVALID',
+          });
+        }
+        const { error: associationError } = await supabase
+          .from('institutional_deal_room_links')
+          .insert(association);
+        if (associationError) {
+          throw Object.assign(new Error('Could not save the institutional room association'), {
+            code: 'INSTITUTIONAL_ROOM_LINK_FAILED',
+          });
+        }
+      }
       // Set link_token in a separate step (graceful — no-op if column not yet migrated).
       // This optional legacy link does not gate the staging owner-session flow.
       supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
         .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
     } catch (dbErr) {
       console.error('[demo] deal_rooms upsert failed:', dbErr.message);
+      let cleanupFailed = false;
+      if (stagingTrial && roomCreated && req.stagingTrialOrganizationId) {
+        const { error: cleanupError } = await supabase
+          .from('deal_rooms')
+          .delete()
+          .eq('property_id', pid);
+        if (cleanupError) {
+          cleanupFailed = true;
+          console.error('[demo] failed to remove room after organization-link failure:', cleanupError.message);
+        }
+      }
       if (dbErr.code === 'HISTORICAL_ROOM_MIGRATION_REQUIRED') {
         return res.status(503).json({
           error: dbErr.code,
@@ -2609,7 +2648,7 @@ const demoCheckoutHandler = async (req, res) => {
         message: stagingTrial
           ? 'The workspace database could not create this room. No success link was issued; retry with a new room identifier.'
           : 'The workspace database is not ready. No room was created; please try again after the database is updated.',
-        ...(stagingTrial ? { propertyId: pid } : {}),
+        ...(stagingTrial ? { propertyId: pid, ...(cleanupFailed ? { partialRoom: true } : {}) } : {}),
       });
     }
 

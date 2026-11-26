@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   parseAllowedTesterEmails,
+  stagingTrialRoomOrganizationLink,
   stagingDemoRouteGuard,
   stagingTrialAuth,
 } = require('./stagingTrialAuth');
@@ -121,6 +122,125 @@ test('hosted staging passes verified approved tester identity to the trial handl
   assert.equal(receivedToken, 'verified-token');
   assert.equal(req.stagingTrialUser.email, 'qa@example.test');
   assert.equal(nextCalled, true);
+});
+
+test('institutional trial creation accepts only an active owner membership', async () => {
+  let membershipQuery = [];
+  let nextCalled = false;
+  const req = {
+    headers: { authorization: 'Bearer verified-token' },
+    body: { organizationId: '11111111-1111-4111-8111-111111111111' },
+  };
+  const client = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: 'verified-user', email: 'qa@example.test' } },
+        error: null,
+      }),
+    },
+    from: (table) => {
+      assert.equal(table, 'org_memberships');
+      const query = {
+        select(value) { membershipQuery.push(['select', value]); return this; },
+        eq(key, value) { membershipQuery.push(['eq', key, value]); return this; },
+        is(key, value) { membershipQuery.push(['is', key, value]); return this; },
+        maybeSingle: async () => ({
+          data: { org_id: req.body.organizationId, role: 'owner', status: 'active', deleted_at: null },
+          error: null,
+        }),
+      };
+      return query;
+    },
+  };
+
+  await stagingTrialAuth(true, client, 'qa@example.test')(req, responseRecorder(), () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, true);
+  assert.equal(req.stagingTrialOrganizationId, req.body.organizationId);
+  assert.deepEqual(membershipQuery, [
+    ['select', 'org_id, role, status, deleted_at'],
+    ['eq', 'org_id', req.body.organizationId],
+    ['eq', 'user_id', 'verified-user'],
+    ['eq', 'status', 'active'],
+    ['is', 'deleted_at', null],
+  ]);
+});
+
+test('institutional trial creation rejects revoked or non-owner memberships', async () => {
+  for (const membership of [
+    { org_id: '11111111-1111-4111-8111-111111111111', role: 'owner', status: 'revoked', deleted_at: null },
+    { org_id: '11111111-1111-4111-8111-111111111111', role: 'member', status: 'active', deleted_at: null },
+    null,
+  ]) {
+    let nextCalled = false;
+    const res = responseRecorder();
+    const client = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: 'verified-user', email: 'qa@example.test' } },
+          error: null,
+        }),
+      },
+      from: () => ({
+        select() { return this; },
+        eq() { return this; },
+        is() { return this; },
+        maybeSingle: async () => ({ data: membership, error: null }),
+      }),
+    };
+    await stagingTrialAuth(true, client, 'qa@example.test')({
+      headers: { authorization: 'Bearer verified-token' },
+      body: { organizationId: '11111111-1111-4111-8111-111111111111' },
+    }, res, () => { nextCalled = true; });
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.error, 'organization_transaction_creation_forbidden');
+    assert.equal(nextCalled, false);
+  }
+});
+
+test('institutional trial creation rejects malformed organization identifiers', async () => {
+  let nextCalled = false;
+  const res = responseRecorder();
+  const client = {
+    auth: {
+      getUser: async () => ({
+        data: { user: { id: 'verified-user', email: 'qa@example.test' } },
+        error: null,
+      }),
+    },
+    from: () => { throw new Error('membership must not be queried for malformed IDs'); },
+  };
+  await stagingTrialAuth(true, client, 'qa@example.test')({
+    headers: { authorization: 'Bearer verified-token' },
+    body: { organizationId: 'not-a-uuid' },
+  }, res, () => { nextCalled = true; });
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, 'invalid_organization_id');
+  assert.equal(nextCalled, false);
+});
+
+test('room organization link uses only verified membership and identity context', () => {
+  const organizationId = '11111111-1111-4111-8111-111111111111';
+  const userId = 'aaaaaaaa-0000-4000-8000-000000000000';
+  assert.equal(stagingTrialRoomOrganizationLink(true, {
+    body: { organizationId },
+  }, 'synthetic-room'), null);
+  assert.deepEqual(stagingTrialRoomOrganizationLink(true, {
+    stagingTrialOrganizationId: organizationId,
+    stagingTrialUser: { id: userId },
+    body: { organizationId: '22222222-2222-4222-8222-222222222222' },
+  }, 'synthetic-room'), {
+    organization_id: organizationId,
+    property_id: 'synthetic-room',
+    created_by: userId,
+  });
+  assert.equal(stagingTrialRoomOrganizationLink(false, {
+    stagingTrialOrganizationId: organizationId,
+    stagingTrialUser: { id: userId },
+  }, 'synthetic-room'), null);
 });
 
 test('non-staging trial route behavior is unchanged', async () => {

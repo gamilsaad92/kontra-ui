@@ -13,6 +13,7 @@ function isExempt(req) {
   const mounted = (req.url || '').split('?')[0];
   const method = String(req.method || 'GET').toUpperCase();
   return path === '/api/health' ||
+    (method === 'GET' && path === '/api/organizations') ||
     (method === 'POST' && path === '/api/organizations') ||
     (method === 'GET' && path === '/api/plans') ||
     mounted === '/health' ||

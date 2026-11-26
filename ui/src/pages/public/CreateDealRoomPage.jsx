@@ -300,6 +300,7 @@ function StagesEditor({ stages, onChange }) {
 export default function CreateDealRoomPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const organizationId = searchParams.get("organizationId") || "";
 
   // 0 = describe, 1 = preview, 2 = your info, 3 = activate
   const [phase, setPhase] = useState(0);
@@ -766,6 +767,7 @@ export default function CreateDealRoomPage() {
       propertyId,
       propertyName: raw || "Deal Room",
       plan: "deal",
+      organizationId: organizationId || undefined,
       email: form.email,
       role: resolvedRole,
       meta: {
@@ -1341,7 +1343,7 @@ export default function CreateDealRoomPage() {
                         : { label: "Stages", value: `${customConfig.stages.length} stage${customConfig.stages.length !== 1 ? "s" : ""}` }
                     ),
                     { label: "Contact", value: `${form.firstName} ${form.lastName} · ${form.email}` },
-                    { label: "Price", value: "$499 one-time" },
+                    { label: "Price", value: organizationId ? "$0 early access" : "$499 one-time" },
                     {
                       label: "Access",
                       value: isPreviouslyCompletedEntryMode(form.transactionEntryMode)
@@ -1365,7 +1367,26 @@ export default function CreateDealRoomPage() {
 
           {/* ── Navigation buttons ──────────────────────────────────────── */}
           {phase === 3 ? (
-            /* Activate step: primary + text link */
+            organizationId ? (
+              <div className="space-y-3">
+                <p className="text-center text-sm text-green-700">
+                  Institutional early access is free; no payment method is required.
+                </p>
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">{error}</div>
+                )}
+                <button type="button" onClick={() => handleLaunch(true)} disabled={loading}
+                  className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90"
+                  style={{ background: "#800020" }}>
+                  {loading ? "Creating institutional deal room…" : "Create free institutional deal room"}
+                </button>
+                <button type="button" onClick={goBack}
+                  className="w-full py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                  ← Back
+                </button>
+              </div>
+            ) : (
+            /* Activate step: paid primary + free early-access link */
             <div className="space-y-3">
               <button type="button" onClick={() => handleLaunch(false)} disabled={loading}
                 className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition disabled:opacity-70 hover:opacity-90 flex items-center justify-center gap-2"
@@ -1385,6 +1406,7 @@ export default function CreateDealRoomPage() {
                 </button>
               </div>
             </div>
+            )
           ) : phase === 1 ? (
             /* Preview step: Continue + Regenerate */
             <div className="flex gap-3">

@@ -67,6 +67,20 @@ router.post('/', async (req, res) => {
   res.status(201).json({ organization: { ...data, kyc_approved: approved } });
 });
 
+// Organization members may discover room identifiers, but room documents and
+// actions remain protected by the existing owner/participant room sessions.
+router.get('/:id/deal-rooms', async (req, res) => {
+  const { id } = req.params;
+  if (String(req.orgId) !== String(id)) return res.status(403).json({ code: 'ORG_FORBIDDEN' });
+  const { data, error } = await supabase
+    .from('institutional_deal_room_links')
+    .select('property_id, created_at')
+    .eq('organization_id', id)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: 'Failed to list organization deal rooms' });
+  res.json({ dealRooms: data || [] });
+});
+
 // Get single organization
 router.get('/:id', async (req, res) => {
   const { id } = req.params;

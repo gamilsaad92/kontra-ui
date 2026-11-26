@@ -18,6 +18,21 @@ function parseAllowedTesterEmails(value) {
   );
 }
 
+function stagingTrialRoomOrganizationLink(enabled, req, propertyId) {
+  const organizationId = String(req?.stagingTrialOrganizationId || '').trim();
+  const userId = String(req?.stagingTrialUser?.id || '').trim();
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!enabled || !uuidPattern.test(organizationId) || !uuidPattern.test(userId)
+      || typeof propertyId !== 'string' || !propertyId.trim()) {
+    return null;
+  }
+  return {
+    organization_id: organizationId,
+    property_id: propertyId.trim(),
+    created_by: userId,
+  };
+}
+
 function stagingTrialAuth(enabled, supabase, allowedTesterEmails) {
   const allowedEmails = parseAllowedTesterEmails(allowedTesterEmails);
 
@@ -61,6 +76,36 @@ function stagingTrialAuth(enabled, supabase, allowedTesterEmails) {
         });
       }
 
+      const requestedOrgId = String(
+        req.body?.organizationId || req.body?.organization_id || '',
+      ).trim();
+      if (requestedOrgId) {
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedOrgId)) {
+          return res.status(400).json({ error: 'invalid_organization_id' });
+        }
+        if (typeof supabase?.from !== 'function') {
+          return res.status(503).json({ error: 'staging_membership_unavailable' });
+        }
+        const { data: membership, error: membershipError } = await supabase
+          .from('org_memberships')
+          .select('org_id, role, status, deleted_at')
+          .eq('org_id', requestedOrgId)
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .is('deleted_at', null)
+          .maybeSingle();
+        if (membershipError) {
+          return res.status(503).json({ error: 'staging_membership_unavailable' });
+        }
+        if (!membership
+          || membership.status !== 'active'
+          || membership.deleted_at !== null
+          || !['owner', 'admin'].includes(membership.role)) {
+          return res.status(403).json({ error: 'organization_transaction_creation_forbidden' });
+        }
+        req.stagingTrialOrganizationId = membership.org_id;
+      }
+
       req.stagingTrialUser = { ...user, email: normalizedEmail };
       return next();
     } catch {
@@ -71,6 +116,7 @@ function stagingTrialAuth(enabled, supabase, allowedTesterEmails) {
 
 module.exports = {
   parseAllowedTesterEmails,
+  stagingTrialRoomOrganizationLink,
   stagingDemoRouteGuard,
   stagingTrialAuth,
 };

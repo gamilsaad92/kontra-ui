@@ -1,12 +1,16 @@
-import React, { useState, useContext, useEffect } from 'react';
-import { AuthContext } from '../lib/authContext';
-import { API_BASE } from '../lib/apiBase';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { apiFetch, setOrgContext } from '../lib/apiClient';
 import ErrorBanner from './ErrorBanner.jsx';
 import { Button, FormField } from './ui';
 
 export default function OrganizationSettings() {
-  const { session } = useContext(AuthContext);
-  const orgId = session?.user?.user_metadata?.organization_id;
+  const [organizations, setOrganizations] = useState([]);
+  const [orgId, setOrgId] = useState('');
+  const [membershipRole, setMembershipRole] = useState('');
+  const [loadingOrganizations, setLoadingOrganizations] = useState(true);
+  const [organizationLoadFailed, setOrganizationLoadFailed] = useState(false);
+  const [creatingOrganization, setCreatingOrganization] = useState(false);
   const [name, setName] = useState('');
   const [logo, setLogo] = useState('');
   const [color, setColor] = useState('#1e40af');
@@ -16,75 +20,139 @@ export default function OrganizationSettings() {
   const [currentPlan, setCurrentPlan] = useState('basic');
   const [subError, setSubError] = useState('');
   const [subSuccess, setSubSuccess] = useState('');
-    const [tab, setTab] = useState('details');
-  
+  const [tab, setTab] = useState('details');
+
   useEffect(() => {
-    if (!orgId) return;
-    fetch(`${API_BASE}/api/organizations/${orgId}`)
-      .then(r => r.json())
-      .then(d => {
-        const org = d.organization;
-        if (org) {
-          setName(org.name || '');
-          setLogo(org.branding?.logo || '');
-          setColor(org.branding?.color || '#1e40af');
+    let mounted = true;
+    (async () => {
+      setLoadingOrganizations(true);
+      setOrganizationLoadFailed(false);
+      setError('');
+      try {
+        const response = await apiFetch('/api/organizations', {}, {
+          requireAuth: true,
+          throwOnError: false,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Could not load organizations');
         }
+        const memberships = Array.isArray(data.organizations) ? data.organizations : [];
+        if (!mounted) return;
+        setOrganizations(memberships);
+        const selected = memberships.find((organization) => organization.id === orgId)
+          || memberships[0];
+        if (selected) {
+          setOrgId(selected.id);
+          setOrgContext({ orgId: selected.id });
+          setMembershipRole(selected.membership_role || '');
+          setName(selected.name || '');
+          setLogo(selected.branding?.logo || '');
+          setColor(selected.branding?.color || '#1e40af');
+        } else {
+          setOrgId('');
+          setMembershipRole('');
+          setOrgContext({});
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setOrganizationLoadFailed(true);
+          setError(loadError.message || 'Could not load organizations');
+        }
+      } finally {
+        if (mounted) setLoadingOrganizations(false);
+      }
+    })();
+
+    apiFetch('/api/plans', {}, { throwOnError: false })
+      .then((response) => response.ok ? response.json() : { plans: [] })
+      .then((data) => {
+        if (mounted) setPlans(Array.isArray(data.plans) ? data.plans : []);
       })
       .catch(() => {});
-  }, [orgId]);
 
-    useEffect(() => {
-    fetch(`${API_BASE}/api/plans`)
-      .then(r => r.json())
-      .then(d => setPlans(d.plans || []))
-      .catch(() => {});
-    if (!orgId) return;
-    fetch(`${API_BASE}/api/subscription`, {
-    headers: { 'x-organization-id': orgId }
-    })
-      .then(r => r.json())
-      .then(d => setCurrentPlan(d.plan || 'basic'))
-      .catch(() => {});
-  }, [orgId]);
+    return () => { mounted = false; };
+  }, []);
 
-  const handleSave = async e => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!orgId || membershipRole !== 'owner') return;
+    apiFetch('/api/subscription', {}, { requireAuth: true, throwOnError: false })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (data?.plan) setCurrentPlan(data.plan);
+      })
+      .catch(() => {});
+  }, [orgId, membershipRole]);
+
+  const handleCreateOrganization = async (event) => {
+    event.preventDefault();
     setError('');
     setSuccess('');
-    const body = { name, branding: { logo, color } };
-    const method = orgId ? 'PUT' : 'POST';
-    const url = orgId
-      ? `${API_BASE}/api/organizations/${orgId}`
-      : `${API_BASE}/api/organizations`;
+    setCreatingOrganization(true);
     try {
-      const resp = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await resp.json();
-      if (data.error) setError(data.error);
-      else setSuccess('Saved');
-    } catch (err) {
-      setError('Request failed');
+      const response = await apiFetch('/api/organizations', {
+        method: 'POST',
+        body: JSON.stringify({ name, branding: { logo, color } }),
+      }, { requireAuth: true, throwOnError: false });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.organization?.id) {
+        throw new Error(data.message || data.error || 'Could not create organization');
+      }
+      const created = { ...data.organization, membership_role: 'owner' };
+      setOrganizations((current) => [created, ...current]);
+      setOrgId(created.id);
+      setOrgContext({ orgId: created.id });
+      setMembershipRole('owner');
+      setName(created.name || name);
+      setSuccess('Organization created');
+    } catch (createError) {
+      setError(createError.message || 'Could not create organization');
+    } finally {
+      setCreatingOrganization(false);
     }
   };
 
-   const handlePlanChange = async plan => {
+  const handleSave = async (event) => {
+    event.preventDefault();
     if (!orgId) return;
+    setError('');
+    setSuccess('');
+    try {
+      const response = await apiFetch(`/api/organizations/${encodeURIComponent(orgId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, branding: { logo, color } }),
+      }, { requireAuth: true, throwOnError: false });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Could not save organization');
+      setSuccess('Saved');
+    } catch (saveError) {
+      setError(saveError.message || 'Could not save organization');
+    }
+  };
+
+  const handleOrganizationChange = (event) => {
+    const selected = organizations.find((organization) => organization.id === event.target.value);
+    if (!selected) return;
+    setOrgId(selected.id);
+    setOrgContext({ orgId: selected.id });
+    setMembershipRole(selected.membership_role || '');
+    setName(selected.name || '');
+    setLogo(selected.branding?.logo || '');
+    setColor(selected.branding?.color || '#1e40af');
+    setError('');
+  };
+
+  const handlePlanChange = async (plan) => {
+    if (!orgId || membershipRole !== 'owner') return;
     setSubError('');
     setSubSuccess('');
     try {
-      const resp = await fetch(`${API_BASE}/api/subscription`, {
+      const response = await apiFetch('/api/subscription', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        'x-organization-id': orgId
-        },
         body: JSON.stringify({ plan })
-      });
-      const data = await resp.json();
-      if (resp.ok) {
+      }, { requireAuth: true, throwOnError: false });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
         setCurrentPlan(data.plan);
         setSubSuccess('Plan updated');
       } else {
@@ -115,44 +183,87 @@ export default function OrganizationSettings() {
       </div>
 
       {tab === 'details' && (
-        <form onSubmit={handleSave} className="space-y-3 bg-white p-4 rounded shadow">
+        <div className="space-y-3 bg-white p-4 rounded shadow">
           <h2 className="text-xl font-bold">Organization Settings</h2>
-          <FormField label="Name" value={name} onChange={e => setName(e.target.value)} />
-          <FormField label="Logo URL" value={logo} onChange={e => setLogo(e.target.value)} />
-          <FormField label="Primary Color" type="color" value={color} onChange={e => setColor(e.target.value)} />
-          <Button type="submit">Save</Button>
+          {organizations.length > 1 && (
+            <label className="block space-y-1">
+              <span>Organization</span>
+              <select value={orgId} onChange={handleOrganizationChange} className="w-full border rounded p-2">
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>{organization.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {loadingOrganizations ? (
+            <p role="status">Loading organizations…</p>
+          ) : organizationLoadFailed ? (
+            <p role="alert">Organization access could not be verified. Refresh this page after signing in again.</p>
+          ) : !orgId ? (
+            <form onSubmit={handleCreateOrganization} className="space-y-3">
+              <p>Create your first organization to begin an institutional pilot.</p>
+              <FormField
+                label="Organization name"
+                aria-label="Organization name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+              <Button type="submit" disabled={creatingOrganization || !name.trim()}>
+                {creatingOrganization ? 'Creating…' : 'Create organization'}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleSave} className="space-y-3">
+              <FormField label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+              <FormField label="Logo URL" value={logo} onChange={(event) => setLogo(event.target.value)} />
+              <FormField label="Primary Color" type="color" value={color} onChange={(event) => setColor(event.target.value)} />
+              <Button type="submit" disabled={!['owner', 'admin'].includes(membershipRole)}>Save</Button>
+              {['owner', 'admin'].includes(membershipRole) && (
+                <Link
+                  className="inline-block ml-3 text-blue-700 underline"
+                  to={`/create-deal-room?organizationId=${encodeURIComponent(orgId)}`}
+                >
+                  Create a deal room
+                </Link>
+              )}
+            </form>
+          )}
           {success && <p className="text-green-600">{success}</p>}
           <ErrorBanner message={error} onClose={() => setError('')} />
 
-          <hr className="my-4" />
-          <h3 className="text-lg font-bold">Subscription Plan</h3>
-          <ErrorBanner message={subError} onClose={() => setSubError('')} />
-          {subSuccess && <p className="text-green-600">{subSuccess}</p>}
-          <div className="space-y-4" role="region" aria-label="Subscription plans">
-            {plans.map(p => (
-              <div key={p.name} className="border rounded p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold capitalize">{p.name}</h4>
-                    <p className="text-sm">${p.price}/mo</p>
+          {orgId && membershipRole === 'owner' && (
+            <>
+              <hr className="my-4" />
+              <h3 className="text-lg font-bold">Subscription Plan</h3>
+              <ErrorBanner message={subError} onClose={() => setSubError('')} />
+              {subSuccess && <p className="text-green-600">{subSuccess}</p>}
+              <div className="space-y-4" role="region" aria-label="Subscription plans">
+                {plans.map((plan) => (
+                  <div key={plan.name} className="border rounded p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold capitalize">{plan.name}</h4>
+                        <p className="text-sm">${plan.price}/mo</p>
+                      </div>
+                      {currentPlan === plan.name ? (
+                        <span className="text-green-600 font-semibold">Current</span>
+                      ) : (
+                        <Button type="button" onClick={() => handlePlanChange(plan.name)}>
+                          Choose
+                        </Button>
+                      )}
+                    </div>
+                    <ul className="list-disc ml-5 mt-2 text-sm">
+                      {(plan.features || []).map((feature) => (
+                        <li key={feature}>{feature}</li>
+                      ))}
+                    </ul>
                   </div>
-                  {currentPlan === p.name ? (
-                    <span className="text-green-600 font-semibold">Current</span>
-                  ) : (
-                    <Button type="button" onClick={() => handlePlanChange(p.name)}>
-                      Choose
-                    </Button>
-                  )}
-                </div>
-                <ul className="list-disc ml-5 mt-2 text-sm">
-                  {p.features.map(f => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </div>
                 ))}
-          </div>
-           </form>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {tab === 'api' && (

@@ -204,8 +204,9 @@ describe('organization membership gate', () => {
     expect(response.body.code).toBe('ORG_AUTHORIZATION_UNAVAILABLE');
   });
 
-  test('does not exempt organization administration or organization invites', () => {
-    expect(isExempt({ originalUrl: '/api/organizations', url: '/api/organizations', method: 'GET' })).toBe(false);
+  test('allows authenticated membership discovery but keeps organization administration protected', () => {
+    expect(isExempt({ originalUrl: '/api/organizations', url: '/api/organizations', method: 'GET' })).toBe(true);
+    expect(isExempt({ originalUrl: '/api/organizations/org-id', url: '/api/organizations/org-id', method: 'GET' })).toBe(false);
     expect(isExempt({ originalUrl: '/api/organizations', url: '/api/organizations', method: 'POST' })).toBe(true);
     expect(isExempt({ originalUrl: '/api/organizations/other', url: '/api/organizations/other', method: 'POST' })).toBe(false);
     expect(isExempt({ originalUrl: '/api/invites/accept', url: '/api/invites/accept', method: 'POST' })).toBe(false);
