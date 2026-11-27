@@ -6,7 +6,10 @@ require('dotenv').config(process.env.NODE_ENV !== 'production' ? { override: tru
 
 const { assertStagingEnvironment } = require('./lib/stagingEnvironment');
 const stagingEnvironment = assertStagingEnvironment(process.env);
-const { getOtpEmailConfiguration } = require('./lib/emailConfig');
+const {
+  getOtpEmailConfiguration,
+  getPilotEmailDispatchPolicy,
+} = require('./lib/emailConfig');
 const {
   createStagingScoringGuard,
   createStagingScoringScheduler,
@@ -2895,21 +2898,25 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
     supabase.from('deal_rooms').update({ link_token: crypto.randomBytes(16).toString('hex') })
       .eq('property_id', pid).is('link_token', null).then(() => {}).catch(() => {});
 
-    console.log(`[pilot] ✅ Pilot workspace created — ${pid} for ${pilotEmail}`);
+    console.log(`[pilot] Pilot workspace created — ${pid}`);
 
     // Owners establish access through email OTP; never put a reusable
     // owner credential in the pilot invitation URL.
     const accessUrl = `${origin}/my-deal-rooms`;
 
-    // Task #157 — auto-send the link to the pilot user at creation time
+    // Staging pilot handoffs are deliberately email-free. In production,
+    // preserve the existing email behavior with the environment-aware sender.
     let emailSent = false;
-    const RESEND_KEY = process.env.RESEND_API_KEY;
-    if (RESEND_KEY) {
+    const pilotEmailPolicy = getPilotEmailDispatchPolicy({
+      stagingIsolationVerified: stagingEnvironment.enabled,
+    });
+    let emailDeliveryStatus = pilotEmailPolicy.deliveryStatus;
+    if (pilotEmailPolicy.sendAllowed) {
       try {
         const firstName = pilotName.split(' ')[0] || pilotName;
         const packLabel = PILOT_PACK_LABELS[resolvedPackId] || resolvedPackId;
-        await sendResendEmail(RESEND_KEY, {
-          from: 'Kontra <notifications@kontraplatform.com>',
+        await sendResendEmail(pilotEmailPolicy.apiKey, {
+          from: pilotEmailPolicy.from,
           to: pilotEmail,
           subject: `Your Kontra workspace is ready: ${workspaceName}`,
           html: `
@@ -2940,9 +2947,11 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
             </div>`,
         });
         emailSent = true;
-        console.log(`[pilot] 📧 Welcome email sent to ${pilotEmail}`);
-      } catch (emailErr) {
-        console.warn('[pilot] Email send failed (non-fatal):', emailErr.message);
+        emailDeliveryStatus = 'submitted';
+        console.log(`[pilot] Welcome email submitted for ${pid}`);
+      } catch {
+        emailDeliveryStatus = 'send_failed';
+        console.warn(`[pilot] Welcome email submission failed for ${pid}`);
       }
     }
 
@@ -2954,6 +2963,7 @@ app.post('/api/admin/create-pilot-workspace', async (req, res) => {
       pilotEmail,
       accessUrl,
       emailSent,
+      emailDeliveryStatus,
     });
   } catch (err) {
     console.error('[pilot/create]', err.message);
@@ -2967,13 +2977,27 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
   const { pilotEmail, pilotName, workspaceName, accessUrl, packLabel } = req.body || {};
   if (!pilotEmail || !accessUrl) return res.status(400).json({ error: 'pilotEmail and accessUrl are required' });
 
-  const RESEND_KEY = process.env.RESEND_API_KEY;
-  if (!RESEND_KEY) return res.status(503).json({ error: 'RESEND_API_KEY not configured on the server' });
+  const pilotEmailPolicy = getPilotEmailDispatchPolicy({
+    stagingIsolationVerified: stagingEnvironment.enabled,
+  });
+  if (!pilotEmailPolicy.sendAllowed) {
+    if (stagingEnvironment.enabled) {
+      return res.json({
+        ok: true,
+        emailSent: false,
+        emailDeliveryStatus: 'suppressed_staging',
+      });
+    }
+    return res.status(503).json({
+      error: 'EMAIL_NOT_CONFIGURED',
+      emailDeliveryStatus: 'not_configured',
+    });
+  }
 
   try {
     const firstName = (pilotName || pilotEmail).split(' ')[0];
-    await sendResendEmail(RESEND_KEY, {
-      from: 'Kontra <notifications@kontraplatform.com>',
+    await sendResendEmail(pilotEmailPolicy.apiKey, {
+      from: pilotEmailPolicy.from,
       to: pilotEmail,
       subject: `Your Kontra workspace is ready: ${workspaceName || 'your workspace'}`,
       html: `
@@ -2983,7 +3007,7 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
           <p style="color:#555;font-size:15px;margin:0 0 6px">Hi ${firstName},</p>
           <p style="color:#555;font-size:14px;margin:0 0 24px">
             <strong>${workspaceName || 'Your workspace'}</strong>${packLabel ? ` (${packLabel})` : ''} has been set up for you.
-            Click below to access it — no login or payment needed.
+            Sign in to Kontra and verify your email with a one-time code to access the workspace.
           </p>
           <a href="${accessUrl}"
             style="display:inline-block;padding:14px 28px;background:#800020;color:white;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px">
@@ -2994,10 +3018,10 @@ app.post('/api/admin/send-pilot-link', async (req, res) => {
           </p>
         </div>`,
     });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('[pilot/send-link]', err.message);
-    res.status(500).json({ error: err.message });
+    res.json({ ok: true, emailSent: true, emailDeliveryStatus: 'submitted' });
+  } catch {
+    console.warn('[pilot/send-link] Email submission failed');
+    res.status(500).json({ error: 'EMAIL_SUBMISSION_FAILED' });
   }
 });
 

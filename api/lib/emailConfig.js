@@ -25,8 +25,21 @@ function getOtpEmailConfiguration({ env = process.env, stagingIsolationVerified 
   };
 }
 
+function getPilotEmailDispatchPolicy(options = {}) {
+  const stagingIsolationVerified = options.stagingIsolationVerified === true;
+  const email = getOtpEmailConfiguration(options);
+  return {
+    ...email,
+    sendAllowed: !stagingIsolationVerified && email.configured,
+    deliveryStatus: stagingIsolationVerified
+      ? 'suppressed_staging'
+      : email.configured ? 'ready' : 'not_configured',
+  };
+}
+
 module.exports = {
   TRANSACTION_NOTIFICATION_ADDRESS,
   TRANSACTION_NOTIFICATION_FROM,
   getOtpEmailConfiguration,
+  getPilotEmailDispatchPolicy,
 };

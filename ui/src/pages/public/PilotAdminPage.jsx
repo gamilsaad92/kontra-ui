@@ -115,7 +115,7 @@ function CreateForm({ password, onCreated }) {
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
       <div>
         <h2 className="text-sm font-bold text-gray-900 mb-0.5">Create pilot deal room</h2>
-        <p className="text-xs text-gray-400">Creates an active deal room and generates a one-click access link. No payment required.</p>
+        <p className="text-xs text-gray-400">Creates a free pilot room and provides the sign-in page. Room access still requires owner verification.</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
@@ -197,6 +197,7 @@ function AccessLinkCard({ result, password, onDismiss }) {
   const [resendErr, setResendErr] = useState("");
   // Seed from creation-time response; toggles to true when resent manually
   const [emailSent, setEmailSent] = useState(!!result.emailSent);
+  const [emailStatus, setEmailStatus] = useState(result.emailDeliveryStatus || "not_configured");
 
   function copy() {
     navigator.clipboard.writeText(result.accessUrl).then(() => {
@@ -221,8 +222,9 @@ function AccessLinkCard({ result, password, onDismiss }) {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Send failed");
-      setResendOk(true);
-      setEmailSent(true);
+      setEmailSent(data.emailSent === true);
+      setEmailStatus(data.emailDeliveryStatus || (data.emailSent ? "submitted" : "not_configured"));
+      setResendOk(data.emailSent === true);
       setTimeout(() => setResendOk(false), 3000);
     } catch (e) {
       setResendErr(e.message);
@@ -246,11 +248,15 @@ function AccessLinkCard({ result, password, onDismiss }) {
             {/* Email status badge */}
             {emailSent ? (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-200 text-green-800">
-                📧 Sent to {result.pilotEmail}
+                Email submitted
+              </span>
+            ) : emailStatus === "suppressed_staging" ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                Email disabled on staging
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                📧 Email not sent (RESEND_API_KEY not set)
+                No email submitted
               </span>
             )}
           </div>
@@ -259,7 +265,7 @@ function AccessLinkCard({ result, password, onDismiss }) {
       </div>
 
       <div className="bg-white rounded-xl border border-green-200 p-3 mb-3">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">One-click access link</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Sign-in page</p>
         <p className="text-xs text-gray-700 break-all font-mono leading-relaxed">{result.accessUrl}</p>
       </div>
 
@@ -268,10 +274,16 @@ function AccessLinkCard({ result, password, onDismiss }) {
           className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-green-700 hover:bg-green-800 transition">
           {copied ? "Copied!" : "Copy link"}
         </button>
-        <button onClick={handleResend} disabled={resending}
-          className="px-4 py-2 rounded-xl text-xs font-bold text-green-700 border border-green-300 hover:bg-green-100 disabled:opacity-40 transition">
-          {resending ? "Sending…" : resendOk ? "Sent ✓" : "Resend email"}
-        </button>
+        {emailStatus === "suppressed_staging" ? (
+          <span className="px-4 py-2 rounded-xl text-xs font-bold text-blue-700 border border-blue-200 bg-blue-50">
+            Email disabled
+          </span>
+        ) : (
+          <button onClick={handleResend} disabled={resending}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-green-700 border border-green-300 hover:bg-green-100 disabled:opacity-40 transition">
+            {resending ? "Submitting…" : resendOk ? "Submitted ✓" : "Resend email"}
+          </button>
+        )}
         <a href={result.accessUrl} target="_blank" rel="noreferrer"
           className="px-4 py-2 rounded-xl text-xs font-bold text-green-700 border border-green-300 hover:bg-green-100 transition">
           Preview →
@@ -281,7 +293,7 @@ function AccessLinkCard({ result, password, onDismiss }) {
       {resendErr && <p className="text-xs text-red-500 mb-2">{resendErr}</p>}
 
       <p className="text-[10px] text-green-600">
-        When {result.pilotName} clicks this link, they land directly in the active deal room as coordinator — no payment or setup required.
+        This page does not grant room access by itself. The pilot owner must sign in and verify their email; no payment is required.
       </p>
     </div>
   );
