@@ -26,7 +26,7 @@ function renderSettings() {
 beforeEach(() => {
   jest.clearAllMocks();
   apiFetch.mockImplementation((path) => {
-    if (path === '/api/organizations') return Promise.resolve(jsonResponse({ organizations: [] }));
+    if (path === '/api/me') return Promise.resolve(jsonResponse({ organizations: [] }));
     if (path === '/api/plans') return Promise.resolve(jsonResponse({ plans: [] }));
     return Promise.resolve(jsonResponse({}));
   });
@@ -34,12 +34,12 @@ beforeEach(() => {
 
 test('first-time organization creation uses the authenticated canonical endpoint', async () => {
   apiFetch.mockImplementation((path, init = {}) => {
-    if (path === '/api/organizations' && init.method === 'POST') {
+    if (path === '/api/me' && init.method === 'POST') {
       return Promise.resolve(jsonResponse({
-        organization: { id: 'org-new', name: 'Pilot Institution', branding: {} },
+        org: { id: 'org-new', name: 'Pilot Institution', role: 'owner', branding: {} },
       }, 201));
     }
-    if (path === '/api/organizations') return Promise.resolve(jsonResponse({ organizations: [] }));
+    if (path === '/api/me') return Promise.resolve(jsonResponse({ organizations: [] }));
     if (path === '/api/plans') return Promise.resolve(jsonResponse({ plans: [] }));
     return Promise.resolve(jsonResponse({}));
   });
@@ -50,9 +50,9 @@ test('first-time organization creation uses the authenticated canonical endpoint
   fireEvent.click(screen.getByRole('button', { name: 'Create organization' }));
 
   await screen.findByText('Organization created');
-  expect(apiFetch).toHaveBeenCalledWith('/api/organizations', {
+  expect(apiFetch).toHaveBeenCalledWith('/api/me', {
     method: 'POST',
-    body: JSON.stringify({ name: 'Pilot Institution', branding: { logo: '', color: '#1e40af' } }),
+    body: JSON.stringify({ name: 'Pilot Institution' }),
   }, { requireAuth: true, throwOnError: false });
   expect(setOrgContext).toHaveBeenCalledWith({ orgId: 'org-new' });
   expect(await screen.findByRole('link', { name: 'Create a deal room' }))
@@ -61,12 +61,12 @@ test('first-time organization creation uses the authenticated canonical endpoint
 
 test('member role cannot launch owner-only transaction creation or subscription changes', async () => {
   apiFetch.mockImplementation((path) => {
-    if (path === '/api/organizations') {
+    if (path === '/api/me') {
       return Promise.resolve(jsonResponse({
-        organizations: [{
+        orgs: [{
           id: 'org-member',
           name: 'Member Institution',
-          membership_role: 'member',
+          role: 'member',
           branding: {},
         }],
       }));
@@ -81,7 +81,7 @@ test('member role cannot launch owner-only transaction creation or subscription 
   expect(screen.queryByRole('region', { name: 'Subscription plans' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
-    '/api/organizations',
+    '/api/me',
     {},
     { requireAuth: true, throwOnError: false },
   ));

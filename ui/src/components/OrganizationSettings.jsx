@@ -29,7 +29,7 @@ export default function OrganizationSettings() {
       setOrganizationLoadFailed(false);
       setError('');
       try {
-        const response = await apiFetch('/api/organizations', {}, {
+        const response = await apiFetch('/api/me', {}, {
           requireAuth: true,
           throwOnError: false,
         });
@@ -37,7 +37,9 @@ export default function OrganizationSettings() {
         if (!response.ok) {
           throw new Error(data.message || data.error || 'Could not load organizations');
         }
-        const memberships = Array.isArray(data.organizations) ? data.organizations : [];
+        const memberships = Array.isArray(data.organizations)
+          ? data.organizations
+          : Array.isArray(data.orgs) ? data.orgs : [];
         if (!mounted) return;
         setOrganizations(memberships);
         const selected = memberships.find((organization) => organization.id === orgId)
@@ -45,7 +47,7 @@ export default function OrganizationSettings() {
         if (selected) {
           setOrgId(selected.id);
           setOrgContext({ orgId: selected.id });
-          setMembershipRole(selected.membership_role || '');
+          setMembershipRole(selected.membership_role || selected.role || '');
           setName(selected.name || '');
           setLogo(selected.branding?.logo || '');
           setColor(selected.branding?.color || '#1e40af');
@@ -90,20 +92,34 @@ export default function OrganizationSettings() {
     setSuccess('');
     setCreatingOrganization(true);
     try {
-      const response = await apiFetch('/api/organizations', {
+      const response = await apiFetch('/api/me', {
         method: 'POST',
-        body: JSON.stringify({ name, branding: { logo, color } }),
+        body: JSON.stringify({ name }),
       }, { requireAuth: true, throwOnError: false });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.organization?.id) {
+      const organization = data.org || data.organization;
+      if (!response.ok || !organization?.id) {
         throw new Error(data.message || data.error || 'Could not create organization');
       }
-      const created = { ...data.organization, membership_role: 'owner' };
+      const created = {
+        ...organization,
+        membership_role: organization.membership_role || organization.role || 'owner',
+      };
       setOrganizations((current) => [created, ...current]);
       setOrgId(created.id);
       setOrgContext({ orgId: created.id });
       setMembershipRole('owner');
       setName(created.name || name);
+      if (logo || color !== '#1e40af') {
+        const brandingResponse = await apiFetch(`/api/organizations/${encodeURIComponent(created.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: created.name || name, branding: { logo, color } }),
+        }, { requireAuth: true, throwOnError: false });
+        if (!brandingResponse.ok) {
+          setSuccess('Organization created; branding could not be saved yet');
+          return;
+        }
+      }
       setSuccess('Organization created');
     } catch (createError) {
       setError(createError.message || 'Could not create organization');
@@ -135,7 +151,7 @@ export default function OrganizationSettings() {
     if (!selected) return;
     setOrgId(selected.id);
     setOrgContext({ orgId: selected.id });
-    setMembershipRole(selected.membership_role || '');
+    setMembershipRole(selected.membership_role || selected.role || '');
     setName(selected.name || '');
     setLogo(selected.branding?.logo || '');
     setColor(selected.branding?.color || '#1e40af');
