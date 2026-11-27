@@ -4,6 +4,10 @@ export function roomRoleFromAccess(access) {
   return null;
 }
 
+export function isAnonymousRoomPreview(access) {
+  return access?.mode === 'anonymous';
+}
+
 export function isCoordinatorRoomView({
   isDemo = false,
   access,

@@ -20,7 +20,11 @@ import {
 } from "../../lib/roomOwnerAccess.mjs";
 import DealRoomPinGate from "./DealRoomPinGate";
 import { getInviteSession, getRoomAuthHeaders } from "../../lib/inviteUtils";
-import { isCoordinatorRoomView, roomRoleFromAccess } from "../../lib/roomAccessPresentation.mjs";
+import {
+  isAnonymousRoomPreview,
+  isCoordinatorRoomView,
+  roomRoleFromAccess,
+} from "../../lib/roomAccessPresentation.mjs";
 import {
   getTransactionRecordEvidence,
   getOriginalDocumentUrl,
@@ -11481,6 +11485,22 @@ export default function DealRoomPage() {
               className="mt-5 px-4 py-2 rounded-xl bg-[#800020] text-white text-sm font-semibold">
               Try again
             </button>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (apiProperty && isAnonymousRoomPreview(apiProperty.access) && !DEMO_ROOM_IDS.has(propertyId)) {
+    return (
+      <PublicLayout hideFooter>
+        <div className="min-h-[60vh] flex items-center justify-center px-6">
+          <div className="max-w-md w-full rounded-2xl border border-gray-200 bg-white p-7 text-center shadow-sm">
+            <div className="text-3xl mb-3">🔒</div>
+            <h1 className="text-lg font-bold text-gray-900 mb-2">Private deal room</h1>
+            <p className="text-sm text-gray-600">
+              Use your invitation link or verified owner access to open this room.
+            </p>
           </div>
         </div>
       </PublicLayout>

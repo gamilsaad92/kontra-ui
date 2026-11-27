@@ -23,7 +23,7 @@ test("participant access keeps the corresponding participant workspace over a le
 });
 
 test("switching back to owner access intentionally restores the Coordinator workspace", async () => {
-  const { isCoordinatorRoomView, roomRoleFromAccess } = await import(helperUrl);
+  const { isAnonymousRoomPreview, isCoordinatorRoomView, roomRoleFromAccess } = await import(helperUrl);
   const participantAccess = { mode: "participant", role: "buyer" };
   assert.equal(isCoordinatorRoomView({
     access: participantAccess,
@@ -38,4 +38,18 @@ test("switching back to owner access intentionally restores the Coordinator work
     access: ownerAccess,
     role: ownerRole,
   }), true);
+  assert.equal(isAnonymousRoomPreview(ownerAccess), false);
+  assert.equal(isAnonymousRoomPreview(participantAccess), false);
+});
+
+test("anonymous room previews never enter the workspace view", async () => {
+  const { isAnonymousRoomPreview, isCoordinatorRoomView } = await import(helperUrl);
+  const previewAccess = { mode: "anonymous" };
+
+  assert.equal(isAnonymousRoomPreview(previewAccess), true);
+  assert.equal(isCoordinatorRoomView({
+    access: previewAccess,
+    hasOwnerToken: true,
+    role: "deal_coordinator",
+  }), false);
 });

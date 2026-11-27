@@ -35,6 +35,13 @@ jest.mock('./db', () => {
     checklist_items: mockChecklistItems,
     workflow_pack_id: 'business_acquisition',
     property_type: 'Business',
+    deal_type: 'business_acquisition',
+    transaction_type: 'business_acquisition',
+    deal_amount: 1250000,
+    metadata_values: { seller_private_note: 'owner-only transaction data' },
+    generated_proposal: { transaction_record_fields: [{ key: 'financial.purchase_price' }] },
+    stages_config: [{ key: 'private_stage_configuration' }],
+    link_token: 'private-room-link-token',
     status: 'active',
     deal_stage: 'uploading',
   };
@@ -420,6 +427,85 @@ describe('room access and checklist scoping', () => {
     expect(response.status).toBe(200);
     expect(response.body.role).toBe('deal_coordinator');
     expect(response.body.access).toEqual({ mode: 'owner' });
+    expect(response.body.metadata_values).toEqual({ seller_private_note: 'owner-only transaction data' });
+    expect(response.body).not.toHaveProperty('owner_write_token');
+    expect(response.body).not.toHaveProperty('customer_email');
+    expect(response.body).not.toHaveProperty('link_token');
+  });
+
+  it('returns only the safe room landing projection without a verified room session', async () => {
+    const response = await request(app).get('/api/public/deal-room/room-1');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).toEqual({
+      property_id: 'room-1',
+      status: 'active',
+      access: { mode: 'anonymous' },
+    });
+    for (const field of [
+      'id',
+      'property_name',
+      'customer_email',
+      'deal_amount',
+      'metadata_values',
+      'generated_proposal',
+      'checklist_items',
+      'stages_config',
+      'owner_write_token',
+      'link_token',
+    ]) {
+      expect(response.body).not.toHaveProperty(field);
+    }
+  });
+
+  it('limits a verified participant room response to overview fields and their role', async () => {
+    const response = await request(app)
+      .get('/api/public/deal-room/room-1')
+      .set('x-kontra-session', mockParticipantToken);
+
+    expect(response.status).toBe(200);
+    expect(response.body.access).toEqual(expect.objectContaining({
+      mode: 'participant',
+      role: 'seller',
+      permissions: expect.objectContaining({
+        viewAllDocuments: false,
+        viewAssignedDocuments: true,
+      }),
+    }));
+    expect(response.body).toEqual(expect.objectContaining({
+      property_id: 'room-1',
+      property_name: 'Owner Room',
+      property_type: 'Business',
+      workflow_pack_id: 'business_acquisition',
+      role: 'seller',
+    }));
+    expect(Object.keys(response.body).sort()).toEqual([
+      'access',
+      'deal_stage',
+      'deal_type',
+      'jurisdiction',
+      'property_id',
+      'property_name',
+      'property_type',
+      'role',
+      'status',
+      'transaction_type',
+      'workflow_pack_id',
+    ]);
+    for (const field of [
+      'id',
+      'customer_email',
+      'deal_amount',
+      'metadata_values',
+      'generated_proposal',
+      'checklist_items',
+      'stages_config',
+      'owner_write_token',
+      'link_token',
+    ]) {
+      expect(response.body).not.toHaveProperty(field);
+    }
   });
 
   it('keeps participant access across repeated room loads when both credentials are present', async () => {

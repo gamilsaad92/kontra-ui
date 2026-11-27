@@ -3656,6 +3656,9 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
     if (req.headers['x-kontra-session'] && !['participant', 'owner'].includes(access.mode)) {
       return accessDenied(res, 'This invitation session is invalid or has expired');
     }
+    if (!['anonymous', 'participant', 'owner'].includes(access.mode)) {
+      return accessDenied(res);
+    }
     const { data, error } = await supabase
       .from('deal_rooms')
       .select('*')
@@ -3663,11 +3666,34 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
       .eq('status', 'active')
       .single();
     if (error || !data) return res.status(404).json({ error: 'Deal room not found' });
+
+    // A room ID is not a credential. Anonymous callers may only learn that an
+    // active room exists; private transaction, participant, document, and
+    // token data stays behind a verified room session.
+    if (access.mode === 'anonymous') {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        property_id: data.property_id,
+        status: data.status,
+        access: { mode: 'anonymous' },
+      });
+    }
+
     // Strip sensitive fields before returning — owner_write_token is a write
     // credential delivered only through the checkout redirect; never expose it
-    // in a public GET response or any participant could forge checklist edits.
-    const { customer_email, first_name, last_name, stripe_session_id, owner_write_token: _owt, ...safe } = data;
-    if (safe.workflow_pack_id?.startsWith('ws_')) {
+    // in a room GET response or any participant could forge checklist edits.
+    // link_token is also withheld; token rotation remains on its owner-only
+    // endpoint rather than leaking through room serialization.
+    const {
+      customer_email,
+      first_name,
+      last_name,
+      stripe_session_id,
+      owner_write_token: _owt,
+      link_token: _linkToken,
+      ...safe
+    } = data;
+    if (access.mode === 'owner' && safe.workflow_pack_id?.startsWith('ws_')) {
       const { data: customPack } = await supabase
         .from('custom_workflow_packs')
         .select('config')
@@ -3690,11 +3716,37 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
       safe.metadata_values,
     ) || null;
     if (access.mode === 'participant') {
-      safe.access = {
+      // Participants receive the room overview they are allowed to see. The
+      // complete checklist, generated proposal, raw metadata, and stage
+      // configuration are withheld here; their assigned checklist and other
+      // role-scoped data come from the dedicated authorization-aware routes.
+      const participantRoomFields = [
+        'property_id',
+        'property_name',
+        'property_type',
+        'status',
+        'workflow_pack_id',
+        'deal_type',
+        'transaction_type',
+        'transaction_subtype',
+        'transaction_entry_mode',
+        'base_pack',
+        'deal_stage',
+        'jurisdiction',
+      ];
+      const participantRoom = Object.fromEntries(
+        participantRoomFields
+          .filter(field => Object.prototype.hasOwnProperty.call(safe, field))
+          .map(field => [field, safe[field]]),
+      );
+      participantRoom.role = access.role;
+      participantRoom.access = {
         mode: access.mode,
         role: access.role,
         permissions: access.permissions,
       };
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(participantRoom);
     }
     if (access.mode === 'owner') {
       // The room owner always has coordinator authority regardless of the role
@@ -3704,6 +3756,7 @@ app.get('/api/public/deal-room/:propertyId', async (req, res) => {
       safe.role = 'deal_coordinator';
       safe.access = { mode: 'owner' };
     }
+    res.setHeader('Cache-Control', 'no-store');
     res.json(safe);
   } catch (err) {
     console.error('[deal-room-public]', err.message);
