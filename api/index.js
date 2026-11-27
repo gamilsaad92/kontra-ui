@@ -11478,10 +11478,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/conflicts/:confli
       : [{
         op: 'insert',
         field_key: canonicalFieldKey,
-        patch: {
-          ...fieldPatch,
-          created_at: now,
-        },
+        // The canonical RPC supplies its own transaction timestamp for new
+        // rows; created_at is deliberately not a writable field patch.
+        patch: fieldPatch,
       }];
     const expectedFields = field
       ? [expectedFieldSnapshot(field)]
@@ -11813,7 +11812,9 @@ app.post('/api/public/deal-room/:propertyId/transaction-record/fields', async (r
     const fieldChanges = [{
       op: 'insert',
       field_key: canonicalFieldKey,
-      patch: { ...insert, created_at: now },
+      // The canonical RPC owns created_at and fills it from its transaction
+      // timestamp. Its contract rejects client-supplied immutable columns.
+      patch: insert,
     }];
     const historyRows = [transactionFieldHistoryRow({
       fieldKey: canonicalFieldKey,

@@ -653,6 +653,79 @@ describe('room access and checklist scoping', () => {
     })]);
   });
 
+  it('lets an owner add a manual field without overriding the database-managed creation timestamp', async () => {
+    mockTransactionRecordFields = [];
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/fields')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({
+        field_key: 'parties.buyer',
+        display_label: 'Buyer',
+        field_category: 'parties',
+        value_text: 'Synthetic Buyer LLC',
+        status: 'needs_review',
+      });
+
+    expect(response.status).toBe(200);
+    const rpcCall = mockCanonicalRpc.mock.calls.find(([name]) =>
+      name === 'kontra_commit_canonical_change_set',
+    );
+    const insert = rpcCall?.[1]?.p_change_set?.field_changes?.[0];
+
+    expect(insert).toEqual(expect.objectContaining({
+      op: 'insert',
+      field_key: 'parties.buyer',
+      patch: expect.objectContaining({
+        field_key: 'parties.buyer',
+        value_text: 'Synthetic Buyer LLC',
+      }),
+    }));
+    expect(insert.patch).not.toHaveProperty('created_at');
+  });
+
+  it('resolves a legacy conflict with no field row without overriding its creation timestamp', async () => {
+    mockTransactionRecordFields = [];
+    mockRecoveryConflicts.push({
+      id: 'conflict-1',
+      property_id: 'room-1',
+      field_id: 'missing-field',
+      field_key: 'parties.buyer',
+      display_label: 'Buyer',
+      canonical_value: 'Synthetic Buyer LLC',
+      conflicting_value: 'Other Synthetic Entity LLC',
+      canonical_source_doc_id: null,
+      conflicting_source_doc_id: null,
+      canonical_source_excerpt: null,
+      conflicting_source_excerpt: null,
+      status: 'unresolved',
+      updated_at: '2026-11-27T00:00:00.000Z',
+    });
+
+    const response = await request(app)
+      .post('/api/public/deal-room/room-1/transaction-record/conflicts/conflict-1/resolve')
+      .set('Cookie', `kontra_owner_session=${mockOwnerSessionToken}`)
+      .set('Origin', 'https://staging.kontraplatform.com')
+      .send({ value_text: 'Synthetic Buyer LLC', note: 'Owner reviewed the synthetic test value.' });
+
+    expect(response.status).toBe(200);
+    const rpcCall = mockCanonicalRpc.mock.calls.find(([name]) =>
+      name === 'kontra_commit_canonical_change_set',
+    );
+    const insert = rpcCall?.[1]?.p_change_set?.field_changes?.[0];
+
+    expect(insert).toEqual(expect.objectContaining({
+      op: 'insert',
+      field_key: 'parties.buyer',
+      patch: expect.objectContaining({
+        field_key: 'parties.buyer',
+        value_text: 'Synthetic Buyer LLC',
+      }),
+    }));
+    expect(insert.patch).not.toHaveProperty('created_at');
+  });
+
   it('blocks ordinary confirmation after a source mismatch is flagged until supported evidence is attached', async () => {
     mockTransactionRecordFields = [{
       id: 'field-1',
